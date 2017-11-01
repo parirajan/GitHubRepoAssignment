@@ -1,0 +1,45 @@
+a. Create Create a new repository on GITHUB and call it GitHubRepoAssignment
+	https://github.com/parirajan/GitHubRepoAssignment
+
+b. Create Directory
+	mkdir GitHubRepoAssignment
+
+c. Initialize a git repository in your GitHubRepoAssignment directory
+	git init
+	Initialized empty Git repository in /home/pravindr/codingdojo/GitHubRepoAssignment/.git/
+
+d. Make a readme.md in your GitHubRepoAssignment folder explaining its contents.
+	echo "#GitHub Repo Assignment" > readme.md
+
+e. Do a status check to see the changes made, then add, commit and push your
+changes
+	git status
+	# On branch master
+	#
+	# Initial commit
+	#
+	# Untracked files:
+	#   (use "git add <file>..." to include in what will be committed)
+	#
+	#       readme.md
+	nothing added to commit but untracked files present (use "git add" to track)
+
+	git add .
+
+	 git commit -m "GitRepoAssignment First Commit"
+	[master (root-commit) 2ef4d54] GitRepoAssignment First Commit
+	 1 files changed, 1 insertions(+), 0 deletions(-)
+	 create mode 100644 readme.md
+
+	git status
+	# On branch master
+	nothing to commit (working directory clean)
+
+	vim GitHubRepoAssignment.txt
+	Added steps in the file
+	
+
+
+
+ 
+
