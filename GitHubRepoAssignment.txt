@@ -38,8 +38,7 @@ changes
 	vim GitHubRepoAssignment.txt
 	Added steps in the file
 
-	git remote add origin
-	git@github.com:parirajan/GitHubRepoAssignment.git
+	git remote add origin git@github.com:parirajan/GitHubRepoAssignment.git
 	git push -u origin master
 	
 
