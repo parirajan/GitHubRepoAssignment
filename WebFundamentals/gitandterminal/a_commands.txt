@@ -1,0 +1,50 @@
+a. Open Terminal
+	Type "Terminal" on Spotlight Search
+
+b. Navigate to your Desktop
+	cd ~/Desktop/
+
+c. Create a new directory, call it 'test'
+	mkdir test
+	
+d. Make files called index.html, styles.css, commands.txt inside the test directory
+	touch index.html
+	touch styles.css
+	touch commands.txt
+	
+e. Make a copy of index.html and call it index_2.html
+	cp index.html index_2.html
+	
+f. In the 'test' directory, remove the 'styles.css' file
+	rm styles.css
+
+g. Navigate back to your desktop and make another directory, call it 'destination'
+	cd ~/Desktop or cd ..
+	
+h. Move the index_2.html file from 'test' to the 'destination' directory
+	mv test/index_2.html destination/
+
+i. Now, check and see what files are in the 'test' and 'destination' directories
+	.
++-- destination
+¦   +-- index_2.html
++-- test
+    +-- commands.txt
+    +-- index.html
+
+2 directories, 3 files
+
+j. Delete the 'destination' directory
+	rmdir destination/
+	rmdir: destination/: Directory not empty
+	
+	or
+	
+	rm -rf destination
+	(to force delete)
+	
+k. Write the commands you used to do the above and save them in commands.txt.
+        vim test/commands.txt
+        insert (above commands) using vi editor and :wq to save and exit
+
+	
