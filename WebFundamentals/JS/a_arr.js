@@ -25,7 +25,8 @@ prompt.start();
   prompt.get(properties, function (err, result) {
     if (err) { return onErr(err); }
     console.log('Command-line input received:');
-    printArray(result.symbol);
+    if (result.symbol != '' && result.symbol != null)
+       printArray(result.symbol);
   });
 
   function onErr(err) {
