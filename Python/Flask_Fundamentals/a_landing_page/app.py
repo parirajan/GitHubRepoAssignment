@@ -11,7 +11,7 @@ def ninjas():
 
 @app.route('/dojos/new')
 def dojos_new():
-  return render_template('dojos.html')
+  return render_template('dojos.html',name='PJ')
 
 
 app.run(host='0.0.0.0',port=9090,debug=True)
