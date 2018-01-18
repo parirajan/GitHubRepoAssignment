@@ -1,11 +1,13 @@
 from flask import Flask, render_template, request, redirect, session
+import os
 app = Flask(__name__)
-app.secret_key = 'ThisIsSecret'
-app.count = 0
+app.config['SESSION_TYPE'] = 'memcached'
+app.config['SECRET_KEY'] = os.urandom(24)
+
 
 @app.route('/')
 def index():
-    session['count'] += 1
+    session["count"] = session.get("count",0) + 1
     return render_template('index.html', count=session['count'])
 
 @app.route('/increment', methods=['POST'])

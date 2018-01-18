@@ -1,6 +1,9 @@
 from flask import Flask, render_template, request, redirect, session
+import os
 app = Flask(__name__)
-app.secret_key = 'ThisIsSecret'
+app.config['SESSION_TYPE'] = 'memcached'
+app.config['SECRET_KEY'] = os.urandom(24)
+
 
 @app.route('/')
 def index():
