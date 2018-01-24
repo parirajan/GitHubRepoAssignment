@@ -14,19 +14,16 @@ def is_prime_number(n):
   for i in range(2, n):
       if n % i == 0:
           return False
-          break
-      else: 
-          return True
-
+  return True
 
 for n in range(b,e):
   for i in range(2,n):
     if is_perfect_square(n) == True:
-      print "Number:",n,"- Perfect Square - FOO"
+      print "Number:",n,"- Composite and Perfect Square - FOOBAR"
       break
     elif is_prime_number(n) == True:
-      print "Number:", n, "- Prime Number - BAR"
+      print "Number:", n, "- Prime Number - FOO"
       break
     else:
-      print "Number:",n," - Not Prime and Not Perfect Square - FOOBAR"
+      print "Number:",n," - Composite Number - BAR"
       break
