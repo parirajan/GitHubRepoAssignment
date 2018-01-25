@@ -1,0 +1,261 @@
+Import DB into MySQL WorkBench
+
+
+mysql -h 172.26.196.15 -u pj -p < morepractice.sql
+Enter password:
+
+mysql -h 172.26.196.15 -u pj -p < morepractice.sql
+Enter password:
+
+ mysql -h 172.26.196.15 -u pj -p
+Enter password:
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 20
+Server version: 5.7.21 MySQL Community Server (GPL)
+
+Copyright (c) 2000, 2018, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| blogs-assgnmnt-erd |
+| lead_gen_business  |
+| mysql              |
+| performance_schema |
+| sys                |
+| twitter            |
++--------------------+
+7 rows in set (0.00 sec)
+
+mysql> show schemas;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| blogs-assgnmnt-erd |
+| lead_gen_business  |
+| mysql              |
+| performance_schema |
+| sys                |
+| twitter            |
++--------------------+
+7 rows in set (0.00 sec)
+
+
+
+
+connect lead_gen_business;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Connection id:    21
+Current database: lead_gen_business
+
+mysql> show tables;
++-----------------------------+
+| Tables_in_lead_gen_business |
++-----------------------------+
+| billing                     |
+| clients                     |
+| leads                       |
+| sites                       |
++-----------------------------+
+4 rows in set (0.00 sec)
+
+
+mysql>
+mysql>
+mysql> connect twitter;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Connection id:    22
+Current database: twitter
+
+mysql> use twitter;
+Database changed
+
+mysql> show tables;
++-------------------+
+| Tables_in_twitter |
++-------------------+
+| faves             |
+| follows           |
+| tweets            |
+| users             |
++-------------------+
+4 rows in set (0.00 sec)
+
+
+mysql> desc users;
++------------+--------------+------+-----+---------+----------------+
+| Field      | Type         | Null | Key | Default | Extra          |
++------------+--------------+------+-----+---------+----------------+
+| id         | int(11)      | NO   | PRI | NULL    | auto_increment |
+| first_name | varchar(255) | YES  |     | NULL    |                |
+| last_name  | varchar(255) | YES  |     | NULL    |                |
+| handle     | varchar(255) | YES  |     | NULL    |                |
+| birthday   | date         | YES  |     | NULL    |                |
+| created_at | datetime     | YES  |     | NULL    |                |
+| updated_at | datetime     | YES  |     | NULL    |                |
++------------+--------------+------+-----+---------+----------------+
+7 rows in set (0.00 sec)
+
+mysql> desc tweets;
++------------+--------------+------+-----+---------+----------------+
+| Field      | Type         | Null | Key | Default | Extra          |
++------------+--------------+------+-----+---------+----------------+
+| id         | int(11)      | NO   | PRI | NULL    | auto_increment |
+| tweet      | varchar(140) | YES  |     | NULL    |                |
+| user_id    | int(11)      | NO   | MUL | NULL    |                |
+| created_at | datetime     | YES  |     | NULL    |                |
+| updated_at | datetime     | YES  |     | NULL    |                |
++------------+--------------+------+-----+---------+----------------+
+5 rows in set (0.00 sec)
+
+mysql>
+mysql> select * from users;
++----+------------+-----------+-----------------+------------+---------------------+---------------------+
+| id | first_name | last_name | handle          | birthday   | created_at
+| updated_at          |
++----+------------+-----------+-----------------+------------+---------------------+---------------------+
+|  1 | Kobe       | Bryant    | kobebryant      | 1978-08-23 | 2010-02-01
+00:00:01 | 2011-07-01 00:00:01 |
+|  2 | Vince      | Carter    | mrvincecarter15 | 1977-01-26 | 2007-08-11
+00:00:01 | 2010-01-01 00:00:01 |
+|  3 | Allen      | Iverson   | alleniverson    | 1975-06-07 | 2005-09-01
+00:00:01 | 2011-04-21 00:00:01 |
+|  4 | Tracy      | McGrady   | Real_T_Mac      | 1979-05-24 | 2002-12-01
+00:00:01 | 2005-11-21 00:00:01 |
+|  5 | Rajon      | Rondo     | RajonRondo      | 1986-02-22 | 2001-02-01
+00:00:01 | 2002-01-01 00:00:01 |
++----+------------+-----------+-----------------+------------+---------------------+---------------------+
+5 rows in set (0.00 sec)
+
+mysql> select first_name, last_name from users;
++------------+-----------+
+| first_name | last_name |
++------------+-----------+
+| Kobe       | Bryant    |
+| Vince      | Carter    |
+| Allen      | Iverson   |
+| Tracy      | McGrady   |
+| Rajon      | Rondo     |
++------------+-----------+
+5 rows in set (0.00 sec)
+
+mysql> select first_name as FirstName, last_name as LastName from users;
++-----------+----------+
+| FirstName | LastName |
++-----------+----------+
+| Kobe      | Bryant   |
+| Vince     | Carter   |
+| Allen     | Iverson  |
+| Tracy     | McGrady  |
+| Rajon     | Rondo    |
++-----------+----------+
+5 rows in set (0.00 sec)
+
+mysql>
+mysql> select users.first_name as FirstName, users.last_name as LastName,
+tweets.tweet as Tweets
+    -> from users
+    -> join tweets on users.id = tweets.user_id;
++-----------+----------+-----------------------------------------------------------------------------------------------------------------------------------------+
+| FirstName | LastName | Tweets
+|
++-----------+----------+-----------------------------------------------------------------------------------------------------------------------------------------+
+| Kobe      | Bryant   | There is power in understanding the journey of others
+to help create your own
+|
+| Kobe      | Bryant   | Congrats Coach K! Amazing accomplishment #1KforCoachK
+#Duke
+|
+| Kobe      | Bryant   | This is what happens when I pass too much!
+#ShoulderShock thank u all for ur thoughts and prayers #team @DrinkBODYARMOR
+@Lakers #oneluv |
+| Kobe      | Bryant   | Feeling a mix of emotions I haven't felt in 18yrs of
+being a pro #journey #19th
+|
+| Vince     | Carter   | Thank you everyone for the birthday wishes. I
+appreciate you all.
+|
+| Vince     | Carter   | I'd like to wish everyone a very Merry Christmas. 1
+love to all "Be Safe"
+|
+| Vince     | Carter   | Thanks to all who helped with the Christmas food
+baskets today. Your time is greatly appreciated. Love & Respect!!
+|
+| Vince     | Carter   | I took on the ALS Challenge from Monta Ellis. I
+challenge @coolkesh42 Jameer Nelson, Dionne Calhoun ... http://tmi.me/1eFAxT
+|
+| Allen     | Iverson  | Well done lil bro, you deserve it!! @KingJames
+|
+| Allen     | Iverson  | For my basketball clinic with @manilacone 11/4/14, we
+still have a few slots left for the main game. See you all 11/5/14 Philippines
+|
+| Tracy     | McGrady  | Always have a great time with my big little brother.
+|
+| Tracy     | McGrady  | Happy Labor Day..
+|
++-----------+----------+-----------------------------------------------------------------------------------------------------------------------------------------+
+12 rows in set (0.00 sec)
+
+mysql>
+mysql> select users.first_name as FirstName, users.last_name as LastName,
+tweets.tweet as Tweets
+    -> from users
+    -> left join tweets on users.id = tweets.user_id;
++-----------+----------+-----------------------------------------------------------------------------------------------------------------------------------------+
+| FirstName | LastName | Tweets
+|
++-----------+----------+-----------------------------------------------------------------------------------------------------------------------------------------+
+| Kobe      | Bryant   | There is power in understanding the journey of others
+to help create your own
+|
+| Kobe      | Bryant   | Congrats Coach K! Amazing accomplishment #1KforCoachK
+#Duke
+|
+| Kobe      | Bryant   | This is what happens when I pass too much!
+#ShoulderShock thank u all for ur thoughts and prayers #team @DrinkBODYARMOR
+@Lakers #oneluv |
+| Kobe      | Bryant   | Feeling a mix of emotions I haven't felt in 18yrs of
+being a pro #journey #19th
+|
+| Vince     | Carter   | Thank you everyone for the birthday wishes. I
+appreciate you all.
+|
+| Vince     | Carter   | I'd like to wish everyone a very Merry Christmas. 1
+love to all "Be Safe"
+|
+| Vince     | Carter   | Thanks to all who helped with the Christmas food
+baskets today. Your time is greatly appreciated. Love & Respect!!
+|
+| Vince     | Carter   | I took on the ALS Challenge from Monta Ellis. I
+challenge @coolkesh42 Jameer Nelson, Dionne Calhoun ... http://tmi.me/1eFAxT
+|
+| Allen     | Iverson  | Well done lil bro, you deserve it!! @KingJames
+|
+| Allen     | Iverson  | For my basketball clinic with @manilacone 11/4/14, we
+still have a few slots left for the main game. See you all 11/5/14 Philippines
+|
+| Tracy     | McGrady  | Always have a great time with my big little brother.
+|
+| Tracy     | McGrady  | Happy Labor Day..
+|
+| Rajon     | Rondo    | NULL
+|
++-----------+----------+-----------------------------------------------------------------------------------------------------------------------------------------+
+13 rows in set (0.00 sec)
+
+
+
+
