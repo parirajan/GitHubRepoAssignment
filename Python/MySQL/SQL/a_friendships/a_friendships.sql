@@ -53,12 +53,27 @@ CREATE TABLE IF NOT EXISTS `friendships`.`friendships` (
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8;
 
-INSERT INTO `friendships`.`users` (`first_name`, `last_name`) VALUES ('Chris', 'Baker');
-INSERT INTO `friendships`.`users` (`first_name`, `last_name`) VALUES ('Diana', 'Smith');
-INSERT INTO `friendships`.`users` (`first_name`, `last_name`) VALUES ('James', 'Johnson');
-INSERT INTO `friendships`.`users` (`first_name`, `last_name`) VALUES ('Jessica', 'Davidson');
+	INSERT INTO users (first_name, last_name, created_at, updated_at)
+	VALUES 
+	('Chris', 'Baker', now(), now()),
+	('Diana', 'Smith', now(), now()),
+	('James', 'Johnson', now(), now()),
+	('Jessica', 'Davidson', now(), now());
+
+
+	INSERT INTO friendships (user_id, friend_id, created_at, updated_at)
+	VALUES
+	((SELECT id from users WHERE first_name='Chris' AND last_name='Baker'), (SELECT id from users WHERE first_name='James' AND last_name='Johnson'), now(), now()),
+	((SELECT id from users WHERE first_name='Chris' AND last_name='Baker'), (SELECT id from users WHERE first_name='Diana' AND last_name='Smith'), now(), now()),
+	((SELECT id from users WHERE first_name='Jessica' AND last_name='Davidson'), (SELECT id from users WHERE first_name='James' AND last_name='Johnson'), now(), now()),
+	((SELECT id from users WHERE first_name='James' AND last_name='Johnson'), (SELECT id from users WHERE first_name='Jessica' AND last_name='Davidson'), now(), now()),
+    ((SELECT id from users WHERE first_name='Diana' AND last_name='Smith'), (SELECT id from users WHERE first_name='Chris' AND last_name='Baker'), now(), now()),
+    ((SELECT id from users WHERE first_name='James' AND last_name='Johnson'), (SELECT id from users WHERE first_name='Chris' AND last_name='Baker'), now(), now());
+
 
 
 SET SQL_MODE=@OLD_SQL_MODE;
 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;
+
+
