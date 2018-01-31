@@ -1,0 +1,455 @@
+mysql -h localhost -u pj -p < chapter3569_5435_lead-gen-business-new.sql
+Enter password:
+
+
+mysql -h localhost -u pj -p
+Enter password:
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 83
+Server version: 5.7.21 MySQL Community Server (GPL)
+
+Copyright (c) 2000, 2018, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| blogs-assgnmnt-erd |
+| friendships        |
+| lead_gen_business  |
+| mysql              |
+| performance_schema |
+| sakila             |
+| sys                |
+| twitter            |
+| world              |
++--------------------+
+10 rows in set (0.00 sec)
+
+mysql> use lead_gen_business
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+
+mysql> show tables;
++-----------------------------+
+| Tables_in_lead_gen_business |
++-----------------------------+
+| billing                     |
+| clients                     |
+| leads                       |
+| sites                       |
++-----------------------------+
+4 rows in set (0.00 sec)
+
+
+
+mysql> desc billing;
++------------------+----------+------+-----+---------+----------------+
+| Field            | Type     | Null | Key | Default | Extra          |
++------------------+----------+------+-----+---------+----------------+
+| billing_id       | int(11)  | NO   | PRI | NULL    | auto_increment |
+| amount           | float    | NO   |     | NULL    |                |
+| charged_datetime | datetime | NO   |     | NULL    |                |
+| client_id        | int(11)  | NO   |     | NULL    |                |
++------------------+----------+------+-----+---------+----------------+
+4 rows in set (0.00 sec)
+
+mysql> desc clients;
++-----------------+-------------+------+-----+---------+----------------+
+| Field           | Type        | Null | Key | Default | Extra          |
++-----------------+-------------+------+-----+---------+----------------+
+| client_id       | int(11)     | NO   | PRI | NULL    | auto_increment |
+| first_name      | varchar(25) | NO   |     | NULL    |                |
+| last_name       | varchar(25) | NO   |     | NULL    |                |
+| email           | varchar(50) | NO   |     | NULL    |                |
+| joined_datetime | datetime    | NO   |     | NULL    |                |
++-----------------+-------------+------+-----+---------+----------------+
+5 rows in set (0.00 sec)
+
+mysql> desc leads;
++---------------------+-------------+------+-----+---------+----------------+
+| Field               | Type        | Null | Key | Default | Extra          |
++---------------------+-------------+------+-----+---------+----------------+
+| leads_id            | int(11)     | NO   | PRI | NULL    | auto_increment |
+| first_name          | varchar(50) | NO   |     | NULL    |                |
+| last_name           | varchar(50) | NO   |     | NULL    |                |
+| registered_datetime | datetime    | NO   |     | NULL    |                |
+| email               | varchar(50) | NO   |     | NULL    |                |
+| site_id             | int(11)     | NO   |     | NULL    |                |
++---------------------+-------------+------+-----+---------+----------------+
+6 rows in set (0.00 sec)
+
+mysql> desc sites;
++------------------+--------------+------+-----+---------+----------------+
+| Field            | Type         | Null | Key | Default | Extra          |
++------------------+--------------+------+-----+---------+----------------+
+| site_id          | int(11)      | NO   | PRI | NULL    | auto_increment |
+| domain_name      | varchar(100) | NO   |     | NULL    |                |
+| created_datetime | datetime     | NO   |     | NULL    |                |
+| client_id        | int(11)      | NO   |     | NULL    |                |
++------------------+--------------+------+-----+---------+----------------+
+4 rows in set (0.00 sec)
+
+mysql> SELECT SUM(billing.amount) AS Total_Revenue FROM billing
+    -> WHERE charged_datetime BETWEEN '2012-03-01' AND '2012-03-31' ;
++---------------+
+| Total_Revenue |
++---------------+
+|         35646 |
++---------------+
+1 row in set (0.00 sec)
+
+
+mysql> SELECT SUM(billing.amount) AS Revenue_Collected FROM billing
+    -> WHERE client_id = 2;
++-------------------+
+| Revenue_Collected |
++-------------------+
+|             18639 |
++-------------------+
+1 row in set (0.00 sec)
+
+mysql> SELECT sites.domain_name, sites.client_id FROM sites
+    -> WHERE client_id = 10;
++---------------------+-----------+
+| domain_name         | client_id |
++---------------------+-----------+
+| searchcomputers.com |        10 |
+| rogers.com          |        10 |
++---------------------+-----------+
+2 rows in set (0.00 sec)
+
+mysql> SELECT sites.client_id, COUNT(sites.domain_name), date_format(created_datetime, '%M'), date_format(created_datetime, '%Y') FROM sites WHERE client_id = 1 or client_id = 20 GROUP BY date_format(created_datetime, '%M');
++-----------+--------------------------+-------------------------------------+-------------------------------------+
+| client_id | COUNT(sites.domain_name) | date_format(created_datetime, '%M') | date_format(created_datetime, '%Y') |
++-----------+--------------------------+-------------------------------------+-------------------------------------+
+|         1 |                        1 | April                               | 2011                                |
+|         1 |                        1 | December                            | 2011                                |
+|         1 |                        2 | November                            | 2010                                |
+|        20 |                        1 | October                             | 2011                                |
+|         1 |                        1 | September                           | 2011                                |
++-----------+--------------------------+-------------------------------------+-------------------------------------+
+5 rows in set (0.00 sec)
+
+mysql> SELECT sites.domain_name AS website, COUNT(CONCAT('leads.first_name', ' ', 'leads.last_name')) AS num_of_leads, date_format(leads.registered_datetime, '%d %b %Y') AS date
+    -> FROM leads
+    -> JOIN sites ON leads.site_id = sites.site_id
+    -> WHERE leads.registered_datetime BETWEEN '2011-01-01' AND '2011-02-15'
+    -> GROUP BY sites.domain_name
+    -> ORDER BY date_format(leads.registered_datetime, '%d');
++-----------------------+--------------+-------------+
+| website               | num_of_leads | date        |
++-----------------------+--------------+-------------+
+| ehow.com              |            1 | 01 Jan 2011 |
+| searchphilippines.com |            1 | 11 Feb 2011 |
+| market.com            |            1 | 13 Jan 2011 |
++-----------------------+--------------+-------------+
+3 rows in set (0.00 sec)
+
+mysql> SELECT CONCAT(clients.first_name, ' ', clients.last_name) AS client_name, COUNT(CONCAT('leads.first_name', ' ', 'leads.last_name')) AS num_of_leads
+    -> FROM leads
+    -> JOIN sites ON leads.site_id = sites.site_id
+    -> JOIN clients ON sites.client_id = clients.client_id
+    -> WHERE leads.registered_datetime BETWEEN '2011-01-01' AND '2011-12-31'
+    -> GROUP BY CONCAT(clients.first_name, ' ', clients.last_name);
++----------------------+--------------+
+| client_name          | num_of_leads |
++----------------------+--------------+
+| Alexa Schroeder      |            2 |
+| Callie Poole         |            4 |
+| Diana Sue Manlulu    |            2 |
+| Erica Suarez         |            4 |
+| Ferdinand Schmidt    |            3 |
+| Joe Smith            |            6 |
+| John Supsupin        |            4 |
+| Maria Gonzales       |            5 |
+| Masaki Fujimuto      |            7 |
+| Michael Choi         |            8 |
+| Roosevelt Sebial     |            3 |
+| Ryan Owen            |            9 |
+| Shafira Hansen       |            3 |
+| Tom Owen             |            7 |
+| Toni Rose Panganiban |            7 |
++----------------------+--------------+
+15 rows in set (0.00 sec)
+
+mysql> SELECT CONCAT(clients.first_name, ' ', clients.last_name) AS client_name, COUNT(CONCAT(leads.first_name, ' ', leads.last_name)) AS num_of_leads, MONTHNAME(leads.registered_datetime) AS month_generated
+    -> FROM leads
+    -> JOIN sites ON leads.site_id = sites.site_id
+    -> JOIN clients ON sites.client_id = clients.client_id
+    -> WHERE leads.registered_datetime BETWEEN '2011-01-01' AND '2011-6-31'
+    -> GROUP BY CONCAT(clients.first_name, ' ', clients.last_name), MONTHNAME(leads.registered_datetime)
+    -> ORDER BY MONTHNAME(leads.registered_datetime);
++----------------------+--------------+-----------------+
+| client_name          | num_of_leads | month_generated |
++----------------------+--------------+-----------------+
+| Ryan Owen            |            1 | April           |
+| Tom Owen             |            1 | February        |
+| Michael Choi         |            1 | January         |
+| Diana Sue Manlulu    |            1 | January         |
+| Toni Rose Panganiban |            1 | June            |
+| John Supsupin        |            1 | March           |
+| Diana Sue Manlulu    |            1 | March           |
+| Masaki Fujimuto      |            1 | May             |
+| Toni Rose Panganiban |            1 | May             |
+| John Supsupin        |            1 | May             |
++----------------------+--------------+-----------------+
+10 rows in set (0.00 sec)
+
+mysql> SELECT CONCAT(clients.first_name, ' ', clients.last_name) AS client_name, sites.domain_name, COUNT(CONCAT(leads.first_name, ' ', leads.last_name)) AS num_of_leads, date_format(leads.registered_datetime, '%M %d, %Y') AS month_generated
+    -> from clients
+    -> LEFT JOIN sites ON clients.client_id = sites.client_id
+    -> LEFT JOIN leads ON sites.site_id = leads.site_id
+    -> WHERE leads.registered_datetime BETWEEN '2011-01-01' AND '2011-12-31'
+    -> GROUP BY sites.domain_name
+    -> ORDER BY leads.registered_datetime;
++----------------------+-----------------------+--------------+--------------------+
+| client_name          | domain_name           | num_of_leads | month_generated    |
++----------------------+-----------------------+--------------+--------------------+
+| Diana Sue Manlulu    | ehow.com              |            1 | January 01, 2011   |
+| Michael Choi         | market.com            |            4 | January 13, 2011   |
+| Tom Owen             | searchphilippines.com |            2 | February 11, 2011  |
+| John Supsupin        | uptownzone.com        |            1 | March 21, 2011     |
+| Diana Sue Manlulu    | olx.com               |            1 | March 22, 2011     |
+| Ryan Owen            | searchhomes.com       |            3 | April 06, 2011     |
+| Toni Rose Panganiban | timespace.com         |            2 | May 03, 2011       |
+| Masaki Fujimuto      | help.com              |            4 | May 22, 2011       |
+| John Supsupin        | keepvid.com           |            2 | May 27, 2011       |
+| Toni Rose Panganiban | atech.com             |            5 | June 03, 2011      |
+| Ryan Owen            | finalsite.com         |            3 | August 07, 2011    |
+| Alexa Schroeder      | baird.com             |            2 | August 10, 2011    |
+| Maria Gonzales       | homes.com             |            2 | August 13, 2011    |
+| Michael Choi         | assignmentworld.com   |            2 | August 16, 2011    |
+| Maria Gonzales       | warcraft.com          |            1 | August 18, 2011    |
+| John Supsupin        | massey.com            |            1 | August 25, 2011    |
+| Roosevelt Sebial     | searchcomputers.com   |            1 | August 26, 2011    |
+| Ferdinand Schmidt    | marquez.com           |            3 | August 27, 2011    |
+| Joe Smith            | reyes.com             |            2 | August 29, 2011    |
+| Callie Poole         | webb.com              |            3 | September 17, 2011 |
+| Joe Smith            | fox.com               |            1 | September 22, 2011 |
+| Ryan Owen            | family.com            |            1 | September 30, 2011 |
+| Ryan Owen            | decker.com            |            2 | October 01, 2011   |
+| Michael Choi         | youtube.com           |            1 | October 01, 2011   |
+| Masaki Fujimuto      | loans.com             |            1 | October 09, 2011   |
+| Masaki Fujimuto      | cryshinjohn.com       |            2 | October 16, 2011   |
+| Tom Owen             | yestogod.com          |            5 | October 27, 2011   |
+| Joe Smith            | olson.com             |            2 | November 03, 2011  |
+| Callie Poole         | mcmahon.com           |            1 | November 09, 2011  |
+| Shafira Hansen       | phillips.com          |            2 | November 18, 2011  |
+| Roosevelt Sebial     | rogers.com            |            2 | November 26, 2011  |
+| Erica Suarez         | rodgers.com           |            1 | December 04, 2011  |
+| Shafira Hansen       | valencia.com          |            1 | December 05, 2011  |
+| Erica Suarez         | hester.com            |            3 | December 06, 2011  |
+| Maria Gonzales       | duran.com             |            2 | December 16, 2011  |
+| Joe Smith            | connectme.com         |            1 | December 17, 2011  |
+| Michael Choi         | serrano.com           |            1 | December 26, 2011  |
++----------------------+-----------------------+--------------+--------------------+
+37 rows in set (0.00 sec)
+
+mysql> SELECT CONCAT(clients.first_name, ' ', clients.last_name) AS client_name, sites.domain_name, COUNT(CONCAT(leads.first_name, ' ', leads.last_name)) AS num_of_leads
+    -> FROM clients
+    -> LEFT JOIN sites ON clients.client_id = sites.client_id
+    -> LEFT JOIN leads ON sites.site_id = leads.site_id
+    -> GROUP BY sites.domain_name
+    -> ORDER BY sites.domain_name;
++----------------------+-----------------------+--------------+
+| client_name          | domain_name           | num_of_leads |
++----------------------+-----------------------+--------------+
+| Ursula Holt          | NULL                  |            0 |
+| Ferdinand Schmidt    | albert.com            |            5 |
+| Diana Sue Manlulu    | alexander.com         |            5 |
+| Francis Walsh        | alston.com            |            4 |
+| Michael Choi         | assignmentworld.com   |            5 |
+| Toni Rose Panganiban | atech.com             |           13 |
+| Alexa Schroeder      | baird.com             |            6 |
+| John Supsupin        | byers.com             |            3 |
+| Alexa Schroeder      | collier.com           |            8 |
+| Joe Smith            | connectme.com         |            4 |
+| Masaki Fujimuto      | cryshinjohn.com       |            5 |
+| Ryan Owen            | decker.com            |            9 |
+| Michael Choi         | drake.com             |            6 |
+| Maria Gonzales       | duran.com             |            7 |
+| Diana Sue Manlulu    | ehow.com              |            6 |
+| Ryan Owen            | family.com            |           10 |
+| Ryan Owen            | finalsite.com         |            7 |
+| Joe Smith            | flipfly.com           |            5 |
+| Diana Sue Manlulu    | floyd.com             |            3 |
+| Joe Smith            | fox.com               |            7 |
+| Masaki Fujimuto      | help.com              |            9 |
+| Erica Suarez         | hester.com            |            9 |
+| Maria Gonzales       | homes.com             |            4 |
+| Ferdinand Schmidt    | hopkins.com           |            2 |
+| Alexa Schroeder      | jarvis.com            |            2 |
+| Shafira Hansen       | johnston.com          |            5 |
+| John Supsupin        | keepvid.com           |            6 |
+| Toni Rose Panganiban | lamb.com              |            6 |
+| Masaki Fujimuto      | loans.com             |            7 |
+| Alvin Malone         | lowe.com              |            2 |
+| Michael Choi         | market.com            |           13 |
+| Ferdinand Schmidt    | marquez.com           |            7 |
+| John Supsupin        | massey.com            |            6 |
+| Callie Poole         | mcmahon.com           |            4 |
+| Joe Smith            | olson.com             |            6 |
+| Diana Sue Manlulu    | olx.com               |            6 |
+| John Supsupin        | park.com              |            5 |
+| Shafira Hansen       | phillips.com          |            8 |
+| Joe Smith            | reyes.com             |            7 |
+| Erica Suarez         | rodgers.com           |            4 |
+| Roosevelt Sebial     | rogers.com            |            5 |
+| Roosevelt Sebial     | searchcomputers.com   |            5 |
+| Toni Rose Panganiban | searchcoronado.com    |            6 |
+| Ryan Owen            | searchhomes.com       |            6 |
+| Tom Owen             | searchphilippines.com |           10 |
+| John Supsupin        | searchvillage.com     |            4 |
+| Michael Choi         | serrano.com           |            3 |
+| Toni Rose Panganiban | timespace.com         |            5 |
+| John Supsupin        | uptownzone.com        |            8 |
+| Shafira Hansen       | valencia.com          |            4 |
+| Maria Gonzales       | warcraft.com          |            7 |
+| Joe Smith            | waters.com            |            5 |
+| Callie Poole         | webb.com              |            9 |
+| Caesar Stewart       | wright.com            |            2 |
+| Tom Owen             | yestogod.com          |           12 |
+| Michael Choi         | youtube.com           |            8 |
++----------------------+-----------------------+--------------+
+56 rows in set (0.01 sec)
+
+
+
+mysql> SELECT CONCAT(clients.first_name, ' ', clients.last_name) AS client_name, SUM(billing.amount), MONTHNAME(billing.charged_datetime) AS month, date_format(billing.charged_datetime, '%Y') AS year
+    -> FROM billing
+    -> JOIN clients ON billing.client_id = clients.client_id
+    -> GROUP BY CONCAT(clients.first_name, ' ', clients.last_name), MONTHNAME(billing.charged_datetime), date_format(billing.charged_datetime, '%Y');
++----------------------+---------------------+-----------+------+
+| client_name          | SUM(billing.amount) | month     | year |
++----------------------+---------------------+-----------+------+
+| Alexa Schroeder      |                1184 | July      | 2012 |
+| Alexa Schroeder      |                6542 | May       | 2012 |
+| Alexa Schroeder      |                3058 | October   | 2012 |
+| Alexa Schroeder      |                2643 | September | 2011 |
+| Alvin Malone         |                1529 | December  | 2011 |
+| Alvin Malone         |                5995 | January   | 2012 |
+| Alvin Malone         |                2248 | July      | 2011 |
+| Alvin Malone         |                5978 | June      | 2012 |
+| Caesar Stewart       |                5268 | April     | 2012 |
+| Caesar Stewart       |                5459 | August    | 2012 |
+| Caesar Stewart       |                4912 | January   | 2012 |
+| Caesar Stewart       |                5495 | June      | 2012 |
+| Caesar Stewart       |                3084 | March     | 2012 |
+| Caesar Stewart       |                2427 | November  | 2012 |
+| Caesar Stewart       |                7313 | September | 2012 |
+| Callie Poole         |                4026 | December  | 2011 |
+| Callie Poole         |                5448 | June      | 2012 |
+| Callie Poole         |                2191 | September | 2011 |
+| Diana Sue Manlulu    |                 500 | February  | 2011 |
+| Diana Sue Manlulu    |                5970 | February  | 2012 |
+| Diana Sue Manlulu    |                6311 | January   | 2012 |
+| Diana Sue Manlulu    |                5885 | July      | 2012 |
+| Diana Sue Manlulu    |                5466 | June      | 2012 |
+| Diana Sue Manlulu    |                6544 | March     | 2012 |
+| Erica Suarez         |                2847 | April     | 2012 |
+| Erica Suarez         |                5682 | October   | 2012 |
+| Ferdinand Schmidt    |                9511 | August    | 2012 |
+| Ferdinand Schmidt    |                1961 | February  | 2012 |
+| Ferdinand Schmidt    |                5236 | July      | 2011 |
+| Ferdinand Schmidt    |                3264 | March     | 2012 |
+| Francis Walsh        |                1128 | April     | 2012 |
+| Francis Walsh        |               10057 | June      | 2012 |
+| Francis Walsh        |                1975 | November  | 2012 |
+| Francis Walsh        |                5259 | October   | 2011 |
+| Hyacinth Bates       |                6007 | April     | 2012 |
+| Hyacinth Bates       |                4781 | May       | 2012 |
+| Hyacinth Bates       |                2284 | October   | 2011 |
+| Hyacinth Bates       |                4955 | October   | 2012 |
+| Joe Smith            |                1000 | April     | 2011 |
+| Joe Smith            |                3795 | April     | 2012 |
+| Joe Smith            |                2275 | August    | 2012 |
+| Joe Smith            |                3600 | January   | 2012 |
+| Joe Smith            |                5952 | July      | 2012 |
+| Joe Smith            |                 900 | June      | 2011 |
+| Joe Smith            |                1117 | May       | 2012 |
+| John Supsupin        |                1246 | July      | 2011 |
+| John Supsupin        |                1910 | July      | 2012 |
+| John Supsupin        |                 750 | June      | 2011 |
+| John Supsupin        |                 500 | May       | 2011 |
+| John Supsupin        |                7096 | October   | 2011 |
+| Maria Gonzales       |                8000 | February  | 2012 |
+| Maria Gonzales       |                 100 | July      | 2011 |
+| Maria Gonzales       |                1000 | March     | 2011 |
+| Maria Gonzales       |                2907 | March     | 2012 |
+| Masaki Fujimuto      |                 200 | April     | 2011 |
+| Masaki Fujimuto      |                 650 | August    | 2011 |
+| Masaki Fujimuto      |                2733 | July      | 2011 |
+| Masaki Fujimuto      |                 800 | June      | 2011 |
+| Masaki Fujimuto      |                2663 | May       | 2012 |
+| Masaki Fujimuto      |                2780 | November  | 2011 |
+| Michael Choi         |                5000 | April     | 2011 |
+| Michael Choi         |                 300 | January   | 2011 |
+| Michael Choi         |                6629 | March     | 2012 |
+| Michael Choi         |                5904 | May       | 2012 |
+| Michael Choi         |                4052 | October   | 2011 |
+| Michael Choi         |                 450 | September | 2011 |
+| Michael Choi         |                1776 | September | 2012 |
+| Roosevelt Sebial     |                 680 | April     | 2012 |
+| Roosevelt Sebial     |                1407 | January   | 2012 |
+| Roosevelt Sebial     |                5344 | July      | 2012 |
+| Roosevelt Sebial     |                 500 | March     | 2011 |
+| Roosevelt Sebial     |                4254 | November  | 2011 |
+| Roosevelt Sebial     |                2066 | November  | 2012 |
+| Roosevelt Sebial     |                5851 | October   | 2012 |
+| Ryan Owen            |                 500 | January   | 2011 |
+| Ryan Owen            |                5200 | July      | 2011 |
+| Ryan Owen            |                1409 | May       | 2012 |
+| Ryan Owen            |                3217 | September | 2011 |
+| Shafira Hansen       |                8746 | March     | 2012 |
+| Shafira Hansen       |                3902 | November  | 2011 |
+| Tom Owen             |                 150 | April     | 2012 |
+| Tom Owen             |                2500 | February  | 2011 |
+| Tom Owen             |                4181 | July      | 2011 |
+| Toni Rose Panganiban |                1200 | February  | 2011 |
+| Toni Rose Panganiban |                4472 | March     | 2012 |
+| Toni Rose Panganiban |                2496 | November  | 2012 |
+| Toni Rose Panganiban |                3137 | September | 2012 |
+| Ursula Holt          |                6682 | July      | 2011 |
+| Ursula Holt          |                5779 | September | 2011 |
++----------------------+---------------------+-----------+------+
+89 rows in set (0.00 sec)
+
+
+mysql> SELECT CONCAT(clients.first_name, ' ', clients.last_name) AS client_name, GROUP_CONCAT(DISTINCT sites.domain_name SEPARATOR ' / ') AS sites
+    -> FROM clients
+    -> JOIN sites ON clients.client_id = sites.client_id
+    -> GROUP BY CONCAT(clients.first_name, ' ', clients.last_name);
++----------------------+--------------------------------------------------------------------------------------+
+| client_name          | sites                                                                                |
++----------------------+--------------------------------------------------------------------------------------+
+| Alexa Schroeder      | baird.com / collier.com / jarvis.com                                                 |
+| Alvin Malone         | lowe.com                                                                             |
+| Caesar Stewart       | wright.com                                                                           |
+| Callie Poole         | mcmahon.com / webb.com                                                               |
+| Diana Sue Manlulu    | alexander.com / ehow.com / floyd.com / olx.com                                       |
+| Erica Suarez         | hester.com / rodgers.com                                                             |
+| Ferdinand Schmidt    | albert.com / hopkins.com / marquez.com                                               |
+| Francis Walsh        | alston.com                                                                           |
+| Joe Smith            | connectme.com / flipfly.com / fox.com / olson.com / reyes.com / waters.com           |
+| John Supsupin        | byers.com / keepvid.com / massey.com / park.com / searchvillage.com / uptownzone.com |
+| Maria Gonzales       | duran.com / homes.com / warcraft.com                                                 |
+| Masaki Fujimuto      | cryshinjohn.com / help.com / loans.com                                               |
+| Michael Choi         | assignmentworld.com / drake.com / market.com / serrano.com / youtube.com             |
+| Roosevelt Sebial     | rogers.com / searchcomputers.com                                                     |
+| Ryan Owen            | decker.com / family.com / finalsite.com / searchhomes.com                            |
+| Shafira Hansen       | johnston.com / phillips.com / valencia.com                                           |
+| Tom Owen             | searchphilippines.com / yestogod.com                                                 |
+| Toni Rose Panganiban | atech.com / lamb.com / searchcoronado.com / timespace.com                            |
++----------------------+--------------------------------------------------------------------------------------+
+18 rows in set (0.00 sec)
+
