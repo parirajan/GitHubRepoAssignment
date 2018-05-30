@@ -1,0 +1,52 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+main {
+	width: 1000px;
+	margin: 0 auto;
+}
+
+img {
+	display: inline-block;
+	vertical-align: top;
+	width: 24%;
+	height: 220px;
+	margin: 5px 1px;
+	border: 1px solid black;
+	transition: all .3s;
+}
+
+p {
+	text-align: center;
+	margin: 20px 0;
+}
+
+button {
+	display: block;
+	width: 150px;
+	height: 50px;
+	margin: 30px auto;
+	border: none;
+	border-radius: 5px;
+	background: linear-gradient(#00ffff, #0062b3);
+	font-size: 16px;
+	color: white;
+}
+
+img:hover, button:hover {
+	cursor: pointer;
+}
+
+main img:last-child {
+	display: none;
+	position: absolute;
+	width: 0;
+	height: 0;
+	top: 35%;
+	left: 38%;
+	opacity: 0;
+	transition: all 3s;
+}
