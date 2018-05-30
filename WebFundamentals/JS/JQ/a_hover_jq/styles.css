@@ -1,0 +1,22 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+main {
+	width: 80%;
+	margin: 50px auto 0;
+}
+
+img {
+	display: inline-block;
+	vertical-align: top;
+	width: 24%;
+	height: 150px;
+	margin: 10px 0;
+}
+
+img:hover {
+	cursor: pointer;
+}
