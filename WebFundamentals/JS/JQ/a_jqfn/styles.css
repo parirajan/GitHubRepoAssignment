@@ -1,0 +1,82 @@
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+	font-family: sans-serif;
+}
+
+main {
+	width: 800px;
+	margin: 0 auto;
+	padding: 50px 0;
+	text-align: center;
+}
+
+h1, h2 {
+	font-size: 50px;
+	margin: 20px;
+	text-align: center;
+}
+
+form {
+	margin-top: 50px;
+}
+
+button {
+	display: block;
+	width: 150px;
+	height: 40px;
+	margin: 100px auto 30px;
+	font-size: 18px;
+	font-weight: bold;
+	border-radius: 7px;
+	transition: all .2s ease-in-out;
+}
+
+button:hover, input:hover, li:hover {
+	cursor: pointer;
+}
+
+p {
+	margin: 20px 0;
+	font-size: 18px;
+	transition: all .8s ease-in-out;
+}
+
+span {
+	display: block;
+	margin: 20px;
+}
+
+ul {
+	list-style-type: none;
+}
+
+li span {
+	margin: 5px 0;
+}
+
+li p {
+	font-size: 16px;
+	line-height: 1.3;
+	border: 1px solid #5c7095;
+	padding: 20px;
+	width: 70%;
+	margin: 20px auto;
+	box-shadow: 1px 1px 5px #5c7095;
+}
+
+p:last-child {
+	margin-bottom: 50px;
+}
+
+.redify {
+	color: white;
+	background-color: red;
+}
+
+#introCard, #mainCard, #hungryCard {
+	padding: 20px 30px;
+	text-align: center;
+	box-shadow: 0 3px 20px  #5c7095;
+}

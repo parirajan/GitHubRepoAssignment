@@ -1,0 +1,30 @@
+* {
+	color: #424242;
+}
+
+article {
+	background-color: white;
+}
+
+h1, h2 {
+	color: #5c7095;
+}
+
+button {
+	color: #424242;
+	border: 1px solid #5c7095;
+	background-color: white;
+	box-shadow: inset 1px 1px 5px #5c7095;
+}
+
+button:hover {
+	color: white;
+	border: none;
+	background-color: #175da6;
+	box-shadow: inset 1px 1px 5px white;
+	cursor: pointer;
+}
+
+form input:nth-child(2) {
+	margin-right: 20px;
+}

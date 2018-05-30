@@ -1,0 +1,29 @@
+h2 {
+	color: rgba(#000000, 0);
+	text-shadow: 2px 2px 10px #f38a02;
+	margin-top: 50px;
+}
+
+body {
+	background: url("https://wallpapercave.com/wp/QEpWvXj.jpg");
+	background-position: center;
+	background-repeat: no-repeat;
+}
+
+button {
+	background-color: black;
+	color: white;
+	border: 1px solid #957c5c;
+	box-shadow: inset 1px 1px 5px #f38a02;
+}
+
+p {
+	color: white;
+	font-weight: bold;
+}
+
+#bacon {
+	display: block;
+	width: 750px;
+	margin: 0 auto;
+}
