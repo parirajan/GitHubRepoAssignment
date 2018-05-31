@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Weather Forecast</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script type="text/javascript">
+      $(document).ready(function() {
+        console.log("JQuery is up and running");
+        $('form').submit(function() {
+          var search = $("input[type=text]").val();
+          var key = 'ae4a1d99d39ba6ffb863efa138cd7d57'; // API key here
+          var url = 'http://api.openweathermap.org/data/2.5/weather?q='+search+'&&appid='+key;
+          console.log(url);
+          $.get(url, function(res) {
+            var temp = Math.round(res.main.temp * 9/5 - 459.67); // Convert Kelvin to F (nearest whole number)
+            var html_str = '<h1>'+res.name+'</h1><h4>Temperature: '+temp+'</h4>';
+            $("#weather").html(html_str);
+          }, 'json');
+          return false;
+        });
+      });
+    </script>
+    <style>
+      #wrapper {
+        margin: auto;
+        padding: 10px;
+        width: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="wrapper">
+      <form>
+        <input type="text" name="loc" value="Los Angeles" />
+        <input type="submit" value="Search Weather">
+      </form>
+      <div id="weather">
+      </div>
+    </div>
+  </body>
+</html>
