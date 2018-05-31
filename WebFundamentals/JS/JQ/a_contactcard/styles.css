@@ -1,0 +1,79 @@
+::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 7px;
+}
+::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.5);
+  -webkit-box-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+}
+.hidden {
+  display: none;
+}
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  color: #465459;
+  transition: all .2s;
+  /*main*/
+}
+* main {
+  width: 480px;
+  margin: 100px auto 0;
+  padding: 30px;
+  background-color: #ededed;
+  border: 1px solid #465459;
+  border-radius: 10px;
+  box-shadow: 1px 1px 5px #465459;
+  /*form*/
+  /*card*/
+}
+* main h1 {
+  display: block;
+  margin: 0 0 20px;
+  border-bottom: 2px solid #465459;
+}
+* main form {
+  vertical-align: top;
+  width: 250px;
+  margin: 0 auto;
+}
+* main form label,
+* main form textarea {
+  display: block;
+  margin: 5px 0;
+  color: black;
+}
+* main form #add {
+  width: 80px;
+}
+* main div {
+  display: inline-block;
+  vertical-align: top;
+  width: 310px;
+  max-height: 320px;
+  margin: 5px 0;
+  overflow-y: scroll;
+}
+* main div .card {
+  display: block;
+  width: 300px;
+  height: 150px;
+  margin: 0 0 10px;
+  padding: 20px;
+  border: 1px solid #465459;
+  box-shadow: 1px 1px 5px #465459;
+}
+* main div .card:hover {
+  cursor: pointer;
+}
+* main div h2 {
+  font-size: 40px;
+  text-align: center;
+  margin: 0 0 20px;
+}
+* main div p {
+  text-align: center;
+}
+/* * */

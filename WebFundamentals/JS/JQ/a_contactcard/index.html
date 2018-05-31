@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+	<meta name="description" content="Contact Card Coding Dojo JQuery Assignment">
+	<title>Contact Card</title>
+	<!-- <link rel="stylesheet/less" type="text/css" href="styles.less" /> -->
+	<link rel="stylesheet" type="text/css" href="styles.css" />
+	<!-- <script src="http://cdnjs.cloudflare.com/ajax/libs/less.js/2.7.1/less.min.js"></script> -->
+	<script src="https://code.jquery.com/jquery-3.1.1.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
+	<script src="main.js" type="text/javascript"></script>
+</head>
+<body>
+	<main>
+		<h1>Welcome to the Contact Page!</h1>
+		<form>
+			<label for="first">
+				First Name:&nbsp;<input type="text" id="first" name="first" placeholder="Bob" />
+			</label>
+			<label for="last">
+				Last Name:&nbsp;<input type="text" id="last" name="last" placeholder="Thebuilder" />
+			</label>
+			<label for="desc">
+				Description:&nbsp;<textarea name="desc" id="desc" rows="8" cols="40" placeholder="Tell me about this person..."></textarea>
+			</label>
+			<input type="submit" id="add" name="add_user" value="Add User" />
+		</form>
+		<div id="contact">
+		</div>
+	</main>
+</body>
+</html>
