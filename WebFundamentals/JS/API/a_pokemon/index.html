@@ -12,52 +12,26 @@
 </script>
 <script type="text/javascript">
 function pokemon1to151(){
-    for(let i = 1;i<=151;i++){
-        $('#images').append(`<img id="${i}" src="http://pokeapi.co/media/img/${i}.png">`);
+    // var str = "http://pokeapi.co/media/img/";
+    for(var i = 1;i<=151;i++){
+        $('#images').append(`<img src="http://pokeapi.co/media/img/${i}.png">`);
     }
 
 }
+// pokemon1to151()
     $(document).ready(function(){
         pokemon1to151();
-        $('.pokedex *').hide();
-        $('#images img').on('click',function(){
-            $('.pokedex *').hide();
-            var id = $(this).attr('id');
-            $('ul').html(``);
-            $.get(`http://pokeapi.co/api/v2/pokemon/${id}`,function(pokemon){
-                // console.log(pokemon);                
-                $('.pokedex h2').text(pokemon.name);
-                $('#selected').prop('src',`http://pokeapi.co/media/img/${id}.png`);
-                console.log(pokemon.types.length);
-                for(let i = 0;i<pokemon.types.length;i++){
-                    $('ul').append(`<li>${pokemon.types[i].type.name}</li>`);
-                }
-                $('#height').text(pokemon.height);
-                $('#weight').text(pokemon.weight);
-                $('.pokedex *').show();
-            });
-        })
+        
     })
 </script>
     </head>
     <body>
-        <h1>Pokedex</h1>
         <div id="wrapper">
-            
+            <h1>Pokemon</h1>
             <div id="images">
-            </div>
 
-            <div class="pokedex">
-                <h2></h2>
-                <img id="selected" src="${i}" alt="${i}">
-                <p><strong>Types</strong></p>
-                <ul>
-                </ul>
-                <p><strong>Height</strong></p>
-                <p id="height"></p>
-                <p><strong>Weight</strong></p>
-                <p id="weight"></p>
             </div>
+            <button>Reset</button>
         </div>
     </body>
 </html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Pokémon</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script type="text/javascript">
+      $(document).ready(function() {
+        console.log("JQuery is up and running");
+        /* Display all Pokemon sprites 1 - 151 */
+        for (var i = 1; i < 152; i++) {
+          $( "#pokedex_list" ).append('<img id="'+i+'" src="http://pokeapi.co/media/img/'+i+'.png" />');
+        }
+        /* Display information on the Pokemon sprite clicked in the Pokedex box */
+        $('img').click(function() {
+          var poke_num = $(this).attr('id');
+          $.get("http://pokeapi.co/api/v2/pokemon/"+poke_num+"/", function(res) {
+            var html_str = "<h1>"+res.name+"</h1>";
+            html_str += '<img src="http://pokeapi.co/media/img/'+poke_num+'.png" />';
+            html_str += "<h4>Types</h4><ul>";
+            for(var i = 0; i < res.types.length; i++) {
+                html_str += "<li>"+res.types[i].name+"</li>";
+            }
+            html_str += "</ul><h4>Height</h4><p>"+res.height+"</p>";
+            html_str += "<h4>Weight</h4><p>"+res.weight+"</p>";
+            $("#pokedex_entry").html(html_str);
+          }, "json");
+        });
+      });
+    </script>
+    <style>
+      #wrapper {
+        margin: auto;
+        padding: 10px;
+        width: 1060px;
+      }
+      #pokedex_list {
+        display: inline-block;
+        width: 780px;
+      }
+      #pokedex_entry {
+        border: 25px solid #FC0D1B;
+        border-bottom: 50px solid #FC0D1B;
+        display: inline-block;
+        padding: 10px 20px;
+        vertical-align: top;
+        width: 180px;
+      }
+      h1 {
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="wrapper">
+      <div id="pokedex_list">
+      </div>
+      <div id="pokedex_entry">
+      </div>
+    </div>
+  </body>
+</html>
