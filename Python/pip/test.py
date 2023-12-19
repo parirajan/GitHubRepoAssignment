@@ -1,48 +1,45 @@
 import logging
 import time
-from systemd import dbus
+import subprocess
 
-def wait_for_service_active(service_name, timeout=60, check_interval=5):
+def is_service_active(service_name):
     """
-    Wait for a systemd service to become active.
+    Check if the specified systemd service is active using systemctl.
 
-    :param service_name: Name of the systemd service to check.
-    :param timeout: Maximum time to wait for the service to become active, in seconds.
-    :param check_interval: Time interval between status checks, in seconds.
-    :return: True if the service becomes active, False if it times out.
+    Args:
+    service_name (str): The name of the systemd service to check.
+
+    Returns:
+    bool: True if the service is active, False otherwise.
     """
     try:
-        # Connect to the D-Bus system bus
-        system_bus = dbus.SystemBus()
-
-        # Access the systemd interface
-        systemd_manager = dbus.Interface(system_bus.get_object('org.freedesktop.systemd1', '/org/freedesktop/systemd1'), 'org.freedesktop.systemd1.Manager')
-
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            # Get the service unit's object path
-            service_unit_path = systemd_manager.GetUnit(f"{service_name}.service")
-
-            # Access the service unit interface
-            service_unit = dbus.Interface(system_bus.get_object('org.freedesktop.systemd1', service_unit_path), 'org.freedesktop.DBus.Properties')
-
-            # Check the service's ActiveState property
-            active_state = service_unit.Get('org.freedesktop.systemd1.Unit', 'ActiveState')
-
-            if active_state == "active":
-                logging.info(f"Service {service_name} is active.")
-                return True
-
-            time.sleep(check_interval)
-
-        logging.warning(f"Timeout reached. Service {service_name} did not become active.")
-        return False
-
+        # Use systemctl to check the service status
+        result = subprocess.run(["systemctl", "is-active", service_name], capture_output=True, text=True)
+        return result.stdout.strip() == "active"
     except Exception as e:
-        logging.error(f"Error checking status of service {service_name}: {e}")
+        logging.error(f"An error occurred while checking the service status: {e}")
         return False
+
+def wait_for_service(service_name, timeout=300):
+    """
+    Wait in a loop until the specified systemd service is active or until timeout.
+
+    Args:
+    service_name (str): The name of the systemd service to check.
+    timeout (int): Maximum time to wait for the service to become active, in seconds.
+    """
+    logging.basicConfig(level=logging.INFO)
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        if is_service_active(service_name):
+            logging.info(f"Service {service_name} is now active.")
+            return
+        else:
+            logging.info(f"Service {service_name} is not active. Checking again in 10 seconds.")
+            time.sleep(10)
+
+    logging.warning(f"Service {service_name} did not become active within {timeout} seconds.")
 
 # Example usage
-service_to_check = 'sshd'
-is_active = wait_for_service_active(service_to_check, timeout=120, check_interval=10)
-print(f"Service {service_to_check} active: {is_active}")
+wait_for_service("your_service_name.service")
