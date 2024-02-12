@@ -1,58 +1,56 @@
+import requests
 import json
 import logging
-from ec2_metadata import ec2_metadata
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set up logging
+logging.basicConfig(filename='metadata_log.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-# Define the cache file path
-CACHE_FILE = 'ec2_metadata_cache.json'
+METADATA_URL = "http://169.254.169.254/latest/meta-data/"
+TOKEN_URL = "http://169.254.169.254/latest/api/token"
 
-def cache_metadata(metadata, file_path):
-    """
-    Cache metadata to a JSON file.
-    """
-    try:
-        with open(file_path, 'w') as file:
-            json.dump(metadata, file)
-        logging.info("Metadata cached successfully.")
-    except Exception as e:
-        logging.error(f"Failed to cache metadata: {e}")
+def get_token():
+    headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
+    response = requests.put(TOKEN_URL, headers=headers)
+    if response.status_code == 200:
+        return response.text
+    else:
+        logging.error("Failed to retrieve IMDSv2 token")
+        return None
 
-def fetch_all_metadata():
-    """
-    Fetch all available EC2 instance metadata and cache it in a JSON file.
-    """
-    try:
-        # Using the ec2_metadata library to fetch all available metadata
-        metadata = {
-            'ami_id': ec2_metadata.ami_id,
-            'ami_launch_index': ec2_metadata.ami_launch_index,
-            'ami_manifest_path': ec2_metadata.ami_manifest_path,
-            'block_device_mapping': ec2_metadata.block_device_mapping,
-            'hostname': ec2_metadata.hostname,
-            'instance_action': ec2_metadata.instance_action,
-            'instance_id': ec2_metadata.instance_id,
-            'instance_life_cycle': ec2_metadata.instance_life_cycle,
-            'instance_type': ec2_metadata.instance_type,
-            'local_hostname': ec2_metadata.local_hostname,
-            'local_ipv4': ec2_metadata.local_ipv4,
-            'mac': ec2_metadata.mac,
-            'metrics': ec2_metadata.metrics,
-            'network': ec2_metadata.network,
-            'placement': ec2_metadata.placement,
-            'profile': ec2_metadata.profile,
-            'public_hostname': ec2_metadata.public_hostname,
-            'public_ipv4': ec2_metadata.public_ipv4,
-            'public_keys': ec2_metadata.public_keys,
-            'reservation_id': ec2_metadata.reservation_id,
-            'security_groups': ec2_metadata.security_groups,
-            # ... include other metadata properties as needed
-        }
-        logging.info("Successfully fetched all instance metadata.")
-        cache_metadata(metadata, CACHE_FILE)
-    except Exception as e:
-        logging.error(f"An error occurred while fetching metadata: {e}")
+def fetch_metadata(url, token, current_path=''):
+    headers = {"X-aws-ec2-metadata-token": token}
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        logging.error(f"Failed to fetch metadata for path: {current_path}")
+        return None
 
-# Example usage
-fetch_all_metadata()
+    # Check if the response is text or a directory listing
+    text = response.text
+    if text.endswith('/'):
+        # Directory listing, we need to recursively fetch each path
+        items = text.split('\n')
+        result = {}
+        for item in items:
+            if item:  # Avoid empty strings
+                new_path = f"{current_path}{item}"
+                result[item] = fetch_metadata(f"{url}{item}", token, new_path)
+        return result
+    else:
+        return text
+
+def main():
+    token = get_token()
+    if token:
+        metadata = fetch_metadata(METADATA_URL, token)
+        if metadata:
+            # Store the metadata in a cached file
+            with open('ec2_metadata_cache.json', 'w') as file:
+                json.dump(metadata, file, indent=4)
+            logging.info("Successfully retrieved and cached EC2 instance metadata.")
+        else:
+            logging.error("Failed to retrieve any metadata.")
+    else:
+        logging.error("Could not obtain IMDSv2 token.")
+
+if __name__ == "__main__":
+    main()
