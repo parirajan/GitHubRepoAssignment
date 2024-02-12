@@ -8,12 +8,14 @@ logging.basicConfig(filename='metadata_log.log', level=logging.INFO, format='%(a
 def is_fetchable_attribute(attribute_name):
     """
     Determine if the attribute is a fetchable metadata attribute.
-    This filters out methods, special properties of the ec2_metadata object, and
-    excludes IAM security credentials and instance profile ARN.
+    This filters out methods and special properties of the ec2_metadata object.
+    Additionally, ensure that the attribute is not a method and is serializable.
     """
-    # Exclude special attributes and methods, IAM security credentials, and instance profile ARN
-    excluded_attributes = ['__', 'callable', 'iam_security_credentials', 'iam_info']
-    if any(excl in attribute_name for excl in excluded_attributes):
+    # Exclude methods and non-serializable properties
+    if attribute_name.startswith('__'):
+        return False
+    attr = getattr(ec2_metadata, attribute_name, None)
+    if callable(attr) or attribute_name in ['iam_security_credentials', 'iam_info']:
         return False
     return True
 
@@ -26,10 +28,12 @@ def fetch_metadata():
         try:
             # Dynamically get attribute value
             value = getattr(ec2_metadata, attr, None)
-            if value:
-                # Exclude IAM security credentials and instance profile ARN explicitly
-                if attr not in ['iam_security_credentials', 'iam_info']:
-                    metadata_dict[attr] = value
+            # Convert the value to a JSON-serializable format if necessary
+            if isinstance(value, (dict, list, str, int, float, bool, type(None))):
+                metadata_dict[attr] = value
+            else:
+                # Attempt to convert custom objects to string or a serializable dict
+                metadata_dict[attr] = str(value)
         except Exception as e:
             logging.error(f"Error retrieving metadata for {attr}: {str(e)}")
 
@@ -37,7 +41,7 @@ def fetch_metadata():
     with open('ec2_metadata_cache.json', 'w') as file:
         json.dump(metadata_dict, file, indent=4)
 
-    logging.info("Successfully retrieved and cached EC2 instance metadata, excluding IAM security credentials and instance profile ARN.")
+    logging.info("Successfully retrieved and cached EC2 instance metadata.")
 
 def main():
     fetch_metadata()
