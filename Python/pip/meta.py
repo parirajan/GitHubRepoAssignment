@@ -1,55 +1,54 @@
-import json
+import requests
 import logging
 from botocore.utils import IMDSFetcher
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-class CustomIMDSFetcher:
+class RecursiveMetadataFetcher:
     def __init__(self):
+        self.base_url = "http://169.254.169.254/latest/meta-data/"
         self.fetcher = IMDSFetcher()
         self.token = self.fetcher._fetch_metadata_token()
-
-    def _recursive_fetch(self, path):
+    
+    def fetch_path(self, path=''):
         """
-        Recursively fetch metadata using _get_request and construct a nested dictionary.
+        Fetch metadata for a given path using IMDSFetcher._get_request.
         """
-        full_path = f"/latest/meta-data/{path}"
+        full_path = f"{self.base_url}{path}"
         response = self.fetcher._get_request(full_path, None, token=self.token)
         if response.status_code == 200:
-            text = response.text
-            # Check if the response is directory-like or a final value
-            if text.endswith('/'):
-                # Directory-like response, split and recurse
-                items = text.strip().split('\n')
-                result = {}
-                for item in items:
-                    if item:  # Ensure non-empty
-                        nested_path = f"{path}{item}/" if path else f"{item}/"
-                        result[item] = self._recursive_fetch(nested_path)
-                return result
-            else:
-                # Final value, return directly
-                return text
+            return response.text
         else:
-            logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status code: {response.status_code}")
+            logging.error(f"Error fetching path: {path}, HTTP status: {response.status_code}")
             return None
 
-    def fetch_all_metadata(self):
+    def list_and_fetch(self, current_path=''):
         """
-        Fetch all available metadata starting from the root.
+        Recursively list all metadata paths and fetch their contents.
         """
-        return self._recursive_fetch('')
+        metadata_contents = self.fetch_path(current_path)
+        if metadata_contents:
+            # Check if the response contains a list of items (indicative of a directory)
+            if metadata_contents.endswith('/'):
+                items = metadata_contents.strip().split('\n')
+                result = {}
+                for item in items:
+                    if item:  # Ensure it's not an empty string
+                        nested_result = self.list_and_fetch(f"{current_path}{item}")
+                        result[item] = nested_result
+                return result
+            else:
+                return metadata_contents
+        return None
 
 def main():
-    custom_fetcher = CustomIMDSFetcher()
-    metadata = custom_fetcher.fetch_all_metadata()
-    
-    # Store the fetched metadata in a JSON file
-    with open('ec2_metadata.json', 'w') as f:
-        json.dump(metadata, f, indent=4)
-    
-    logging.info("Successfully fetched and stored EC2 instance metadata.")
+    metadata_fetcher = RecursiveMetadataFetcher()
+    metadata = metadata_fetcher.list_and_fetch()
+    logging.info(f"Metadata: {metadata}")
+
+    # Optionally, save the metadata to a JSON file
+    # This part is left as an exercise
 
 if __name__ == "__main__":
     main()
