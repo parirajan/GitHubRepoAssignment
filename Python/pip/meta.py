@@ -1,45 +1,44 @@
 from ec2_metadata import ec2_metadata
 import logging
-import json
 
-# Set up logging
-logging.basicConfig(filename='metadata_log.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-def is_fetchable_attribute(attribute_name):
+def is_public_attribute(attribute_name):
     """
-    Determine if the attribute is a fetchable metadata attribute.
-    Filters out methods and special properties of the ec2_metadata object.
+    Determine if the attribute is public (fetchable) metadata attribute.
+    This example simply filters out callable methods and magic methods, 
+    assuming these are what's considered 'private' in this context.
     """
-    # Exclude methods and protected attributes
-    if attribute_name.startswith('__') or callable(getattr(ec2_metadata, attribute_name)):
+    attribute = getattr(ec2_metadata, attribute_name, None)
+    if callable(attribute) or attribute_name.startswith('__'):
         return False
     return True
 
-def fetch_metadata():
+def fetch_metadata_attributes():
+    """
+    Fetch metadata attributes and store them in a dictionary.
+    """
     metadata_dict = {}
     attributes = dir(ec2_metadata)
-    fetchable_attributes = [attr for attr in attributes if is_fetchable_attribute(attr)]
+    public_attributes = [attr for attr in attributes if is_public_attribute(attr)]
 
-    for attr in fetchable_attributes:
+    for attr in public_attributes:
         try:
-            # Dynamically get attribute value
-            value = getattr(ec2_metadata, attr, None)
-            if value:
-                metadata_dict[attr] = value
+            value = getattr(ec2_metadata, attr)
+            metadata_dict[attr] = value
         except Exception as e:
-            logging.error(f"Error retrieving metadata for {attr}: {str(e)}")
-            # Handle specific errors or perform fallback actions here
-            if '404' in str(e) or '403' in str(e):
-                logging.warning(f"Authorization error accessing {attr}. Skipping.")
+            logging.error(f"Failed to retrieve metadata for {attr}: {e}")
 
-    # Store the metadata in a cached file
-    with open('ec2_metadata_cache.json', 'w') as file:
-        json.dump(metadata_dict, file, indent=4)
-
-    logging.info("Successfully retrieved and cached EC2 instance metadata.")
+    return metadata_dict
 
 def main():
-    fetch_metadata()
+    metadata = fetch_metadata_attributes()
+    # Optionally, print or log the metadata for verification
+    for key, value in metadata.items():
+        logging.info(f"{key}: {value}")
+
+    # If you need to store the metadata in a structured format (e.g., JSON), consider serialization here
 
 if __name__ == "__main__":
     main()
