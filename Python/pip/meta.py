@@ -1,44 +1,52 @@
-from ec2_metadata import ec2_metadata
+import json
 import logging
+from botocore.utils import IMDSFetcher
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-def is_public_attribute(attribute_name):
-    """
-    Determine if the attribute is public (fetchable) metadata attribute.
-    This example simply filters out callable methods and magic methods, 
-    assuming these are what's considered 'private' in this context.
-    """
-    attribute = getattr(ec2_metadata, attribute_name, None)
-    if callable(attribute) or attribute_name.startswith('__'):
-        return False
-    return True
+class RecursiveIMDSFetcher:
+    def __init__(self):
+        self.fetcher = IMDSFetcher()
+        self.token = self.fetcher._fetch_metadata_token()
 
-def fetch_metadata_attributes():
-    """
-    Fetch metadata attributes and store them in a dictionary.
-    """
-    metadata_dict = {}
-    attributes = dir(ec2_metadata)
-    public_attributes = [attr for attr in attributes if is_public_attribute(attr)]
+    def fetch_metadata(self, path=''):
+        """
+        Recursively fetch metadata from a given path.
+        """
+        metadata = {}
+        data = self.fetcher.retrieve_metadata(path, self.token)
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, dict) or isinstance(value, list):
+                    # Recursive case: the item is a directory-like structure
+                    metadata[key] = self.fetch_metadata(f"{path}{key}/")
+                else:
+                    # Base case: the item is a final value
+                    metadata[key] = value
+        elif isinstance(data, list) and path:
+            # Special handling for lists, typically at the end of a path
+            return data
+        elif data and path:
+            # Base case for direct value retrieval
+            return data
+        return metadata
 
-    for attr in public_attributes:
-        try:
-            value = getattr(ec2_metadata, attr)
-            metadata_dict[attr] = value
-        except Exception as e:
-            logging.error(f"Failed to retrieve metadata for {attr}: {e}")
-
-    return metadata_dict
+    def fetch_all_metadata(self):
+        """
+        Fetch all available metadata starting from the root.
+        """
+        return self.fetch_metadata()
 
 def main():
-    metadata = fetch_metadata_attributes()
-    # Optionally, print or log the metadata for verification
-    for key, value in metadata.items():
-        logging.info(f"{key}: {value}")
-
-    # If you need to store the metadata in a structured format (e.g., JSON), consider serialization here
+    fetcher = RecursiveIMDSFetcher()
+    metadata = fetcher.fetch_all_metadata()
+    
+    # Store the fetched metadata in a JSON file
+    with open('ec2_metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=4)
+    
+    logging.info("Successfully fetched and stored EC2 instance metadata.")
 
 if __name__ == "__main__":
     main()
