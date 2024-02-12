@@ -1,12 +1,13 @@
 import requests
-import json
 import logging
+import json
 
 # Set up logging
 logging.basicConfig(filename='metadata_log.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-METADATA_URL = "http://169.254.169.254/latest/meta-data/"
+# Constants for the IMDSv2 endpoint and the token request
 TOKEN_URL = "http://169.254.169.254/latest/api/token"
+METADATA_URL = "http://169.254.169.254/latest/meta-data/"
 
 def get_token():
     headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
@@ -17,26 +18,26 @@ def get_token():
         logging.error("Failed to retrieve IMDSv2 token")
         return None
 
-def fetch_metadata(url, token, current_path=''):
+def fetch_metadata(url, token, path=''):
     headers = {"X-aws-ec2-metadata-token": token}
-    response = requests.get(url, headers=headers)
+    full_url = f"{url}{path}"
+    response = requests.get(full_url, headers=headers)
     if response.status_code != 200:
-        logging.error(f"Failed to fetch metadata for path: {current_path}")
+        logging.error(f"Failed to fetch metadata for path: {path}")
         return None
 
-    # Check if the response is text or a directory listing
-    text = response.text
-    if text.endswith('/'):
-        # Directory listing, we need to recursively fetch each path
-        items = text.split('\n')
+    # Determine if the response is a directory or a value
+    if response.text.endswith('/'):
+        # It's a directory; recursively fetch nested paths
+        nested_paths = response.text.strip().split('\n')
         result = {}
-        for item in items:
-            if item:  # Avoid empty strings
-                new_path = f"{current_path}{item}"
-                result[item] = fetch_metadata(f"{url}{item}", token, new_path)
+        for nested_path in nested_paths:
+            nested_full_path = f"{path}{nested_path}"
+            result[nested_path.replace('/', '')] = fetch_metadata(url, token, nested_full_path)
         return result
     else:
-        return text
+        # It's a value
+        return response.text
 
 def main():
     token = get_token()
