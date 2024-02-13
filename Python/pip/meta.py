@@ -17,7 +17,7 @@ class EC2MetadataFetcher:
         if response.status_code == 200:
             return response.text
         else:
-            logging.error("Failed to obtain IMDSv2 token")
+            logging.error(f"Failed to obtain IMDSv2 token, status code: {response.status_code}")
             raise Exception("Failed to obtain IMDSv2 token")
 
     def fetch_metadata(self, path=''):
@@ -30,8 +30,13 @@ class EC2MetadataFetcher:
                 # Single line, not a directory, return as final value
                 return response.text.strip()
             elif all(not line.endswith('/') for line in lines):
-                # Multiple lines, none are directories - treat as list converted to dictionary
-                return {str(i): line for i, line in enumerate(lines)}
+                # Treat each line as an attribute and fetch its value
+                attribute_values = {}
+                for line in lines:
+                    if line:  # Non-empty line
+                        value = self.fetch_metadata(f"{path}{line}")
+                        attribute_values[line] = value
+                return attribute_values
             else:
                 # Directory-like or mixed content, recurse
                 content = {}
