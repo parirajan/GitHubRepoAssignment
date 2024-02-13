@@ -23,22 +23,22 @@ class MetadataFetcher:
             raise Exception("Failed to obtain IMDSv2 token")
 
     def fetch_metadata(self, path=''):
-        """
-        Recursively fetch metadata, correctly handling both directory-like structures and final values.
-        """
+        """Improved fetch_metadata with error handling for retry logic."""
         headers = {"X-aws-ec2-metadata-token": self.token}
-        url = f"{self.base_url}{path}"
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            if response.text.endswith('/'):
-                items = [item for item in response.text.strip().split('\n') if item]
-                directory_content = {item.rstrip('/'): self.fetch_metadata(f"{path}{item}") for item in items}
-                return directory_content
+        try:
+            response = requests.get(f"{self.base_url}{path}", headers=headers, timeout=5)  # Added timeout for safety
+            if response.status_code == 200:
+                lines = response.text.strip().split('\n')
+                if any(line.endswith('/') for line in lines):
+                    directory_content = {item.rstrip('/'): self.fetch_metadata(f"{path}{item}") for item in lines if item}
+                    return directory_content
+                else:
+                    return response.text.strip()
             else:
-                return response.text.strip()
-        else:
-            logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
-            return None
+                logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Request failed for path: '{path}', Error: {e}")
+        return None
 
 def main():
     fetcher = MetadataFetcher()
