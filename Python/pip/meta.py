@@ -1,5 +1,6 @@
 import requests
 import logging
+import json
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
@@ -25,22 +26,29 @@ class EC2MetadataFetcher:
 
     def fetch_metadata(self, path=''):
         """
-        Recursively fetch metadata, handling directory-like structures.
+        Recursively fetch metadata, handling directory-like structures and attempt to parse JSON content.
         """
         headers = {"X-aws-ec2-metadata-token": self.token}
         url = f"{self.METADATA_URL}{path}"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            if response.text.endswith('/'):
-                # It's a directory; list contents and recurse
-                items = response.text.strip().split('\n')
-                directory_content = {}
-                for item in items:
-                    directory_content[item] = self.fetch_metadata(f"{path}{item}")
-                return directory_content
-            else:
-                # It's a final value
-                return response.text
+            try:
+                # Attempt to parse the response as JSON
+                return json.loads(response.text)
+            except json.JSONDecodeError:
+                # Not JSON, handle as plain text or directory
+                if response.text.endswith('/'):
+                    # It's a directory; list contents and recurse
+                    items = response.text.strip().split('\n')
+                    directory_content = {}
+                    for item in items:
+                        if item:  # Ensure it's not empty
+                            nested_result = self.fetch_metadata(f"{path}{item}")
+                            directory_content[item] = nested_result
+                    return directory_content
+                else:
+                    # It's a final value, return as plain text
+                    return response.text
         else:
             logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
             return None
