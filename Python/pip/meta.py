@@ -1,50 +1,43 @@
+import requests
 import logging
-import json
-from botocore.utils import IMDSFetcher
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-def fetch_metadata_token():
-    """
-    Use IMDSFetcher to fetch an EC2 metadata token.
-    """
-    fetcher = IMDSFetcher()
-    token = fetcher._fetch_metadata_token()  # Note: Using a protected method
-    return token
+class MetadataFetcher:
+    def __init__(self):
+        self.base_url = "http://169.254.169.254/latest/meta-data/"
+        self.token = self.fetch_token()
 
-def list_metadata_attributes(token):
-    """
-    List attributes under /latest/meta-data/ and return them as a dictionary.
-    """
-    metadata_dict = {}
-    fetcher = IMDSFetcher()
-    example_paths = ['ami-id', 'instance-type', 'instance-id']
+    def fetch_token(self):
+        response = requests.put("http://169.254.169.254/latest/api/token", headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"})
+        if response.status_code == 200:
+            return response.text
+        else:
+            logging.error("Failed to obtain IMDSv2 token")
+            return None
 
-    for path in example_paths:
-        try:
-            response = fetcher._get_request(f"/latest/meta-data/{path}", None, token=token)
-            if response.status_code == 200:
-                # Assuming all responses are plain text for these paths
-                metadata_dict[path] = response.text
+    def fetch_metadata(self, path=''):
+        headers = {"X-aws-ec2-metadata-token": self.token}
+        response = requests.get(f"{self.base_url}{path}", headers=headers)
+        if response.status_code == 200:
+            if response.text.endswith('/'):
+                items = response.text.strip().split('\n')
+                directory_content = {}
+                for item in items:
+                    nested_content = self.fetch_metadata(f"{path}{item}")
+                    directory_content[item.rstrip('/')] = nested_content
+                return directory_content
             else:
-                logging.error(f"Failed to fetch /latest/meta-data/{path}, HTTP status code: {response.status_code}")
-        except Exception as e:
-            logging.error(f"Exception while fetching /latest/meta-data/{path}: {e}")
-
-    return metadata_dict
+                return response.text
+        else:
+            logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
+            return None
 
 def main():
-    token = fetch_metadata_token()
-    if token:
-        logging.info("Successfully fetched EC2 metadata token.")
-        metadata = list_metadata_attributes(token)
-        # Cache the metadata as JSON in a file
-        with open('ec2_metadata.json', 'w') as f:
-            json.dump(metadata, f, indent=4)
-        logging.info("Metadata cached as ec2_metadata.json.")
-    else:
-        logging.error("Failed to fetch EC2 metadata token.")
+    fetcher = MetadataFetcher()
+    all_metadata = fetcher.fetch_metadata()
+    logging.info(all_metadata)
 
 if __name__ == "__main__":
     main()
