@@ -8,6 +8,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(mess
 
 class EC2MetadataFetcher:
     def __init__(self):
+        self.token_url = "http://169.254.169.254/latest/"
         self.base_url = "http://169.254.169.254/latest/meta-data/"
         self.token = self.fetch_token()
         self.instance_id = self.fetch_metadata("instance-id")
