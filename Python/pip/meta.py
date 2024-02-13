@@ -19,7 +19,7 @@ class EC2MetadataFetcher:
     def fetch_token(self):
         """Fetches a token for IMDSv2 requests."""
         headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
-        response = requests.put(f"{self.base_url}api/token", headers=headers)
+        response = requests.put(f"{self.token_url}api/token", headers=headers)
         if response.status_code == 200:
             return response.text
         else:
