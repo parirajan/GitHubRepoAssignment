@@ -1,6 +1,7 @@
 import requests
 import logging
 import json
+import boto3
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
@@ -48,16 +49,37 @@ class EC2MetadataFetcher:
         else:
             logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
             return None
+            
+    def fetch_instance_tags(self):
+        """Fetches EC2 instance tags using the EC2 DescribeTags API."""
+        try:
+            response = self.ec2_client.describe_tags(
+                Filters=[
+                    {'Name': 'resource-id', 'Values': [self.instance_id]}
+                ]
+            )
+            tags = {tag['Key']: tag['Value'] for tag in response.get('Tags', [])}
+            return tags
+        except Exception as e:
+            logging.error(f"Failed to fetch instance tags: {e}")
+            return {}
 
 def main():
     fetcher = EC2MetadataFetcher()
     all_metadata = fetcher.fetch_metadata()
-    logging.info("Fetched EC2 instance metadata successfully.")
+    instance_tags = fetcher.fetch_instance_tags()
+    logging.info("Fetched EC2 instance metadata and tags successfully.")
 
-    # Store the fetched metadata in a JSON cache file
-    with open('ec2_metadata_full_cache.json', 'w') as cache_file:
-        json.dump(all_metadata, cache_file, indent=4)
-    logging.info("Full metadata stored in ec2_metadata_full_cache.json.")
+    # Combine metadata and tags into one dictionary
+    full_metadata = {
+        'metadata': all_metadata,
+        'tags': instance_tags
+    }
+
+    # Store the combined metadata and tags in a JSON cache file
+    with open('ec2_metadata_and_tags_cache.json', 'w') as cache_file:
+        json.dump(full_metadata, cache_file, indent=4)
+    logging.info("Metadata and tags stored in ec2_metadata_and_tags_cache.json.")
 
 if __name__ == "__main__":
     main()
