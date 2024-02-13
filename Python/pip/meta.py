@@ -1,5 +1,6 @@
 import requests
 import logging
+import json
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
@@ -29,21 +30,16 @@ class MetadataFetcher:
         url = f"{self.base_url}{path}"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            # Check if the response is a directory (ends with '/')
             if any(line.endswith('/') for line in response.text.strip().split('\n')):
-                # Directory-like response: Recurse into each item
                 items = response.text.strip().split('\n')
                 directory_content = {}
                 for item in items:
-                    if item:  # Non-empty
-                        # Recursively fetch nested metadata
+                    if item:
                         nested_path = f"{path}{item}"
                         nested_content = self.fetch_metadata(nested_path)
-                        # Remove trailing slash for directory names
                         directory_content[item.rstrip('/')] = nested_content
                 return directory_content
             else:
-                # Final value: Return as is
                 return response.text.strip()
         else:
             logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
@@ -53,8 +49,11 @@ def main():
     fetcher = MetadataFetcher()
     all_metadata = fetcher.fetch_metadata()
     logging.info("Fetched EC2 instance metadata successfully.")
-    for key, value in all_metadata.items():
-        logging.info(f"{key}: {value}")
+
+    # Store the fetched metadata in a JSON cache file
+    with open('ec2_metadata_cache.json', 'w') as cache_file:
+        json.dump(all_metadata, cache_file, indent=4)
+    logging.info("Metadata stored in ec2_metadata_cache.json.")
 
 if __name__ == "__main__":
     main()
