@@ -11,7 +11,8 @@ class EC2MetadataFetcher:
         self.base_url = "http://169.254.169.254/latest/meta-data/"
         self.token = self.fetch_token()
         self.instance_id = self.fetch_metadata("instance-id")
-        self.ec2_client = boto3.client('ec2')
+        self.region = self.fetch_metadata("placement/region")
+        self.ec2_client = boto3.client('ec2', region_name=self.region)
 
 
     def fetch_token(self):
