@@ -25,23 +25,18 @@ class EC2MetadataFetcher:
 
     def fetch_metadata(self, path=''):
         """
-        Recursively fetch metadata, handling directory-like structures and parsing JSON where appropriate.
+        Recursively fetch metadata, handling directory-like structures.
         """
         headers = {"X-aws-ec2-metadata-token": self.token}
         url = f"{self.METADATA_URL}{path}"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            content_type = response.headers.get('Content-Type', '')
-            if content_type == 'application/json':
-                # If the content is JSON, parse it
-                return response.json()
-            elif response.text.endswith('/'):
+            if response.text.endswith('/'):
                 # It's a directory; list contents and recurse
                 items = response.text.strip().split('\n')
                 directory_content = {}
                 for item in items:
-                    if item:  # Skip empty items
-                        directory_content[item] = self.fetch_metadata(f"{path}{item}")
+                    directory_content[item] = self.fetch_metadata(f"{path}{item}")
                 return directory_content
             else:
                 # It's a final value
