@@ -1,63 +1,50 @@
-import requests
 import logging
 import json
+from botocore.utils import IMDSFetcher
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-class EC2MetadataFetcher:
-    TOKEN_URL = "http://169.254.169.254/latest/api/token"
-    METADATA_URL = "http://169.254.169.254/latest/meta-data/"
+def fetch_metadata_token():
+    """
+    Use IMDSFetcher to fetch an EC2 metadata token.
+    """
+    fetcher = IMDSFetcher()
+    token = fetcher._fetch_metadata_token()  # Note: Using a protected method
+    return token
 
-    def __init__(self):
-        self.token = self._fetch_imdsv2_token()
+def list_metadata_attributes(token):
+    """
+    List attributes under /latest/meta-data/ and attempt to parse JSON content.
+    """
+    fetcher = IMDSFetcher()
 
-    def _fetch_imdsv2_token(self):
-        """
-        Fetches a token for IMDSv2 requests.
-        """
-        headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
-        response = requests.put(self.TOKEN_URL, headers=headers)
-        if response.status_code == 200:
-            return response.text
-        else:
-            logging.error("Failed to fetch IMDSv2 token")
-            return None
+    # Example metadata paths; these are typically plain text but demonstrate the concept
+    example_paths = ['ami-id', 'instance-type', 'instance-id']
 
-    def fetch_metadata(self, path=''):
-        """
-        Recursively fetch metadata, handling directory-like structures and attempt to parse JSON content.
-        """
-        headers = {"X-aws-ec2-metadata-token": self.token}
-        url = f"{self.METADATA_URL}{path}"
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            try:
-                # Attempt to parse the response as JSON
-                return json.loads(response.text)
-            except json.JSONDecodeError:
-                # Not JSON, handle as plain text or directory
-                if response.text.endswith('/'):
-                    # It's a directory; list contents and recurse
-                    items = response.text.strip().split('\n')
-                    directory_content = {}
-                    for item in items:
-                        if item:  # Ensure it's not empty
-                            nested_result = self.fetch_metadata(f"{path}{item}")
-                            directory_content[item] = nested_result
-                    return directory_content
-                else:
-                    # It's a final value, return as plain text
-                    return response.text
-        else:
-            logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
-            return None
+    for path in example_paths:
+        try:
+            response = fetcher._get_request(f"/latest/meta-data/{path}", None, token=token)
+            if response.status_code == 200:
+                try:
+                    # Attempt to parse the response as JSON
+                    data = json.loads(response.text)
+                    logging.info(f"Content of /latest/meta-data/{path} (parsed as JSON): {data}")
+                except json.JSONDecodeError:
+                    # If response is not JSON, log as plain text
+                    logging.info(f"Content of /latest/meta-data/{path}: {response.text}")
+            else:
+                logging.error(f"Failed to fetch /latest/meta-data/{path}, HTTP status code: {response.status_code}")
+        except Exception as e:
+            logging.error(f"Exception while fetching /latest/meta-data/{path}: {e}")
 
 def main():
-    metadata_fetcher = EC2MetadataFetcher()
-    metadata = metadata_fetcher.fetch_metadata()
-    logging.info("Fetched EC2 instance metadata:")
-    logging.info(metadata)
+    token = fetch_metadata_token()
+    if token:
+        logging.info("Successfully fetched EC2 metadata token.")
+        list_metadata_attributes(token)
+    else:
+        logging.error("Failed to fetch EC2 metadata token.")
 
 if __name__ == "__main__":
     main()
