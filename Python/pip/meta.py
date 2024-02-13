@@ -5,17 +5,15 @@ import json
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-class MetadataFetcher:
+class EC2MetadataFetcher:
     def __init__(self):
         self.base_url = "http://169.254.169.254/latest/meta-data/"
         self.token = self.fetch_token()
 
     def fetch_token(self):
-        """
-        Fetches a token for IMDSv2 requests.
-        """
+        """Fetches a token for IMDSv2 requests."""
         headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
-        response = requests.put("http://169.254.169.254/latest/api/token", headers=headers)
+        response = requests.put(f"{self.base_url}api/token", headers=headers)
         if response.status_code == 200:
             return response.text
         else:
@@ -23,32 +21,38 @@ class MetadataFetcher:
             raise Exception("Failed to obtain IMDSv2 token")
 
     def fetch_metadata(self, path=''):
-        """Improved fetch_metadata with error handling for retry logic."""
+        """Fetches metadata for a given path using the IMDSv2 token."""
         headers = {"X-aws-ec2-metadata-token": self.token}
-        try:
-            response = requests.get(f"{self.base_url}{path}", headers=headers, timeout=5)  # Added timeout for safety
-            if response.status_code == 200:
-                lines = response.text.strip().split('\n')
-                if any(line.endswith('/') for line in lines):
-                    directory_content = {item.rstrip('/'): self.fetch_metadata(f"{path}{item}") for item in lines if item}
-                    return directory_content
-                else:
-                    return response.text.strip()
+        response = requests.get(f"{self.base_url}{path}", headers=headers)
+        if response.status_code == 200:
+            lines = response.text.strip().split('\n')
+            if len(lines) == 1 and not lines[0].endswith('/'):
+                # Single line, not a directory, return as final value
+                return response.text.strip()
+            elif all(not line.endswith('/') for line in lines):
+                # Multiple lines, none are directories - treat as list converted to dictionary
+                return {str(i): line for i, line in enumerate(lines)}
             else:
-                logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Request failed for path: '{path}', Error: {e}")
-        return None
+                # Directory-like or mixed content, recurse
+                content = {}
+                for line in lines:
+                    if line:  # Non-empty line
+                        nested_content = self.fetch_metadata(f"{path}{line}")
+                        content[line.rstrip('/')] = nested_content
+                return content
+        else:
+            logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
+            return None
 
 def main():
-    fetcher = MetadataFetcher()
+    fetcher = EC2MetadataFetcher()
     all_metadata = fetcher.fetch_metadata()
     logging.info("Fetched EC2 instance metadata successfully.")
 
     # Store the fetched metadata in a JSON cache file
-    with open('ec2_metadata_cache.json', 'w') as cache_file:
+    with open('ec2_metadata_full_cache.json', 'w') as cache_file:
         json.dump(all_metadata, cache_file, indent=4)
-    logging.info("Metadata stored in ec2_metadata_cache.json.")
+    logging.info("Full metadata stored in ec2_metadata_full_cache.json.")
 
 if __name__ == "__main__":
     main()
