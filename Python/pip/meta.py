@@ -3,8 +3,8 @@ import logging
 import time
 from botocore.utils import IMDSFetcher
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
+# Setup logging to include debug level
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(levelname)s:%(message)s')
 
 class RecursiveMetadataFetcher:
     def __init__(self, retry_limit=3):
@@ -13,21 +13,24 @@ class RecursiveMetadataFetcher:
         self.token = None
         self.token_time = None
         self.retry_limit = retry_limit
+        logging.debug("RecursiveMetadataFetcher initialized")
 
     def fetch_metadata_token(self):
         """
         Fetch a new IMDSv2 token and update the token time.
         """
+        logging.debug("Fetching new IMDSv2 token")
         self.token = self.fetcher._fetch_metadata_token()
         self.token_time = time.time()
+        logging.debug(f"New token fetched at {self.token_time}")
 
     def is_token_valid(self):
         """
         Check if the existing token is still valid (less than 1 minute old).
         """
-        if self.token and (time.time() - self.token_time) < 60:
-            return True
-        return False
+        valid = self.token and (time.time() - self.token_time) < 60
+        logging.debug(f"Token valid: {valid}")
+        return valid
 
     def fetch_path(self, path='', retries=0):
         """
@@ -35,11 +38,14 @@ class RecursiveMetadataFetcher:
         """
         if not self.is_token_valid() or not self.token:
             self.fetch_metadata_token()
-        
+
+        logging.debug(f"Fetching path: {path} with retry {retries}")
         response = self.fetcher._get_request(f"{self.base_url}{path}", None, token=self.token)
         if response.status_code == 200:
+            logging.debug(f"Successfully fetched path: {path}")
             return response.text
         else:
+            logging.debug(f"Failed to fetch path: {path}, status code: {response.status_code}")
             if retries < self.retry_limit:
                 logging.info(f"Retrying path: {path}, attempt {retries + 1}")
                 return self.fetch_path(path, retries + 1)
@@ -51,6 +57,7 @@ class RecursiveMetadataFetcher:
         """
         Recursively list all metadata paths and fetch their contents, respecting token lifespan and retry limits.
         """
+        logging.debug(f"Listing and fetching path: {current_path}")
         metadata_contents = self.fetch_path(current_path)
         if metadata_contents:
             if metadata_contents.endswith('/'):
@@ -58,6 +65,7 @@ class RecursiveMetadataFetcher:
                 result = {}
                 for item in items:
                     if item:  # Prevent fetching empty paths
+                        logging.debug(f"Recursing into path: {item}")
                         nested_result = self.list_and_fetch(f"{current_path}{item}")
                         result[item] = nested_result
                 return result
