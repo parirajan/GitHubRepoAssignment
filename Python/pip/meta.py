@@ -10,6 +10,9 @@ class EC2MetadataFetcher:
     def __init__(self):
         self.base_url = "http://169.254.169.254/latest/meta-data/"
         self.token = self.fetch_token()
+        self.instance_id = self.fetch_metadata("instance-id")
+        self.ec2_client = boto3.client('ec2')
+
 
     def fetch_token(self):
         """Fetches a token for IMDSv2 requests."""
