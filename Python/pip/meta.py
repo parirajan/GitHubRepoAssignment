@@ -30,14 +30,9 @@ class MetadataFetcher:
         url = f"{self.base_url}{path}"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            if any(line.endswith('/') for line in response.text.strip().split('\n')):
-                items = response.text.strip().split('\n')
-                directory_content = {}
-                for item in items:
-                    if item:
-                        nested_path = f"{path}{item}"
-                        nested_content = self.fetch_metadata(nested_path)
-                        directory_content[item.rstrip('/')] = nested_content
+            if response.text.endswith('/'):
+                items = [item for item in response.text.strip().split('\n') if item]
+                directory_content = {item.rstrip('/'): self.fetch_metadata(f"{path}{item}") for item in items}
                 return directory_content
             else:
                 return response.text.strip()
