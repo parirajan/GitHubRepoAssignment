@@ -1,90 +1,83 @@
-import requests
-import logging
+import unittest
+from unittest.mock import patch, MagicMock
 import json
+import os
+from moto import mock_ec2
 import boto3
+from ec2_metadata_fetcher import EC2MetadataFetcher  # Adjust the import path as necessary
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
+class TestEC2MetadataFetcher(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """Set up for class"""
+        cls.cache_file = 'ec2_metadata_and_tags_cache.json'
+        # Set AWS_DEFAULT_REGION for the test environment
+        os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
 
-class EC2MetadataFetcher:
-    def __init__(self):
-        self.token_url = "http://169.254.169.254/latest/"
-        self.base_url = "http://169.254.169.254/latest/meta-data/"
-        self.token = self.fetch_token()
-        self.instance_id = self.fetch_metadata("instance-id")
-        self.region = self.fetch_metadata("placement/region")
-        self.ec2_client = boto3.client('ec2', region_name=self.region)
+    def setUp(self):
+        """Ensure the cache file does not exist before each test"""
+        if os.path.exists(self.cache_file):
+            os.remove(self.cache_file)
 
+    def tearDown(self):
+        """Clean up by removing the cache file after each test"""
+        if os.path.exists(self.cache_file):
+            os.remove(self.cache_file)
 
-    def fetch_token(self):
-        """Fetches a token for IMDSv2 requests."""
-        headers = {"X-aws-ec2-metadata-token-ttl-seconds": "21600"}
-        response = requests.put(f"{self.token_url}api/token", headers=headers)
-        if response.status_code == 200:
-            return response.text
-        else:
-            logging.error(f"Failed to obtain IMDSv2 token, status code: {response.status_code}")
-            raise Exception("Failed to obtain IMDSv2 token")
+    @patch('requests.put')
+    @patch('requests.get')
+    def test_fetch_metadata_success(self, mock_get, mock_put):
+        """Test fetching metadata successfully"""
+        mock_put.return_value = MagicMock(text='test-token', status_code=200)
+        mock_get.return_value = MagicMock(text='test-instance-id', status_code=200)
 
-    def fetch_metadata(self, path=''):
-        """Fetches metadata for a given path using the IMDSv2 token."""
-        headers = {"X-aws-ec2-metadata-token": self.token}
-        response = requests.get(f"{self.base_url}{path}", headers=headers)
-        if response.status_code == 200:
-            lines = response.text.strip().split('\n')
-            if len(lines) == 1 and not lines[0].endswith('/'):
-                # Single line, not a directory, return as final value
-                return response.text.strip()
-            elif all(not line.endswith('/') for line in lines):
-                # Treat each line as an attribute and fetch its value
-                attribute_values = {}
-                for line in lines:
-                    if line:  # Non-empty line
-                        value = self.fetch_metadata(f"{path}{line}")
-                        attribute_values[line] = value
-                return attribute_values
-            else:
-                # Directory-like or mixed content, recurse
-                content = {}
-                for line in lines:
-                    if line:  # Non-empty line
-                        nested_content = self.fetch_metadata(f"{path}{line}")
-                        content[line.rstrip('/')] = nested_content
-                return content
-        else:
-            logging.error(f"Failed to fetch metadata for path: '{path}', HTTP status: {response.status_code}")
-            return None
+        fetcher = EC2MetadataFetcher()
+        instance_id = fetcher.fetch_metadata("instance-id")
+        self.assertEqual(instance_id, 'test-instance-id')
+
+    @patch('requests.put')
+    @patch('requests.get')
+    def test_fetch_metadata_failure(self, mock_get, mock_put):
+        """Test fetching metadata with failure"""
+        mock_put.return_value = MagicMock(status_code=200)
+        mock_get.return_value = MagicMock(status_code=404)
+
+        fetcher = EC2MetadataFetcher()
+        instance_id = fetcher.fetch_metadata("instance-id")
+        self.assertIsNone(instance_id)
+
+    @mock_ec2
+    def test_fetch_instance_tags_success(self):
+        """Test fetching instance tags successfully"""
+        ec2 = boto3.resource('ec2', region_name='us-east-1')
+        instance = ec2.create_instances(ImageId='ami-12345678', MinCount=1, MaxCount=1)[0]
+        instance.create_tags(Tags=[{'Key': 'Name', 'Value': 'TestInstance'}])
+
+        with patch('requests.put'), patch('requests.get', return_value=MagicMock(text='us-east-1', status_code=200)):
+            fetcher = EC2MetadataFetcher()
+            tags = fetcher.fetch_instance_tags()
+            self.assertEqual(tags, {'Name': 'TestInstance'})
+
+    @mock_ec2
+    def test_fetch_instance_tags_failure(self):
+        """Test fetching instance tags with failure"""
+        with patch('boto3.client'), patch('requests.put'), patch('requests.get', return_value=MagicMock(text='us-east-1', status_code=200)):
+            boto3.client.return_value.describe_tags.side_effect = Exception("AWS Error")
+            fetcher = EC2MetadataFetcher()
+            tags = fetcher.fetch_instance_tags()
+            self.assertEqual(tags, {})
+
+    def test_cache_file_creation_and_content(self):
+        """Test cache file creation and JSON content"""
+        with patch('requests.put'), patch('requests.get', return_value=MagicMock(text='us-east-1', status_code=200)):
+            fetcher = EC2MetadataFetcher()
+            fetcher.main()  # Ensure this is the correct way to trigger caching in your script
+        
+            self.assertTrue(os.path.exists(self.cache_file), "Cache file was not created.")
             
-    def fetch_instance_tags(self):
-        """Fetches EC2 instance tags using the EC2 DescribeTags API."""
-        try:
-            response = self.ec2_client.describe_tags(
-                Filters=[
-                    {'Name': 'resource-id', 'Values': [self.instance_id]}
-                ]
-            )
-            tags = {tag['Key']: tag['Value'] for tag in response.get('Tags', [])}
-            return tags
-        except Exception as e:
-            logging.error(f"Failed to fetch instance tags: {e}")
-            return {}
+            with open(self.cache_file, 'r') as file:
+                data = json.load(file)
+                self.assertIsInstance(data, dict)
 
-def main():
-    fetcher = EC2MetadataFetcher()
-    all_metadata = fetcher.fetch_metadata()
-    instance_tags = fetcher.fetch_instance_tags()
-    logging.info("Fetched EC2 instance metadata and tags successfully.")
-
-    # Combine metadata and tags into one dictionary
-    full_metadata = {
-        'metadata': all_metadata,
-        'tags': instance_tags
-    }
-
-    # Store the combined metadata and tags in a JSON cache file
-    with open('ec2_metadata_and_tags_cache.json', 'w') as cache_file:
-        json.dump(full_metadata, cache_file, indent=4)
-    logging.info("Metadata and tags stored in ec2_metadata_and_tags_cache.json.")
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    unittest.main()
