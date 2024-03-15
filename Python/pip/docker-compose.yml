@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  aerospike:
+    image: aerospike/aerospike-server
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+      - "3002:3002"
+      - "3003:3003"
+    environment:
+      - AEROSPIKE_NAMESPACE=test
+      - AEROSPIKE_REPLICATION_FACTOR=2
+      - AEROSPIKE_MEMORY_SIZE=1G
+      - AEROSPIKE_DEFAULT_TTL=30d
+    volumes:
+      - aerospike-data:/opt/aerospike/data
+volumes:
+  aerospike-data:
