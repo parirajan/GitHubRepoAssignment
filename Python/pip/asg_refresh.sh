@@ -110,14 +110,6 @@ transfer_consul_leadership() {
     echo "Consul leadership transferred."
 }
 
-To extend the script with functionality that checks if the new leader is correctly established in the Consul cluster after a leadership transfer, and to verify that the remaining nodes are listed as followers and voters, you need to add a verification step post-leadership transfer. This involves querying the Consul API for raft peer information to ensure the cluster's state is as expected.
-
-This step assumes you have jq installed for JSON parsing and that your Consul setup allows for API access with the provided ACL token.
-
-After the transfer_consul_leadership function, add the following function to verify the new leader and raft peers:
-
-bash
-Copy code
 # Verify the new leader and raft peers
 verify_consul_raft_peers() {
     echo "Verifying new leader and raft peers..."
