@@ -110,6 +110,44 @@ transfer_consul_leadership() {
     echo "Consul leadership transferred."
 }
 
+To extend the script with functionality that checks if the new leader is correctly established in the Consul cluster after a leadership transfer, and to verify that the remaining nodes are listed as followers and voters, you need to add a verification step post-leadership transfer. This involves querying the Consul API for raft peer information to ensure the cluster's state is as expected.
+
+This step assumes you have jq installed for JSON parsing and that your Consul setup allows for API access with the provided ACL token.
+
+After the transfer_consul_leadership function, add the following function to verify the new leader and raft peers:
+
+bash
+Copy code
+# Verify the new leader and raft peers
+verify_consul_raft_peers() {
+    echo "Verifying new leader and raft peers..."
+    sleep 10  # Give some time for leadership transition
+    RAFT_INFO=$(curl -s --header "X-Consul-Token: ${CONSUL_ACL_TOKEN}" ${CONSUL_HTTP_ADDR}/v1/operator/raft/configuration)
+    
+    # Check if there's a leader and it's not the old leader
+    NEW_LEADER=$(echo "$RAFT_INFO" | jq -r '.Configuration.Leader')
+    if [ -z "$NEW_LEADER" ] || [ "$NEW_LEADER" == "$LEADER_IP" ]; then
+        echo "Leader transition failed or old leader still in charge."
+        exit 1
+    else
+        echo "New leader established: $NEW_LEADER"
+    fi
+    
+    # Verify all other nodes are followers and voters
+    PEERS=$(echo "$RAFT_INFO" | jq -r '.Configuration.Servers[] | select(.Leader == false) | "\(.Address) is a \(.Suffrage)"')
+    echo "Verifying followers and voters..."
+    echo "$PEERS"
+    
+    # Count the number of voters that are not leaders
+    VOTER_COUNT=$(echo "$PEERS" | grep -c "voter")
+    if [ "$VOTER_COUNT" -lt 2 ]; then  # Expecting at least 2 followers as voters in a 3-node cluster
+        echo "Insufficient number of followers marked as voters."
+        exit 1
+    else
+        echo "Raft configuration appears correct with all nodes as followers and voters."
+    fi
+}
+
 # Remove protection from leader and scale in
 cleanup() {
     aws autoscaling set-instance-protection --instance-ids ${LEADER_ID} \
@@ -128,4 +166,5 @@ wait_for_new_node_join
 start_asg_refresh
 monitor_asg_refresh_and_elb
 transfer_consul_leadership
+verify_consul_raft_peers
 cleanup
