@@ -40,6 +40,52 @@ get_consul_leader_instance_id() {
     echo "${LEADER_ID}"
 }
 
+function assign_consul_roles() {
+    # Set variables
+    CONSUL_HTTP_ADDR="https://<YOUR_CONSUL_SERVER_ADDRESS>:8500"
+    CONSUL_ACL_TOKEN="<YOUR_CONSUL_ACL_TOKEN>"
+    AWS_REGION="<YOUR_AWS_REGION>"
+    CONSUL_SERVER_TAG_NAME="Role"
+    CONSUL_SERVER_TAG_VALUE="ConsulServer"
+
+    # Get the Consul leader
+    LEADER=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/status/leader" | jq -r .)
+    LEADER_IP=${LEADER%:*}
+    
+    # Initialize arrays to hold server IPs and Instance IDs
+    declare -a SERVER_IPS=()
+    declare -a INSTANCE_IDS=()
+
+    # List all Consul server nodes and their AWS Instance IDs
+    SERVERS=$(aws ec2 describe-instances --region "$AWS_REGION" \
+        --filters "Name=tag:$CONSUL_SERVER_TAG_NAME,Values=$CONSUL_SERVER_TAG_VALUE" \
+        --query 'Reservations[].Instances[].[InstanceId,PrivateIpAddress]' --output text)
+
+    # Populate the arrays
+    while read -r INSTANCE_ID IP_ADDRESS; do
+        SERVER_IPS+=("$IP_ADDRESS")
+        INSTANCE_IDS+=("$INSTANCE_ID")
+    done <<< "$SERVERS"
+
+    # Identify and assign leader and followers
+    for i in "${!SERVER_IPS[@]}"; do
+        if [[ "${SERVER_IPS[$i]}" == "$LEADER_IP" ]]; then
+            LEADER_INSTANCE_ID="${INSTANCE_IDS[$i]}"
+        else
+            if [ -z "$FOLLOWER1_INSTANCE_ID" ]; then
+                FOLLOWER1_INSTANCE_ID="${INSTANCE_IDS[$i]}"
+            else
+                FOLLOWER2_INSTANCE_ID="${INSTANCE_IDS[$i]}"
+            fi
+        fi
+    done
+
+    echo "Leader Instance ID: $LEADER_INSTANCE_ID"
+    echo "Follower-1 Instance ID: $FOLLOWER1_INSTANCE_ID"
+    echo "Follower-2 Instance ID: $FOLLOWER2_INSTANCE_ID"
+}
+
+
 # Protect the leader instance in ASG
 protect_leader_instance() {
     LEADER_ID=$(get_consul_leader_instance_id)
