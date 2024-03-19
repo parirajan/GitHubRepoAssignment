@@ -80,6 +80,34 @@ assign_consul_roles() {
     done < <(echo "${RAFT_CONFIG}" | jq -r '.Servers[] | @base64')
 }
 
+function unset_instance_protection() {
+    if [[ -z "$ASG_NAME" ]]; then
+        echo "Usage: unset_instance_protection <ASG_NAME>"
+        return 1
+    fi
+
+    # Get the list of instance IDs in the ASG with instance protection set
+    instance_ids=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
+        --query "AutoScalingGroups[].Instances[?ProtectedFromScaleIn==\`true\`].[InstanceId]" \
+        --output text)
+
+    if [[ -z "$instance_ids" ]]; then
+        echo "No instances with protection found in ASG: $ASG_NAME"
+        return 0
+    fi
+
+    echo "Disabling instance protection for instances: $instance_ids in ASG: $ASG_NAME"
+    
+    # Loop through each instance ID and disable instance protection
+    for instance_id in $instance_ids; do
+        aws autoscaling set-instance-protection --instance-ids "$instance_id" \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --no-protected-from-scale-in
+    done
+
+    echo "Instance protection disabled for all instances in ASG: $ASG_NAME"
+}
+
 
 
 # Protect the leader instance in ASG
