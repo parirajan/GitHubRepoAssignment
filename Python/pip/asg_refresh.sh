@@ -80,7 +80,8 @@ assign_consul_roles() {
     done < <(echo "${RAFT_CONFIG}" | jq -r '.Servers[] | @base64')
 }
 
-function unset_instance_protection() {
+
+unset_instance_protection() {
     if [[ -z "$ASG_NAME" ]]; then
         echo "Usage: unset_instance_protection <ASG_NAME>"
         return 1
@@ -126,6 +127,39 @@ scale_out_asg() {
     aws autoscaling update-auto-scaling-group --auto-scaling-group-name ${ASG_NAME} \
     --desired-capacity ${NEW_CAPACITY}
     echo "Scaled out ASG to ${NEW_CAPACITY}."
+}
+
+function check_asg_refresh_status() {
+    local asg_name="$1"
+    local refresh_id="$2"
+
+    if [[ -z "$asg_name" || -z "$refresh_id" ]]; then
+        echo "Usage: check_asg_refresh_status <ASG_NAME> <REFRESH_ID>"
+        return 1
+    fi
+
+    echo "Checking status of ASG refresh for ASG: $asg_name with refresh ID: $refresh_id"
+
+    while true; do
+        # Retrieve the status of the specified instance refresh
+        status=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$asg_name" \
+                 --instance-refresh-ids "$refresh_id" \
+                 --query 'InstanceRefreshes[0].Status' --output text)
+
+        echo "Refresh Status: $status"
+
+        # Check if the refresh is in a final state (Successful, Failed, or Cancelled)
+        if [[ "$status" == "Successful" ]]; then
+            echo "ASG refresh completed successfully."
+            return 0
+        elif [[ "$status" == "Failed" || "$status" == "Cancelled" ]]; then
+            echo "ASG refresh did not complete successfully. Status: $status"
+            return 1
+        fi
+
+        # Wait for a bit before checking the status again
+        sleep 30
+    done
 }
 
 # Wait for new node to join the cluster
