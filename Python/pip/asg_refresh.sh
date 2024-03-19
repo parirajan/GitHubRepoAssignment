@@ -1,76 +1,34 @@
-function check_consul_cluster_health() {
-    local max_wait_seconds=300 # Maximum time to wait for healthy instances
-    local start_time=$(date +%s)
+#!/bin/bash
 
-    echo "Waiting for a minimum of 3 healthy instances in the ASG..."
+# Configuration
+ASG_NAME="your-asg-name"
+REFRESH_ID="your-refresh-id"
+TARGET_GROUP_ARN="your-target-group-arn"
+AWS_REGION="your-aws-region"
 
-    # Wait for ASG to have at least 3 healthy instances
-    while : ; do
-        now=$(date +%s)
-        if [[ $((now - start_time)) -gt max_wait_seconds ]]; then
-            echo "Timeout waiting for ASG to have 3 healthy instances."
-            return 1
-        fi
-
-        instances=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
-                    --query 'AutoScalingGroups[].Instances[?LifecycleState==`InService`].[InstanceId]' --output text)
-        healthy_count=$(echo "$instances" | awk '{print NF}') # Number of healthy instances
-
-        if [[ "$healthy_count" -ge 3 ]]; then
-            echo "ASG has $healthy_count healthy instances."
-            break
-        else
-            echo "Waiting for more instances to become healthy..."
-            sleep 30
-        fi
-    done
-
-    # Check ELB Target Group health
-    echo "Checking ELB Target Group health..."
-    for instance_id in $instances; do
-        health_status=$(aws elbv2 describe-target-health --target-group-arn "$TG_ARN" \
-                          --query "TargetHealthDescriptions[?Target.Id=='$instance_id'].TargetHealth.State" --output text)
-        if [[ "$health_status" != "healthy" ]]; then
-            echo "Instance $instance_id is not healthy in the target group."
-            return 1
-        fi
-    done
-
-    # Check Consul cluster health
-    echo "Checking Consul cluster health..."
-    consul_info=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/operator/raft/configuration" | jq .)
-    leader=$(echo "$consul_info" | jq -r '.Configuration.Leader')
-    if [[ -z "$leader" || "$leader" == "null" ]]; then
-        echo "Consul cluster has no leader."
-        return 1
-    fi
-
-    # Check for at least 2 followers that are voters
-    voter_count=$(echo "$consul_info" | jq '[.Configuration.Servers[] | select(.Suffrage=="Voter" and .Leader==false)] | length')
-    if [[ "$voter_count" -lt 2 ]]; then
-        echo "Consul cluster does not have at least 2 followers that are voters."
-        return 1
-    fi
-
-    echo "Consul cluster is healthy with 1 leader and at least 2 voting followers."
+# Function to check the health of instances in the target group
+check_instance_health() {
+    echo "Checking health of instances in the target group..."
+    aws elbv2 describe-target-health --target-group-arn "$TARGET_GROUP_ARN" --region "$AWS_REGION" | jq -r '.TargetHealthDescriptions[] | "\(.Target.Id) is \(.TargetHealth.State)"'
 }
 
-# Usage example:
-# check_consul_cluster_health "my-consul-asg" "arn:aws:elasticloadbalancing:region:account-id:targetgroup/my-target-group" "http://127.0.0.1:8500"
+# Monitor the ASG refresh status
+while :; do
+    # Get the status of the ASG refresh
+    refresh_status=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$ASG_NAME" --instance-refresh-ids "$REFRESH_ID" --region "$AWS_REGION" --query 'InstanceRefreshes[0].Status' --output text)
+    echo "Refresh Status: $refresh_status"
 
+    # If the refresh is in progress, check the instance health
+    if [[ "$refresh_status" == "InProgress" ]]; then
+        check_instance_health
+    elif [[ "$refresh_status" == "Successful" ]]; then
+        echo "ASG refresh completed successfully."
+        check_instance_health  # Final health check
+        break
+    elif [[ "$refresh_status" == "Failed" || "$refresh_status" == "Cancelled" ]]; then
+        echo "ASG refresh did not complete successfully. Status: $refresh_status"
+        exit 1
+    fi
 
-json='[{"ID": 1, "Leader": "true", "Voter": true}, {"ID": 2, "Leader": "false", "Voter": true}, {"ID": 3, "Leader": "false", "Voter": true}]'
-
-# Check if there's at least one leader
-leaders=$(echo $json | jq '[.[] | select(.Leader == "true")] | length')
-
-# Count the voters where leader is not true
-voters=$(echo $json | jq '[.[] | select(.Leader != "true" and .Voter == true)] | length')
-
-if [ "$leaders" -ge 1 ]; then
-    echo "At least one leader exists."
-else
-    echo "No leader found."
-fi
-
-echo "Number of non-leaders who are voters: $voters"
+    sleep 30  # Wait before checking again
+done
