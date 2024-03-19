@@ -1,7 +1,4 @@
 function check_consul_cluster_health() {
-    local asg_name=$1
-    local target_group_arn=$2 # Use Target Group ARN for ELB v2 (ALB/NLB)
-    local consul_http_addr=$3 # Example: http://127.0.0.1:8500
     local max_wait_seconds=300 # Maximum time to wait for healthy instances
     local start_time=$(date +%s)
 
@@ -15,7 +12,7 @@ function check_consul_cluster_health() {
             return 1
         fi
 
-        instances=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$asg_name" \
+        instances=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
                     --query 'AutoScalingGroups[].Instances[?LifecycleState==`InService`].[InstanceId]' --output text)
         healthy_count=$(echo "$instances" | awk '{print NF}') # Number of healthy instances
 
@@ -31,7 +28,7 @@ function check_consul_cluster_health() {
     # Check ELB Target Group health
     echo "Checking ELB Target Group health..."
     for instance_id in $instances; do
-        health_status=$(aws elbv2 describe-target-health --target-group-arn "$target_group_arn" \
+        health_status=$(aws elbv2 describe-target-health --target-group-arn "$TG_ARN" \
                           --query "TargetHealthDescriptions[?Target.Id=='$instance_id'].TargetHealth.State" --output text)
         if [[ "$health_status" != "healthy" ]]; then
             echo "Instance $instance_id is not healthy in the target group."
@@ -41,7 +38,7 @@ function check_consul_cluster_health() {
 
     # Check Consul cluster health
     echo "Checking Consul cluster health..."
-    consul_info=$(curl -s "$consul_http_addr/v1/operator/raft/configuration" | jq .)
+    consul_info=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/operator/raft/configuration" | jq .)
     leader=$(echo "$consul_info" | jq -r '.Configuration.Leader')
     if [[ -z "$leader" || "$leader" == "null" ]]; then
         echo "Consul cluster has no leader."
