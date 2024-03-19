@@ -40,10 +40,11 @@ get_consul_leader_instance_id() {
     echo "${LEADER_ID}"
 }
 
-function assign_consul_roles() {
-    # Get the Consul leader
-    LEADER=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/status/leader" | jq -r .)
-    LEADER_IP=${LEADER%:*}
+assign_consul_roles() {
+    # Configuration
+    CONSUL_HTTP_ADDR="https://<YOUR_CONSUL_SERVER_ADDRESS>:8500"
+    CONSUL_ACL_TOKEN="<YOUR_CONSUL_ACL_TOKEN>"
+    AWS_REGION="<YOUR_AWS_REGION>"
 
     # Get the Consul leader
     LEADER=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/status/leader" | jq -r .)
@@ -55,8 +56,8 @@ function assign_consul_roles() {
     # Initialize counter for followers
     local FOLLOWER_COUNTER=1
 
-    # Process servers
-    echo "${RAFT_CONFIG}" | jq -r '.Configuration.Servers[] | @base64' | while read -r row; do
+    # Process servers using process substitution
+    while read -r row; do
         _jq() {
             echo ${row} | base64 --decode | jq -r ${1}
         }
@@ -69,16 +70,14 @@ function assign_consul_roles() {
         if [[ "$SERVER_IP" == "$LEADER_IP" ]]; then
             # Directly assign leader instance ID to a variable named 'leader_id'
             leader_id="$INSTANCE_ID"
-            declare -g leader_id
             echo "Leader Instance ID: $leader_id"
         else
             # Dynamically create variables for each follower with names 'follower_id_1', 'follower_id_2', etc.
-            FOLLOWER_ID_VAR="follower_id_${FOLLOWER_COUNTER}"
-            declare -g $FOLLOWER_ID_VAR="$INSTANCE_ID"
-            echo "Follower $FOLLOWER_COUNTER Instance ID: ${!FOLLOWER_ID_VAR}"
+            eval "follower_id_${FOLLOWER_COUNTER}='$INSTANCE_ID'"
+            echo "Follower $FOLLOWER_COUNTER Instance ID: $(eval echo \$follower_id_${FOLLOWER_COUNTER})"
             ((FOLLOWER_COUNTER++))
         fi
-    done
+    done < <(echo "${RAFT_CONFIG}" | jq -r '.Servers[] | @base64')
 }
 
 
