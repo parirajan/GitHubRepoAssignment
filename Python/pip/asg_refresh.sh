@@ -1,266 +1,62 @@
-#!/bin/bash
+function check_consul_cluster_health() {
+    local asg_name=$1
+    local target_group_arn=$2 # Use Target Group ARN for ELB v2 (ALB/NLB)
+    local consul_http_addr=$3 # Example: http://127.0.0.1:8500
+    local max_wait_seconds=300 # Maximum time to wait for healthy instances
+    local start_time=$(date +%s)
 
-# Configurable Variables
-VAULT_ADDR="https://<YOUR_VAULT_SERVER_ADDRESS>"
-VAULT_TOKEN="<YOUR_VAULT_TOKEN>"
-VAULT_SECRET_PATH="<YOUR_CONSUL_ACL_TOKEN_PATH_IN_VAULT>"
-AWS_REGION="<YOUR_AWS_REGION>"
-ASG_NAME="<YOUR_ASG_NAME>"
-CONSUL_HTTP_ADDR="https://<YOUR_CONSUL_SERVER_ADDRESS>:8501"
+    echo "Waiting for a minimum of 3 healthy instances in the ASG..."
 
-# Retrieve Consul ACL token from Vault
-retrieve_consul_acl_from_vault() {
-    CONSUL_ACL_TOKEN=$(vault read -address=${VAULT_ADDR} -token=${VAULT_TOKEN} ${VAULT_SECRET_PATH} -format=json | jq -r .data.token)
-    if [ -z "$CONSUL_ACL_TOKEN" ]; then
-        echo "Failed to retrieve Consul ACL token from Vault"
-        exit 1
-    else
-        echo "Consul ACL token retrieved successfully."
-    fi
-}
-
-# Retrieve ELB name from ASG Tags
-retrieve_elb_name_from_asg() {
-    ELB_NAME=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names ${ASG_NAME} --region ${AWS_REGION} \
-    --query 'AutoScalingGroups[].Tags[?Key==`ELBName`].Value' --output text)
-    if [ -z "$ELB_NAME" ]; then
-        echo "Failed to retrieve ELB name from ASG tags"
-        exit 1
-    else
-        echo "ELB Name: ${ELB_NAME}"
-    fi
-}
-
-# Function to get leader node ID from Consul
-get_consul_leader_instance_id() {
-    LEADER_IP=$(curl -s --header "X-Consul-Token: ${CONSUL_ACL_TOKEN}" ${CONSUL_HTTP_ADDR}/v1/status/leader | jq -r . | cut -d'"' -f 2 | cut -d':' -f 1)
-    LEADER_ID=$(aws ec2 describe-instances --region ${AWS_REGION} \
-    --filters "Name=private-ip-address,Values=${LEADER_IP}" \
-    --query 'Reservations[*].Instances[*].[InstanceId]' --output text)
-    echo "${LEADER_ID}"
-}
-
-assign_consul_roles() {
-    # Configuration
-    CONSUL_HTTP_ADDR="https://<YOUR_CONSUL_SERVER_ADDRESS>:8500"
-    CONSUL_ACL_TOKEN="<YOUR_CONSUL_ACL_TOKEN>"
-    AWS_REGION="<YOUR_AWS_REGION>"
-
-    # Get the Consul leader
-    LEADER=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/status/leader" | jq -r .)
-    LEADER_IP=${LEADER%:*}
-
-    # Get Raft configuration
-    RAFT_CONFIG=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/operator/raft/configuration" | jq -r .)
-
-    # Initialize counter for followers
-    local FOLLOWER_COUNTER=1
-
-    # Process servers using process substitution
-    while read -r row; do
-        _jq() {
-            echo ${row} | base64 --decode | jq -r ${1}
-        }
-
-        SERVER_IP=$(_jq '.Address' | cut -d':' -f1)
-        INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
-            --filters "Name=private-ip-address,Values=$SERVER_IP" \
-            --query 'Reservations[*].Instances[*].InstanceId' --output text)
-        
-        if [[ "$SERVER_IP" == "$LEADER_IP" ]]; then
-            # Directly assign leader instance ID to a variable named 'leader_id'
-            leader_id="$INSTANCE_ID"
-            echo "Leader Instance ID: $leader_id"
-        else
-            # Dynamically create variables for each follower with names 'follower_id_1', 'follower_id_2', etc.
-            eval "follower_id_${FOLLOWER_COUNTER}='$INSTANCE_ID'"
-            echo "Follower $FOLLOWER_COUNTER Instance ID: $(eval echo \$follower_id_${FOLLOWER_COUNTER})"
-            ((FOLLOWER_COUNTER++))
-        fi
-    done < <(echo "${RAFT_CONFIG}" | jq -r '.Servers[] | @base64')
-}
-
-
-unset_instance_protection() {
-    if [[ -z "$ASG_NAME" ]]; then
-        echo "Usage: unset_instance_protection <ASG_NAME>"
-        return 1
-    fi
-
-    # Get the list of instance IDs in the ASG with instance protection set
-    instance_ids=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
-        --query "AutoScalingGroups[].Instances[?ProtectedFromScaleIn==\`true\`].[InstanceId]" \
-        --output text)
-
-    if [[ -z "$instance_ids" ]]; then
-        echo "No instances with protection found in ASG: $ASG_NAME"
-        return 0
-    fi
-
-    echo "Disabling instance protection for instances: $instance_ids in ASG: $ASG_NAME"
-    
-    # Loop through each instance ID and disable instance protection
-    for instance_id in $instance_ids; do
-        aws autoscaling set-instance-protection --instance-ids "$instance_id" \
-            --auto-scaling-group-name "$ASG_NAME" \
-            --no-protected-from-scale-in
-    done
-
-    echo "Instance protection disabled for all instances in ASG: $ASG_NAME"
-}
-
-
-
-# Protect the leader instance in ASG
-protect_leader_instance() {
-    LEADER_ID=$(get_consul_leader_instance_id)
-    aws autoscaling set-instance-protection --instance-ids ${LEADER_ID} \
-    --auto-scaling-group-name ${ASG_NAME} --protected-from-scale-in
-    echo "Leader instance ${LEADER_ID} is protected from scale-in."
-}
-
-# Scale out ASG by one instance
-scale_out_asg() {
-    CURRENT_CAPACITY=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-name ${ASG_NAME} \
-    --query 'AutoScalingGroups[*].DesiredCapacity' --output text)
-    NEW_CAPACITY=$((CURRENT_CAPACITY + 1))
-    aws autoscaling update-auto-scaling-group --auto-scaling-group-name ${ASG_NAME} \
-    --desired-capacity ${NEW_CAPACITY}
-    echo "Scaled out ASG to ${NEW_CAPACITY}."
-}
-
-function check_asg_refresh_status() {
-    local asg_name="$1"
-    local refresh_id="$2"
-
-    if [[ -z "$asg_name" || -z "$refresh_id" ]]; then
-        echo "Usage: check_asg_refresh_status <ASG_NAME> <REFRESH_ID>"
-        return 1
-    fi
-
-    echo "Checking status of ASG refresh for ASG: $asg_name with refresh ID: $refresh_id"
-
-    while true; do
-        # Retrieve the status of the specified instance refresh
-        status=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$asg_name" \
-                 --instance-refresh-ids "$refresh_id" \
-                 --query 'InstanceRefreshes[0].Status' --output text)
-
-        echo "Refresh Status: $status"
-
-        # Check if the refresh is in a final state (Successful, Failed, or Cancelled)
-        if [[ "$status" == "Successful" ]]; then
-            echo "ASG refresh completed successfully."
-            return 0
-        elif [[ "$status" == "Failed" || "$status" == "Cancelled" ]]; then
-            echo "ASG refresh did not complete successfully. Status: $status"
+    # Wait for ASG to have at least 3 healthy instances
+    while : ; do
+        now=$(date +%s)
+        if [[ $((now - start_time)) -gt max_wait_seconds ]]; then
+            echo "Timeout waiting for ASG to have 3 healthy instances."
             return 1
         fi
 
-        # Wait for a bit before checking the status again
-        sleep 30
-    done
-}
+        instances=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$asg_name" \
+                    --query 'AutoScalingGroups[].Instances[?LifecycleState==`InService`].[InstanceId]' --output text)
+        healthy_count=$(echo "$instances" | awk '{print NF}') # Number of healthy instances
 
-# Wait for new node to join the cluster
-wait_for_new_node_join() {
-    echo "Waiting for the new node to join the cluster..."
-    while true; do
-        NEW_MEMBERS_COUNT=$(curl -s --header "X-Consul-Token: ${CONSUL_ACL_TOKEN}" ${CONSUL_HTTP_ADDR}/v1/catalog/nodes | jq length)
-        if [ "${NEW_MEMBERS_COUNT}" -eq "$((CURRENT_CAPACITY + 1))" ]; then
-            echo "New node has joined the cluster."
+        if [[ "$healthy_count" -ge 3 ]]; then
+            echo "ASG has $healthy_count healthy instances."
             break
         else
-            sleep 10
+            echo "Waiting for more instances to become healthy..."
+            sleep 30
         fi
     done
-}
 
-start_asg_refresh() {
-    echo "Starting ASG refresh with 100% health check strategy..."
-    aws autoscaling start-instance-refresh \
-        --auto-scaling-group-name ${ASG_NAME} \
-        --strategy Rolling \
-        --preferences '{"MinHealthyPercentage": 100, "InstanceWarmup": 300}' \
-        --region ${AWS_REGION}
-    echo "ASG refresh initiated."
-}
-
-# Monitor ASG refresh and ELB health
-monitor_asg_refresh_and_elb() {
-    echo "Monitoring ASG refresh and ELB health..."
-    while true; do
-        STATUS=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name ${ASG_NAME} \
-        --instance-refresh-ids ${REFRESH_ID} --query 'InstanceRefreshes[*].Status' --output text)
-        if [[ ${STATUS} == "InProgress" ]]; then
-            HEALTHY_COUNT=$(aws elb describe-instance-health --load-balancer-name ${ELB_NAME} \
-            --query 'InstanceStates[?State==`InService`].InstanceId' --output text | wc -w)
-            if [ "${HEALTHY_COUNT}" -eq "${NEW_CAPACITY}" ]; then
-                echo "All instances are healthy in ELB."
-                break
-            fi
-        elif [[ ${STATUS} == "Successful" ]]; then
-            echo "ASG refresh completed successfully."
-            break
-        else
-            sleep 10
+    # Check ELB Target Group health
+    echo "Checking ELB Target Group health..."
+    for instance_id in $instances; do
+        health_status=$(aws elbv2 describe-target-health --target-group-arn "$target_group_arn" \
+                          --query "TargetHealthDescriptions[?Target.Id=='$instance_id'].TargetHealth.State" --output text)
+        if [[ "$health_status" != "healthy" ]]; then
+            echo "Instance $instance_id is not healthy in the target group."
+            return 1
         fi
     done
-}
 
-# Transfer leadership in Consul (if applicable)
-transfer_consul_leadership() {
-    curl --request PUT --header "X-Consul-Token: ${CONSUL_ACL_TOKEN}" ${CONSUL_HTTP_ADDR}/v1/operator/raft/transfer-leadership
-    echo "Consul leadership transferred."
-}
-
-# Verify the new leader and raft peers
-verify_consul_raft_peers() {
-    echo "Verifying new leader and raft peers..."
-    sleep 10  # Give some time for leadership transition
-    RAFT_INFO=$(curl -s --header "X-Consul-Token: ${CONSUL_ACL_TOKEN}" ${CONSUL_HTTP_ADDR}/v1/operator/raft/configuration)
-    
-    # Check if there's a leader and it's not the old leader
-    NEW_LEADER=$(echo "$RAFT_INFO" | jq -r '.Configuration.Leader')
-    if [ -z "$NEW_LEADER" ] || [ "$NEW_LEADER" == "$LEADER_IP" ]; then
-        echo "Leader transition failed or old leader still in charge."
-        exit 1
-    else
-        echo "New leader established: $NEW_LEADER"
+    # Check Consul cluster health
+    echo "Checking Consul cluster health..."
+    consul_info=$(curl -s "$consul_http_addr/v1/operator/raft/configuration" | jq .)
+    leader=$(echo "$consul_info" | jq -r '.Configuration.Leader')
+    if [[ -z "$leader" || "$leader" == "null" ]]; then
+        echo "Consul cluster has no leader."
+        return 1
     fi
-    
-    # Verify all other nodes are followers and voters
-    PEERS=$(echo "$RAFT_INFO" | jq -r '.Configuration.Servers[] | select(.Leader == false) | "\(.Address) is a \(.Suffrage)"')
-    echo "Verifying followers and voters..."
-    echo "$PEERS"
-    
-    # Count the number of voters that are not leaders
-    VOTER_COUNT=$(echo "$PEERS" | grep -c "voter")
-    if [ "$VOTER_COUNT" -lt 2 ]; then  # Expecting at least 2 followers as voters in a 3-node cluster
-        echo "Insufficient number of followers marked as voters."
-        exit 1
-    else
-        echo "Raft configuration appears correct with all nodes as followers and voters."
+
+    # Check for at least 2 followers that are voters
+    voter_count=$(echo "$consul_info" | jq '[.Configuration.Servers[] | select(.Suffrage=="Voter" and .Leader==false)] | length')
+    if [[ "$voter_count" -lt 2 ]]; then
+        echo "Consul cluster does not have at least 2 followers that are voters."
+        return 1
     fi
+
+    echo "Consul cluster is healthy with 1 leader and at least 2 voting followers."
 }
 
-# Remove protection from leader and scale in
-cleanup() {
-    aws autoscaling set-instance-protection --instance-ids ${LEADER_ID} \
-    --auto-scaling-group-name ${ASG_NAME} --no-protected-from-scale-in
-    aws autoscaling update-auto-scaling-group --auto-scaling-group-name ${ASG_NAME} \
-    --desired-capacity ${CURRENT_CAPACITY}
-    echo "Cleanup done. Scaled in ASG to ${CURRENT_CAPACITY} and removed instance protection."
-}
-
-# Execute all steps
-retrieve_consul_acl_from_vault
-retrieve_elb_name_from_asg
-protect_leader_instance
-scale_out_asg
-wait_for_new_node_join
-start_asg_refresh
-monitor_asg_refresh_and_elb
-transfer_consul_leadership
-verify_consul_raft_peers
-cleanup
+# Usage example:
+# check_consul_cluster_health "my-consul-asg" "arn:aws:elasticloadbalancing:region:account-id:targetgroup/my-target-group" "http://127.0.0.1:8500"
