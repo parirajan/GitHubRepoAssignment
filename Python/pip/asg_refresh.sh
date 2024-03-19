@@ -57,3 +57,20 @@ function check_consul_cluster_health() {
 
 # Usage example:
 # check_consul_cluster_health "my-consul-asg" "arn:aws:elasticloadbalancing:region:account-id:targetgroup/my-target-group" "http://127.0.0.1:8500"
+
+
+json='[{"ID": 1, "Leader": "true", "Voter": true}, {"ID": 2, "Leader": "false", "Voter": true}, {"ID": 3, "Leader": "false", "Voter": true}]'
+
+# Check if there's at least one leader
+leaders=$(echo $json | jq '[.[] | select(.Leader == "true")] | length')
+
+# Count the voters where leader is not true
+voters=$(echo $json | jq '[.[] | select(.Leader != "true" and .Voter == true)] | length')
+
+if [ "$leaders" -ge 1 ]; then
+    echo "At least one leader exists."
+else
+    echo "No leader found."
+fi
+
+echo "Number of non-leaders who are voters: $voters"
