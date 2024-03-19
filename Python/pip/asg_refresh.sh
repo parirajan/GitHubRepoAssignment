@@ -51,23 +51,29 @@ function assign_consul_roles() {
     # Initialize arrays for followers
     declare -a FOLLOWER_INSTANCE_IDS=()
 
-    # Extract and process each server from the raft configuration
-    echo "${RAFT_CONFIG}" | jq -c '.Servers[]' | while IFS= read -r server; do
-        server_ip=$(echo "$server" | jq -r '.Address' | cut -d':' -f1)
-        
-        if [[ "$server_ip" == "$LEADER_IP" ]]; then
-            # Process leader
-            LEADER_INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
-                --filters "Name=private-ip-address,Values=$server_ip" \
-                --query 'Reservations[*].Instances[*].InstanceId' --output text)
-            echo "Leader Instance ID: $LEADER_INSTANCE_ID"
-        else
-            # Process followers
-            instance_id=$(aws ec2 describe-instances --region "$AWS_REGION" \
-                --filters "Name=private-ip-address,Values=$server_ip" \
-                --query 'Reservations[*].Instances[*].InstanceId' --output text)
-            FOLLOWER_INSTANCE_IDS+=("$instance_id")
-        fi
+    # Process servers
+    for row in $(echo "${RAFT_CONFIG}" | jq -r '.Configuration.Servers[] | @base64'); do
+        _jq() {
+            echo ${row} | base64 --decode | jq -r ${1}
+        }
+            # Extract and process each server from the raft configuration
+            echo "${RAFT_CONFIG}" | jq -c '.Servers[]' | while IFS= read -r server; do
+                server_ip=$(echo "$server" | jq -r '.Address' | cut -d':' -f1)
+                
+                if [[ "$server_ip" == "$LEADER_IP" ]]; then
+                    # Process leader
+                    LEADER_INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
+                        --filters "Name=private-ip-address,Values=$server_ip" \
+                        --query 'Reservations[*].Instances[*].InstanceId' --output text)
+                    echo "Leader Instance ID: $LEADER_INSTANCE_ID"
+                else
+                    # Process followers
+                    instance_id=$(aws ec2 describe-instances --region "$AWS_REGION" \
+                        --filters "Name=private-ip-address,Values=$server_ip" \
+                        --query 'Reservations[*].Instances[*].InstanceId' --output text)
+                    FOLLOWER_INSTANCE_IDS+=("$instance_id")
+                fi
+            done
     done
 
     # Dynamically assign follower instance IDs to variables
