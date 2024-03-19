@@ -48,30 +48,32 @@ function assign_consul_roles() {
     # Get Raft configuration
     RAFT_CONFIG=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/operator/raft/configuration" | jq -r .)
 
-    # Initialize counter for followers
-    FOLLOWER_COUNTER=1
+    # Initialize arrays for followers
+    declare -a FOLLOWER_INSTANCE_IDS=()
 
-    # Process servers
-    for row in $(echo "${RAFT_CONFIG}" | jq -r '.Servers[] | @base64'); do
-        _jq() {
-            echo ${row} | base64 --decode | jq -r ${1}
-        }
-
-        SERVER_IP=$(_jq '.Address' | cut -d':' -f1)
-        INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
-            --filters "Name=private-ip-address,Values=$SERVER_IP" \
-            --query 'Reservations[*].Instances[*].InstanceId' --output text)
+    # Extract and process each server from the raft configuration
+    echo "${RAFT_CONFIG}" | jq -c '.Servers[]' | while IFS= read -r server; do
+        server_ip=$(echo "$server" | jq -r '.Address' | cut -d':' -f1)
         
-        if [[ "$SERVER_IP" == "$LEADER_IP" ]]; then
-            LEADER_INSTANCE_ID="$INSTANCE_ID"
+        if [[ "$server_ip" == "$LEADER_IP" ]]; then
+            # Process leader
+            LEADER_INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
+                --filters "Name=private-ip-address,Values=$server_ip" \
+                --query 'Reservations[*].Instances[*].InstanceId' --output text)
             echo "Leader Instance ID: $LEADER_INSTANCE_ID"
         else
-            # Dynamically create variables for each follower
-            declare FOLLOWER_ID_VAR="FOLLOWER${FOLLOWER_COUNTER}_INSTANCE_ID"
-            declare -g $FOLLOWER_ID_VAR="$INSTANCE_ID"
-            echo "Follower $FOLLOWER_COUNTER Instance ID: ${!FOLLOWER_ID_VAR}"
-            ((FOLLOWER_COUNTER++))
+            # Process followers
+            instance_id=$(aws ec2 describe-instances --region "$AWS_REGION" \
+                --filters "Name=private-ip-address,Values=$server_ip" \
+                --query 'Reservations[*].Instances[*].InstanceId' --output text)
+            FOLLOWER_INSTANCE_IDS+=("$instance_id")
         fi
+    done
+
+    # Dynamically assign follower instance IDs to variables
+    for i in "${!FOLLOWER_INSTANCE_IDS[@]}"; do
+        declare "FOLLOWER$((i+1))_INSTANCE_ID=${FOLLOWER_INSTANCE_IDS[$i]}"
+        echo "Follower $((i+1)) Instance ID: ${FOLLOWER_INSTANCE_IDS[$i]}"
     done
 }
 
