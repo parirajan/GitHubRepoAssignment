@@ -46,27 +46,30 @@ function assign_consul_roles() {
     CONSUL_ACL_TOKEN="<YOUR_CONSUL_ACL_TOKEN>"
     AWS_REGION="<YOUR_AWS_REGION>"
 
-    # Get the Consul leader
+    # Get the Consul leader and raft configuration
     LEADER=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/status/leader" | jq -r .)
     LEADER_IP=${LEADER%:*}
+    RAFT_CONFIG=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/operator/raft/configuration" | jq -r .)
 
-    # Get list of Raft peers
-    PEERS=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/operator/raft/list-peers" | jq -r '.[] | .Address')
-    
     declare -a FOLLOWER_IPS=()
 
-    # Loop through peers to segregate leader and followers
-    for PEER in $PEERS; do
-        PEER_IP=${PEER%:*}
-        if [ "$PEER_IP" == "$LEADER_IP" ]; then
-            # Retrieve and assign leader instance ID
+    # Extract and print leader instance ID, gather follower IPs
+    echo "Raft Configuration: $RAFT_CONFIG"
+    for row in $(echo "${RAFT_CONFIG}" | jq -r '.Configuration.Servers[] | @base64'); do
+        _jq() {
+            echo ${row} | base64 --decode | jq -r ${1}
+        }
+
+        SERVER_IP=$(_jq '.Address' | cut -d':' -f1)
+        if [[ "$SERVER_IP" == "$LEADER_IP" ]]; then
+            # Leader instance
             LEADER_INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
-                --filters "Name=private-ip-address,Values=$LEADER_IP" \
+                --filters "Name=private-ip-address,Values=$SERVER_IP" \
                 --query 'Reservations[*].Instances[*].InstanceId' --output text)
-            echo "Leader Instance ID: $LEADER_INSTANCE_ID (IP: $LEADER_IP)"
+            echo "Leader Instance ID: $LEADER_INSTANCE_ID (IP: $SERVER_IP)"
         else
-            # Accumulate follower IPs
-            FOLLOWER_IPS+=("$PEER_IP")
+            # Follower IPs
+            FOLLOWER_IPS+=("$SERVER_IP")
         fi
     done
 
@@ -80,6 +83,7 @@ function assign_consul_roles() {
         echo "Follower-$FOLLOWER_ID Instance ID: $INSTANCE_ID (IP: $FOLLOWER_IP)"
     done
 }
+
 
 # Protect the leader instance in ASG
 protect_leader_instance() {
