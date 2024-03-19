@@ -41,14 +41,18 @@ get_consul_leader_instance_id() {
 }
 
 function assign_consul_roles() {
-    # Get the Consul leader and raft configuration
+    # Get the Consul leader
     LEADER=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/status/leader" | jq -r .)
     LEADER_IP=${LEADER%:*}
 
+    # Get Raft configuration
     RAFT_CONFIG=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/operator/raft/configuration" | jq -r .)
 
-    # Loop through the raft configuration to process servers
-    echo "${RAFT_CONFIG}" | jq -r '.Configuration.Servers[] | @base64' | while IFS= read -r row; do
+    # Initialize counter for followers
+    FOLLOWER_COUNTER=1
+
+    # Process servers
+    for row in $(echo "${RAFT_CONFIG}" | jq -r '.Servers[] | @base64'); do
         _jq() {
             echo ${row} | base64 --decode | jq -r ${1}
         }
@@ -57,30 +61,20 @@ function assign_consul_roles() {
         INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
             --filters "Name=private-ip-address,Values=$SERVER_IP" \
             --query 'Reservations[*].Instances[*].InstanceId' --output text)
-
+        
         if [[ "$SERVER_IP" == "$LEADER_IP" ]]; then
-            # Assign leader instance ID to a variable
             LEADER_INSTANCE_ID="$INSTANCE_ID"
-            declare -g LEADER_INSTANCE_ID
             echo "Leader Instance ID: $LEADER_INSTANCE_ID"
         else
-            # Accumulate follower IPs
-            FOLLOWER_IPS+=("$SERVER_IP")
-            FOLLOWER_INSTANCE_IDS+=("$INSTANCE_ID")
+            # Dynamically create variables for each follower
+            declare FOLLOWER_ID_VAR="FOLLOWER${FOLLOWER_COUNTER}_INSTANCE_ID"
+            declare -g $FOLLOWER_ID_VAR="$INSTANCE_ID"
+            echo "Follower $FOLLOWER_COUNTER Instance ID: ${!FOLLOWER_ID_VAR}"
+            ((FOLLOWER_COUNTER++))
         fi
     done
-
-    # Assign instance IDs to followers
-    for i in "${!FOLLOWER_IPS[@]}"; do
-        FOLLOWER_IP="${FOLLOWER_IPS[$i]}"
-        INSTANCE_ID="${FOLLOWER_INSTANCE_IDS[$i]}"
-        # Dynamically name the follower variable
-        FOLLOWER_ID_VAR="FOLLOWER$((i+1))_INSTANCE_ID"
-        declare -g $FOLLOWER_ID_VAR="$INSTANCE_ID"
-        
-        echo "Follower $((i+1)) Instance ID: ${!FOLLOWER_ID_VAR}"
-    done
 }
+
 
 
 # Protect the leader instance in ASG
