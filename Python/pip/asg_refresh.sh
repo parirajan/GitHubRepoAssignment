@@ -45,41 +45,39 @@ function assign_consul_roles() {
     LEADER=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/status/leader" | jq -r .)
     LEADER_IP=${LEADER%:*}
 
+    # Get the Consul leader
+    LEADER=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/status/leader" | jq -r .)
+    LEADER_IP=${LEADER%:*}
+
     # Get Raft configuration
     RAFT_CONFIG=$(curl -s --header "X-Consul-Token: $CONSUL_ACL_TOKEN" "$CONSUL_HTTP_ADDR/v1/operator/raft/configuration" | jq -r .)
 
-    # Initialize arrays for followers
-    declare -a FOLLOWER_INSTANCE_IDS=()
+    # Initialize counter for followers
+    local FOLLOWER_COUNTER=1
 
     # Process servers
-    for row in $(echo "${RAFT_CONFIG}" | jq -r '.Configuration.Servers[] | @base64'); do
+    echo "${RAFT_CONFIG}" | jq -r '.Configuration.Servers[] | @base64' | while read -r row; do
         _jq() {
             echo ${row} | base64 --decode | jq -r ${1}
         }
-            # Extract and process each server from the raft configuration
-            echo "${RAFT_CONFIG}" | jq -c '.Servers[]' | while IFS= read -r server; do
-                server_ip=$(echo "$server" | jq -r '.Address' | cut -d':' -f1)
-                
-                if [[ "$server_ip" == "$LEADER_IP" ]]; then
-                    # Process leader
-                    LEADER_INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
-                        --filters "Name=private-ip-address,Values=$server_ip" \
-                        --query 'Reservations[*].Instances[*].InstanceId' --output text)
-                    echo "Leader Instance ID: $LEADER_INSTANCE_ID"
-                else
-                    # Process followers
-                    instance_id=$(aws ec2 describe-instances --region "$AWS_REGION" \
-                        --filters "Name=private-ip-address,Values=$server_ip" \
-                        --query 'Reservations[*].Instances[*].InstanceId' --output text)
-                    FOLLOWER_INSTANCE_IDS+=("$instance_id")
-                fi
-            done
-    done
 
-    # Dynamically assign follower instance IDs to variables
-    for i in "${!FOLLOWER_INSTANCE_IDS[@]}"; do
-        declare "FOLLOWER$((i+1))_INSTANCE_ID=${FOLLOWER_INSTANCE_IDS[$i]}"
-        echo "Follower $((i+1)) Instance ID: ${FOLLOWER_INSTANCE_IDS[$i]}"
+        SERVER_IP=$(_jq '.Address' | cut -d':' -f1)
+        INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" \
+            --filters "Name=private-ip-address,Values=$SERVER_IP" \
+            --query 'Reservations[*].Instances[*].InstanceId' --output text)
+        
+        if [[ "$SERVER_IP" == "$LEADER_IP" ]]; then
+            # Directly assign leader instance ID to a variable named 'leader_id'
+            leader_id="$INSTANCE_ID"
+            declare -g leader_id
+            echo "Leader Instance ID: $leader_id"
+        else
+            # Dynamically create variables for each follower with names 'follower_id_1', 'follower_id_2', etc.
+            FOLLOWER_ID_VAR="follower_id_${FOLLOWER_COUNTER}"
+            declare -g $FOLLOWER_ID_VAR="$INSTANCE_ID"
+            echo "Follower $FOLLOWER_COUNTER Instance ID: ${!FOLLOWER_ID_VAR}"
+            ((FOLLOWER_COUNTER++))
+        fi
     done
 }
 
