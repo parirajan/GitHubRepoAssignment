@@ -1,18 +1,27 @@
-version: '3.8'
+# .gitlab-ci.yml
+stages:
+  - build_and_push
+
+variables:
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_TLS_CERTDIR: ""
+
 services:
-  aerospike:
-    image: aerospike/aerospike-server
-    ports:
-      - "3000:3000"
-      - "3001:3001"
-      - "3002:3002"
-      - "3003:3003"
-    environment:
-      - AEROSPIKE_NAMESPACE=test
-      - AEROSPIKE_REPLICATION_FACTOR=2
-      - AEROSPIKE_MEMORY_SIZE=1G
-      - AEROSPIKE_DEFAULT_TTL=30d
-    volumes:
-      - aerospike-data:/opt/aerospike/data
-volumes:
-  aerospike-data:
+  - docker:19.03.12-dind
+
+before_script:
+  # Install Docker Compose (Alpine Linux package installation example)
+  - apk add --no-cache docker-compose
+
+build_and_push:
+  image: docker:19.03.12
+  stage: build_and_push
+  script:
+    # Build the image with Docker Compose
+    - docker-compose build
+    # Log in to Docker registry
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+    # Push the image to the registry with Docker Compose
+    - docker-compose push
+  only:
+    - main
