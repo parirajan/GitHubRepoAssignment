@@ -1,6 +1,0 @@
-# docker-compose.yml
-version: '3.8'
-services:
-  ubi-docker-image:
-    build: .
-    image: my-ubi-docker-image:${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_IID}
