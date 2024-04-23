@@ -1,21 +1,29 @@
 @startuml
-!define AWSCOLOR #FF9900
-!define GITLABCOLOR #FC6D26
-!define VAULTCOLOR #0000FF
+!define USERCOLOR #00FF00
+!define GITLABCOLOR #FFFF00
+!define RUNNERCOLOR #FC6D26
+!define IAMCOLOR #FF0000
+!define VAULTCOLOR #8B0000
 
 ' Setting background and border colors for participants
 skinparam ParticipantBackgroundColor AWSCOLOR
 skinparam ParticipantBorderColor AWSCOLOR
+skinparam ParticipantBackgroundColor<<user>> USERCOLOR
+skinparam ParticipantBorderColor<<user>> USERCOLOR
 skinparam ParticipantBackgroundColor<<gitlab>> GITLABCOLOR
 skinparam ParticipantBorderColor<<gitlab>> GITLABCOLOR
+skinparam ParticipantBackgroundColor<<runner>> RUNNERCOLOR
+skinparam ParticipantBorderColor<<runner>> RUNNERCOLOR
+skinparam ParticipantBackgroundColor<<iam>> IAMCOLOR
+skinparam ParticipantBorderColor<<iam>> IAMCOLOR
 skinparam ParticipantBackgroundColor<<vault>> VAULTCOLOR
 skinparam ParticipantBorderColor<<vault>> VAULTCOLOR
 
-participant User
+participant User <<user>>
 participant "GitLab Repository" as Repo <<gitlab>>
 participant "GitLab Pipeline" as GitLab <<gitlab>>
-participant "GitLab Runner\nwith vaultadmin IAM role" as Runner
-participant "AWS IAM\n(vaultadmin role)" as IAM
+participant "GitLab Runner\nwith vaultadmin IAM role" as Runner <<runner>>
+participant "AWS IAM\n(vaultadmin role)" as IAM <<iam>>
 participant Vault <<vault>>
 
 User -> Repo : Commits code to branch
