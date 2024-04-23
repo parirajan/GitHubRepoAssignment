@@ -12,12 +12,22 @@ skinparam ParticipantBackgroundColor<<vault>> VAULTCOLOR
 skinparam ParticipantBorderColor<<vault>> VAULTCOLOR
 
 participant User
+participant "GitLab Repository" as Repo <<gitlab>>
 participant "GitLab Pipeline" as GitLab <<gitlab>>
 participant "GitLab Runner\nwith vaultadmin IAM role" as Runner
 participant "AWS IAM\n(vaultadmin role)" as IAM
 participant Vault <<vault>>
 
-User -> GitLab : Triggers pipeline
+User -> Repo : Commits code to branch
+activate Repo
+
+User -> Repo : Creates merge request (MR)
+Repo -> User : MR reviewed
+
+User -> Repo : Merges MR into main
+deactivate Repo
+
+Repo -> GitLab : Triggers pipeline
 activate GitLab
 
 GitLab -> Runner : Starts runner
