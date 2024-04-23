@@ -2,8 +2,8 @@
 !define USERCOLOR #00FF00
 !define GITLABCOLOR #FFFF00
 !define RUNNERCOLOR #FC6D26
-!define IAMCOLOR #8B0000
-!define VAULTCOLOR #FF0000
+!define IAMCOLOR #FF0000
+!define VAULTCOLOR #8B0000
 
 ' Setting background and border colors for participants
 skinparam ParticipantBackgroundColor AWSCOLOR
@@ -25,48 +25,30 @@ skinparam BoxPadding 10
 box "AppCore AWS Account" #LightBlue
 participant User <<user>>
 participant "GitLab Repository" as Repo <<gitlab>>
-participant "GitLab Pipeline" as GitLab <<gitlab>>
+participant "GitLab Runner\nfrom AppCore" as AppCoreRunner <<runner>>
 end box
 
 box "Vault AWS Account" #LightGreen
-participant "GitLab Runner\nwith vaultadmin IAM role" as Runner <<runner>>
-participant "AWS IAM\n(vaultadmin role)" as IAM <<iam>>
+participant "AWS IAM\n(for setup)" as SetupIAM <<iam>>
 participant Vault <<vault>>
 end box
 
+' User commits code to a branch and creates an MR
 User -> Repo : Commits code to branch
 activate Repo
-
 User -> Repo : Creates merge request (MR)
 Repo -> User : MR reviewed
-
-User -> Repo : Merges MR into main
+Repo -> AppCoreRunner : Merge MR into main
 deactivate Repo
 
-Repo -> GitLab : Triggers pipeline
-activate GitLab
+' Environment setup runner actions
+AppCoreRunner -> SetupIAM : Assumes role to the Vault account
+activate SetupIAM
+SetupIAM -> Vault : Creates Vault cluster
+SetupIAM -> Vault : Attaches Vault admin IAM role
+SetupIAM -> Vault : Creates Vault admin roles
+deactivate SetupIAM
 
-GitLab -> Runner : Starts runner
-activate Runner
-
-Runner -> IAM : Assumes vaultadmin IAM role
-activate IAM
-
-IAM -> Vault : Auth via AWS IAM auth method\nwith admin policy
-activate Vault
-
-Vault --> IAM : Auth successful
-deactivate Vault
-
-Runner -> Vault : Perform admin tasks
-activate Vault
-
-Vault --> Runner : Tasks completed
-deactivate Vault
-
-Runner --> GitLab : Pipeline job complete
-deactivate Runner
-
-GitLab --> User : Pipeline completed
-deactivate GitLab
+' Finalizing Phase 0
+AppCoreRunner --> Repo : Job executed and completed
 @enduml
