@@ -2,8 +2,8 @@
 !define USERCOLOR #00FF00
 !define GITLABCOLOR #FFFF00
 !define RUNNERCOLOR #FC6D26
-!define IAMCOLOR #FF0000
-!define VAULTCOLOR #8B0000
+!define IAMCOLOR #8B0000
+!define VAULTCOLOR #FF0000
 
 ' Setting background and border colors for participants
 skinparam ParticipantBackgroundColor AWSCOLOR
@@ -19,12 +19,20 @@ skinparam ParticipantBorderColor<<iam>> IAMCOLOR
 skinparam ParticipantBackgroundColor<<vault>> VAULTCOLOR
 skinparam ParticipantBorderColor<<vault>> VAULTCOLOR
 
+' Define the boundary for AWS accounts
+skinparam BoxPadding 10
+
+box "AppCore AWS Account" #LightBlue
 participant User <<user>>
 participant "GitLab Repository" as Repo <<gitlab>>
 participant "GitLab Pipeline" as GitLab <<gitlab>>
+end box
+
+box "Vault AWS Account" #LightGreen
 participant "GitLab Runner\nwith vaultadmin IAM role" as Runner <<runner>>
 participant "AWS IAM\n(vaultadmin role)" as IAM <<iam>>
 participant Vault <<vault>>
+end box
 
 User -> Repo : Commits code to branch
 activate Repo
