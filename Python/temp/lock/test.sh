@@ -7,7 +7,7 @@ CONSUL_SERVER="consul-server:8500"
 SESSION_DATA='{"Name": "myServiceLock", "TTL": "15s", "Behavior": "release"}'
 LOCK_KEY="service/lock"
 
-# Create a new session in Consul
+# Function to create a new session in Consul
 create_session() {
     echo "Creating new session..."
     SESSION_ID=$(curl -s -X PUT -d "$SESSION_DATA" "http://$CONSUL_SERVER/v1/session/create" | jq -r '.ID')
@@ -38,14 +38,8 @@ acquire_lock() {
 perform_leader_tasks() {
     echo "$(hostname) is now the leader. Performing leader tasks..."
     while true; do
-        # Validate session before performing tasks
-        local session_info=$(curl -s "http://$CONSUL_SERVER/v1/session/info/$SESSION_ID")
-        if [[ "$(echo $session_info | jq -r '. | length')" == "0" ]]; then
-            echo "Session $SESSION_ID does not exist, stopping leader tasks."
-            return
-        fi
         echo "Leader is active..."
-        sleep 5
+        sleep 5  # Simulate leader activity
     done
 }
 
@@ -56,7 +50,7 @@ renew_session() {
         local response=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/$SESSION_ID")
         if [[ "$(echo $response | jq -r '. | length')" == "0" ]]; then
             echo "Failed to renew session, session might have expired."
-            return
+            break  # Exit the loop, which will end the leader process
         else
             echo "Session renewed successfully."
         fi
@@ -72,11 +66,12 @@ monitor_and_acquire_lock() {
             leader_pid=$!
             renew_session &
             renew_pid=$!
-            wait $leader_pid
+            wait $leader_pid  # Wait for leader tasks to complete before exiting
+            echo "Leader task has completed or session expired, relinquishing leadership..."
             kill $renew_pid
-            echo "Leadership or session renewal ended, attempting to re-acquire leadership..."
+            break  # Exit the function if leadership is lost
         else
-            echo "Retrying to acquire lock..."
+            echo "Failed to acquire lock, retrying in 5 seconds..."
             sleep 5
         fi
     done
