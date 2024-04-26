@@ -1,55 +1,66 @@
 #!/bin/bash
 
-# Endpoint for the Consul server
+# Consul server endpoint
 CONSUL_SERVER="consul-server:8500"
 
-# Create a session with TTL (for lock expiration on failure)
-SESSION_DATA='{"Name": "myServiceLock", "TTL": "15s", "Behavior": "delete"}'
+# Session and lock key configuration
+SESSION_DATA='{"Name": "myServiceLock", "TTL": "15s", "Behavior": "release"}'
+LOCK_KEY="service/lock"
+
+# Create a new session in Consul
 SESSION_ID=$(curl -s -X PUT -d "$SESSION_DATA" "http://$CONSUL_SERVER/v1/session/create" | jq -r '.ID')
 echo "Session created with ID: $SESSION_ID"
 
-# Key to lock on
-LOCK_KEY="service/lock"
-
-# Try to acquire the lock
-function try_acquire_lock {
-    LOCK_ACQUIRED=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?acquire=${SESSION_ID}" | jq -r '.')
+# Function to attempt to acquire the lock
+acquire_lock() {
+    LOCK_ACQUIRED=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?acquire=${SESSION_ID}")
     echo "$LOCK_ACQUIRED"
 }
 
-# Renew the session periodically
-function renew_session {
-    while true; do
-        curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/${SESSION_ID}" > /dev/null
-        sleep 10  # Sleep less than the TTL to ensure the session keeps alive
-    done
-}
-
 # Function to perform leader tasks
-function perform_leader_tasks {
-    echo "This node is the leader. Running tasks..."
-    # Place leader-specific workload here
+perform_leader_tasks() {
+    echo "$(hostname) is now the leader. Waiting for external events..."
     while true; do
-        echo "Performing leader tasks..."
-        sleep 5  # Simulate work
+        echo "Leader is waiting..."
+        sleep 60
     done
 }
 
-# Monitor the lock status and attempt to acquire it if free
-function monitor_lock {
+# Function to renew the session periodically
+renew_session() {
     while true; do
-        if [ "$(try_acquire_lock)" = "true" ]; then
-            echo "Acquired lock, becoming the leader."
+        echo "Renewing session..."
+        curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/${SESSION_ID}" > /dev/null
+        sleep 10
+    done
+}
+
+# Monitor and try to acquire the lock
+monitor_and_acquire_lock() {
+    while true; do
+        if [[ "$(acquire_lock)" == "true" ]]; then
+            echo "Lock acquired successfully."
             perform_leader_tasks &
-            leader_task_pid=$!
             renew_session &
-            wait $leader_task_pid  # Wait for the leader task to finish
-            exit 0
+            wait $!  # Wait for leader tasks to complete before exiting
+            break
+        else
+            echo "Failed to acquire lock, retrying..."
+            sleep 5
         fi
-        echo "Lock is not available. Retrying..."
-        sleep 5
     done
 }
 
-# Start monitoring the lock
-monitor_lock
+# Cleanup function to release the lock and destroy the session
+cleanup() {
+    echo "Cleaning up..."
+    curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?release=${SESSION_ID}"
+    curl -s -X PUT "http://$CONSUL_SERVER/v1/session/destroy/${SESSION_ID}"
+    echo "Resources released."
+}
+
+# Setup trap for cleanup on script exit
+trap cleanup EXIT
+
+# Start monitoring and lock acquisition
+monitor_and_acquire_lock
