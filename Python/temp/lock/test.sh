@@ -8,21 +8,38 @@ SESSION_DATA='{"Name": "myServiceLock", "TTL": "15s", "Behavior": "release"}'
 LOCK_KEY="service/lock"
 
 # Create a new session in Consul
-SESSION_ID=$(curl -s -X PUT -d "$SESSION_DATA" "http://$CONSUL_SERVER/v1/session/create" | jq -r '.ID')
-echo "Session created with ID: $SESSION_ID"
+create_session() {
+    echo "Creating new session..."
+    SESSION_ID=$(curl -s -X PUT -d "$SESSION_DATA" "http://$CONSUL_SERVER/v1/session/create" | jq -r '.ID')
+    if [[ -z "$SESSION_ID" ]]; then
+        echo "Failed to create session, retrying..."
+        sleep 5
+        create_session
+    else
+        echo "Session created with ID: $SESSION_ID"
+    fi
+}
+
+create_session
 
 # Function to attempt to acquire the lock
 acquire_lock() {
     LOCK_ACQUIRED=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?acquire=${SESSION_ID}")
-    echo "$LOCK_ACQUIRED"
+    if [[ "$LOCK_ACQUIRED" == "true" ]]; then
+        echo "Lock acquired successfully by $(hostname)."
+        return 0
+    else
+        echo "Failed to acquire lock."
+        return 1
+    fi
 }
 
 # Function to perform leader tasks
 perform_leader_tasks() {
-    echo "$(hostname) is now the leader. Waiting for external events..."
+    echo "$(hostname) is now the leader. Performing leader tasks..."
     while true; do
-        echo "Leader is waiting..."
-        sleep 60
+        echo "Leader is active..."
+        sleep 5
     done
 }
 
@@ -30,7 +47,13 @@ perform_leader_tasks() {
 renew_session() {
     while true; do
         echo "Renewing session..."
-        curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/${SESSION_ID}" > /dev/null
+        response=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/$SESSION_ID")
+        if [[ "$(echo $response | jq -r '.[] | select(.ID == null)')" != "" ]]; then
+            echo "Session renewal failed or session expired, creating new session..."
+            create_session
+        else
+            echo "Session renewed successfully."
+        fi
         sleep 10
     done
 }
@@ -38,14 +61,13 @@ renew_session() {
 # Monitor and try to acquire the lock
 monitor_and_acquire_lock() {
     while true; do
-        if [[ "$(acquire_lock)" == "true" ]]; then
-            echo "Lock acquired successfully."
+        if acquire_lock; then
             perform_leader_tasks &
             renew_session &
             wait $!  # Wait for leader tasks to complete before exiting
             break
         else
-            echo "Failed to acquire lock, retrying..."
+            echo "Retrying to acquire lock..."
             sleep 5
         fi
     done
