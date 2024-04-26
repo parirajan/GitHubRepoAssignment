@@ -13,15 +13,15 @@ LOCK_KEY="service/lock"
 
 # Try to acquire the lock
 function try_acquire_lock {
-    LOCK_ACQUIRED=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?acquire=${SESSION_ID}" -d "Locked by $(hostname)")
+    LOCK_ACQUIRED=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?acquire=${SESSION_ID}" | jq -r '.')
     echo "$LOCK_ACQUIRED"
 }
 
 # Renew the session periodically
 function renew_session {
     while true; do
-        curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/${SESSION_ID}"
-        sleep 10
+        curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/${SESSION_ID}" > /dev/null
+        sleep 10  # Sleep less than the TTL to ensure the session keeps alive
     done
 }
 
@@ -35,31 +35,21 @@ function perform_leader_tasks {
     done
 }
 
-# Attempt to acquire the lock immediately
-if [ "$(try_acquire_lock)" = "true" ]; then
-    perform_leader_tasks &
-    leader_task_pid=$!
-    renew_session &
-else
-    echo "This node is a follower. Monitoring the lock..."
+# Monitor the lock status and attempt to acquire it if free
+function monitor_lock {
     while true; do
         if [ "$(try_acquire_lock)" = "true" ]; then
+            echo "Acquired lock, becoming the leader."
             perform_leader_tasks &
             leader_task_pid=$!
             renew_session &
-            break
+            wait $leader_task_pid  # Wait for the leader task to finish
+            exit 0
         fi
-        echo "Still a follower..."
+        echo "Lock is not available. Retrying..."
         sleep 5
     done
-fi
-
-# Cleanup function to ensure lock release and session destruction
-function cleanup {
-    kill $leader_task_pid
-    curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?release=${SESSION_ID}"
-    curl -s -X PUT "http://$CONSUL_SERVER/v1/session/destroy/${SESSION_ID}"
-    exit 0
 }
 
-trap cleanup EXIT
+# Start monitoring the lock
+monitor_lock
