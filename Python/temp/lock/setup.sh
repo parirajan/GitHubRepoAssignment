@@ -30,11 +30,19 @@ cleanup() {
     # Release the lock
     LOCK_KEY="my-service/lock"
     LOCK_DATA="Releasing lock held by $(hostname)"
-    curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/$LOCK_KEY?release=$SESSION_ID" -d "$LOCK_DATA"
+    # Release the lock associated with the session, don't delete the key
+    if curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/$LOCK_KEY?release=$SESSION_ID" -d "$LOCK_DATA"; then
+        echo "Lock released."
+    else
+        echo "Failed to release lock."
+    fi
 
     # Destroy the session
-    curl -s -X PUT "http://$CONSUL_SERVER/v1/session/destroy/$SESSION_ID"
-    echo "Session and lock released."
+    if curl -s -X PUT "http://$CONSUL_SERVER/v1/session/destroy/$SESSION_ID"; then
+        echo "Session destroyed."
+    else
+        echo "Failed to destroy session."
+    fi
 
     exit 0
 }
@@ -57,10 +65,22 @@ renew_session &
 # Polling loop to check key status and attempt to acquire lock
 while true; do
     echo "Checking lock status..."
-    LOCK_STATUS=$(curl -s "http://$CONSUL_SERVER/v1/kv/$LOCK_KEY?raw" | jq -r '.')
-    if [ "$LOCK_STATUS" == "null" ] || [ -z "$LOCK_STATUS" ]; then
-        echo "Lock is available. Attempting to acquire..."
+    LOCK_STATUS=$(curl -s -w "%{http_code}" -o temp.txt "http://$CONSUL_SERVER/v1/kv/$LOCK_KEY?raw")
+    HTTP_CODE=$(tail -n1 temp.txt)
+    LOCK_STATUS=$(head -n -1 temp.txt)
+    if [ "$HTTP_CODE" != "200" ]; then
+        echo "Failed to retrieve key with HTTP status: $HTTP_CODE"
+        # Handle error or retry
+    elif [[ -z "$LOCK_STATUS" ]]; then
+        echo "No lock found or lock is available."
         ./handle_lock_change.sh
+    else
+        # Process with jq as before
+        LOCK_STATUS=$(echo "$LOCK_STATUS" | jq -r '.')
+        if [ "$LOCK_STATUS" == "null" ]; then
+            echo "Lock is available. Attempting to acquire..."
+            ./handle_lock_change.sh
+        fi
     fi
     sleep 10  # Check every 10 seconds
 done
