@@ -38,6 +38,12 @@ acquire_lock() {
 perform_leader_tasks() {
     echo "$(hostname) is now the leader. Performing leader tasks..."
     while true; do
+        # Validate session before performing tasks
+        local session_info=$(curl -s "http://$CONSUL_SERVER/v1/session/info/$SESSION_ID")
+        if [[ "$(echo $session_info | jq -r '. | length')" == "0" ]]; then
+            echo "Session $SESSION_ID does not exist, stopping leader tasks."
+            return
+        fi
         echo "Leader is active..."
         sleep 5
     done
@@ -47,10 +53,10 @@ perform_leader_tasks() {
 renew_session() {
     while true; do
         echo "Renewing session..."
-        response=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/$SESSION_ID")
-        if [[ "$(echo $response | jq -r '.[] | select(.ID == null)')" != "" ]]; then
-            echo "Session renewal failed or session expired, creating new session..."
-            create_session
+        local response=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/session/renew/$SESSION_ID")
+        if [[ "$(echo $response | jq -r '. | length')" == "0" ]]; then
+            echo "Failed to renew session, session might have expired."
+            return
         else
             echo "Session renewed successfully."
         fi
@@ -63,9 +69,12 @@ monitor_and_acquire_lock() {
     while true; do
         if acquire_lock; then
             perform_leader_tasks &
+            leader_pid=$!
             renew_session &
-            wait $!  # Wait for leader tasks to complete before exiting
-            break
+            renew_pid=$!
+            wait $leader_pid
+            kill $renew_pid
+            echo "Leadership or session renewal ended, attempting to re-acquire leadership..."
         else
             echo "Retrying to acquire lock..."
             sleep 5
