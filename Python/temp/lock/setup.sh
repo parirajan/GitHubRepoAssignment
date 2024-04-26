@@ -45,9 +45,22 @@ trap cleanup EXIT
 # Start session renewal in the background
 renew_session &
 
+
+# Use consul watch only if the agent is configured and running
 # Initial attempt to acquire the lock
-chmod +x handle_lock_change.sh
-./handle_lock_change.sh
+#chmod +x handle_lock_change.sh
+#./handle_lock_change.sh
 
 # Start a watch on the key
-consul watch -type=key -key=my-service/lock ./handle_lock_change.sh
+#consul watch -type=key -key=my-service/lock ./handle_lock_change.sh
+
+# Polling loop to check key status and attempt to acquire lock
+while true; do
+    echo "Checking lock status..."
+    LOCK_STATUS=$(curl -s "http://$CONSUL_SERVER/v1/kv/$LOCK_KEY?raw" | jq -r '.')
+    if [ "$LOCK_STATUS" == "null" ] || [ -z "$LOCK_STATUS" ]; then
+        echo "Lock is available. Attempting to acquire..."
+        ./handle_lock_change.sh
+    fi
+    sleep 10  # Check every 10 seconds
+done
