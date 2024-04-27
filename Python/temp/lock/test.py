@@ -1,6 +1,7 @@
 import consul
 import time
 import socket
+import threading
 from requests.exceptions import RequestException
 
 # Configuration
@@ -14,20 +15,21 @@ def create_session(client, name, ttl):
     try:
         session_id = client.session.create(name=name, behavior='delete', ttl=ttl)
         print(f"Session created with ID: {session_id}")
+        return session_id
     except RequestException as e:
         print(f"Failed to create session: {str(e)}")
-        session_id = None
-    return session_id
+        return None
 
 def renew_session(client, session_id):
     """Renew the session."""
-    try:
-        client.session.renew(session_id)
-        print(f"Session {session_id} renewed successfully.")
-        return True
-    except RequestException as e:
-        print(f"Failed to renew session {session_id}: {str(e)}")
-        return False
+    while True:
+        try:
+            client.session.renew(session_id)
+            print(f"Session {session_id} renewed successfully.")
+            time.sleep(10)  # Renew session every 10 seconds
+        except RequestException as e:
+            print(f"Failed to renew session {session_id}: {str(e)}")
+            break
 
 def acquire_lock(client, session_id, lock_key):
     """Attempt to acquire the lock."""
@@ -60,6 +62,21 @@ def perform_leader_tasks():
     except KeyboardInterrupt:
         print("Stopping leader tasks...")
 
+def watch_key(client, lock_key):
+    """Watch the lock key for changes."""
+    last_index = None
+    while True:
+        index, data = client.kv.get(lock_key, index=last_index)
+        if index != last_index:
+            print("Detected change in lock key")
+            if data is None or not data['Session']:
+                # Lock is free
+                print("Lock is free, attempting to acquire")
+                if acquire_lock(client, session_id, lock_key):
+                    perform_leader_tasks()
+            last_index = index
+        time.sleep(1)
+
 def main():
     client = consul.Consul(host=CONSUL_HOST, port=CONSUL_PORT)
     
@@ -68,17 +85,15 @@ def main():
     if not session_id:
         return
 
-    try:
-        # Acquire lock and perform leader tasks
-        if acquire_lock(client, session_id, LOCK_KEY):
-            perform_leader_tasks()
-        # Continuously check if the session needs to be renewed or lock re-acquired
-        while True:
-            if not renew_session(client, session_id):
-                break
-            time.sleep(10)
-    finally:
-        release_lock(client, session_id, LOCK_KEY)
+    # Start a thread to renew the session
+    renew_thread = threading.Thread(target=renew_session, args=(client, session_id))
+    renew_thread.start()
+
+    # Start a thread to watch the lock key
+    watch_thread = threading.Thread(target=watch_key, args=(client, LOCK_KEY))
+    watch_thread.start()
+
+    watch_thread.join()  # Wait for the watch thread to end
 
 if __name__ == "__main__":
     main()
