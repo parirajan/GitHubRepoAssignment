@@ -3,13 +3,25 @@
 # Consul server endpoint
 CONSUL_SERVER="consul-server:8500"
 
-# Session and lock key configuration
-SESSION_DATA='{"Name": "myServiceLock", "TTL": "15s", "Behavior": "release"}'
-LOCK_KEY="service/lock"
+# Get the hostname of the current machine
+HOSTNAME=$(hostname)
+
+# Session and lock key configuration with metadata indicating the host
+SESSION_DATA=$(cat <<EOF
+{
+  "Name": "myServiceLock",
+  "TTL": "15s",
+  "Behavior": "release",
+  "Meta": {
+    "host": "${HOSTNAME}"
+  }
+}
+EOF
+)
 
 # Function to create a new session in Consul
 create_session() {
-    echo "Attempting to create a new session..."
+    echo "Attempting to create a new session from host ${HOSTNAME}..."
     SESSION_ID=$(curl -s -X PUT -d "$SESSION_DATA" "http://$CONSUL_SERVER/v1/session/create" | jq -r '.ID')
     if [[ -z "$SESSION_ID" || "$SESSION_ID" == "null" ]]; then
         echo "Failed to create session, retrying..."
@@ -20,35 +32,35 @@ create_session() {
     fi
 }
 
-create_session
-
 # Function to check if the session is still valid
 check_session_validity() {
     local session_info=$(curl -s "http://$CONSUL_SERVER/v1/session/info/$SESSION_ID")
     if [[ "$(echo $session_info | jq -r '. | length')" == "0" ]]; then
         echo "Session $SESSION_ID is no longer valid. Creating a new one..."
         create_session
+    else
+        echo "Session $SESSION_ID is still valid."
     fi
 }
 
 # Function to attempt to acquire the lock
 acquire_lock() {
     check_session_validity
-    LOCK_ACQUIRED=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?acquire=${SESSION_ID}")
+    LOCK_ACQUIRED=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?acquire=${SESSION_ID}" | jq -r '.')
     if [[ "$LOCK_ACQUIRED" == "true" ]]; then
-        echo "Lock acquired successfully by $(hostname)."
+        echo "Lock acquired successfully by ${HOSTNAME}."
         return 0
     else
-        echo "Failed to acquire lock, session may be invalid."
+        echo "Failed to acquire lock. The response was $LOCK_ACQUIRED."
         return 1
     fi
 }
 
 # Function to perform leader tasks
 perform_leader_tasks() {
-    echo "$(hostname) is now the leader. Performing leader tasks..."
+    echo "${HOSTNAME} is now the leader. Performing leader tasks..."
     while true; do
-        echo "Leader is active..."
+        echo "Leader ${HOSTNAME} is active..."
         sleep 5  # Simulate leader activity
     done
 }
@@ -71,7 +83,7 @@ cleanup() {
     echo "Cleaning up..."
     curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?release=${SESSION_ID}"
     curl -s -X PUT "http://$CONSUL_SERVER/v1/session/destroy/${SESSION_ID}"
-    echo "Resources released."
+    echo "Resources released by ${HOSTNAME}."
 }
 
 # Setup trap for cleanup on script exit
