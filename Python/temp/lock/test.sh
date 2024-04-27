@@ -1,12 +1,10 @@
 #!/bin/bash
 
-# Consul server endpoint
+# Define the Consul server endpoint
 CONSUL_SERVER="consul-server:8500"
 
-# Get the hostname of the current machine
+# Define session parameters with a unique identifier such as hostname
 HOSTNAME=$(hostname)
-
-# Session and lock key configuration with metadata indicating the host
 SESSION_DATA=$(cat <<EOF
 {
   "Name": "myServiceLock",
@@ -22,9 +20,10 @@ EOF
 # Function to create a new session in Consul
 create_session() {
     echo "Attempting to create a new session from host ${HOSTNAME}..."
-    SESSION_ID=$(curl -s -X PUT -d "$SESSION_DATA" "http://$CONSUL_SERVER/v1/session/create" | jq -r '.ID')
+    response=$(curl -s -X PUT -d "$SESSION_DATA" "http://${CONSUL_SERVER}/v1/session/create")
+    SESSION_ID=$(echo "$response" | jq -r '.ID')
     if [[ -z "$SESSION_ID" || "$SESSION_ID" == "null" ]]; then
-        echo "Failed to create session, retrying..."
+        echo "Failed to create session, response was: $response"
         sleep 5
         create_session
     else
@@ -34,7 +33,7 @@ create_session() {
 
 # Function to check if the session is still valid
 check_session_validity() {
-    local session_info=$(curl -s "http://$CONSUL_SERVER/v1/session/info/$SESSION_ID")
+    session_info=$(curl -s "http://${CONSUL_SERVER}/v1/session/info/$SESSION_ID")
     if [[ "$(echo $session_info | jq -r '. | length')" == "0" ]]; then
         echo "Session $SESSION_ID is no longer valid. Creating a new one..."
         create_session
@@ -46,12 +45,13 @@ check_session_validity() {
 # Function to attempt to acquire the lock
 acquire_lock() {
     check_session_validity
-    LOCK_ACQUIRED=$(curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?acquire=${SESSION_ID}" | jq -r '.')
-    if [[ "$LOCK_ACQUIRED" == "true" ]]; then
+    LOCK_KEY="service/lock"
+    LOCK_ACQUIRED=$(curl -s -X PUT "http://${CONSUL_SERVER}/v1/kv/${LOCK_KEY}?acquire=$SESSION_ID")
+    if [[ "$(echo $LOCK_ACQUIRED | jq -r '.')" == "true" ]]; then
         echo "Lock acquired successfully by ${HOSTNAME}."
         return 0
     else
-        echo "Failed to acquire lock. The response was $LOCK_ACQUIRED."
+        echo "Failed to acquire lock. The response was $(echo $LOCK_ACQUIRED | jq -r '.')"
         return 1
     fi
 }
@@ -69,8 +69,8 @@ perform_leader_tasks() {
 monitor_and_acquire_lock() {
     while true; do
         if acquire_lock; then
-            perform_leader_tasks &
-            wait $!  # Wait for the leader tasks to complete before exiting
+            perform_leader_tasks
+            break
         else
             echo "Retrying to acquire lock in 5 seconds..."
             sleep 5
@@ -81,13 +81,14 @@ monitor_and_acquire_lock() {
 # Cleanup function to release the lock and destroy the session
 cleanup() {
     echo "Cleaning up..."
-    curl -s -X PUT "http://$CONSUL_SERVER/v1/kv/${LOCK_KEY}?release=${SESSION_ID}"
-    curl -s -X PUT "http://$CONSUL_SERVER/v1/session/destroy/${SESSION_ID}"
+    curl -s -X PUT "http://${CONSUL_SERVER}/v1/kv/${LOCK_KEY}?release=$SESSION_ID"
+    curl -s -X PUT "http://${CONSUL_SERVER}/v1/session/destroy/$SESSION_ID"
     echo "Resources released by ${HOSTNAME}."
 }
 
 # Setup trap for cleanup on script exit
 trap cleanup EXIT
 
-# Start monitoring and lock acquisition
+# Start the process by creating a session and trying to acquire the lock
+create_session
 monitor_and_acquire_lock
