@@ -34,15 +34,17 @@ def renew_session(client, session_id):
 def acquire_lock(client, session_id, lock_key):
     """Attempt to acquire the lock."""
     try:
-        if client.kv.put(lock_key, socket.gethostname(), acquire=session_id):
+        response = client.kv.put(lock_key, socket.gethostname(), acquire=session_id)
+        if response:
             print(f"Lock acquired by {socket.gethostname()}")
             return True
         else:
-            print("Lock acquisition failed.")
+            print("Lock acquisition failed, response:", response)
             return False
     except RequestException as e:
         print(f"Error acquiring lock: {str(e)}")
         return False
+
 
 def release_lock(client, session_id, lock_key):
     """Release the lock and destroy the session."""
@@ -69,11 +71,10 @@ def watch_key(client, session_id, lock_key):
         index, data = client.kv.get(lock_key, index=last_index)
         if index != last_index:
             print("Detected change in lock key")
-            if data is None or not data['Session']:
-                # Lock is free
+            if not data or not data['Session']:
                 print("Lock is free, attempting to acquire")
-                if acquire_lock(client, session_id, lock_key):
-                    perform_leader_tasks()
+                if not acquire_lock(client, session_id, lock_key):
+                    print("Failed to acquire lock after it appeared free, retrying...")
             last_index = index
         time.sleep(1)
 
