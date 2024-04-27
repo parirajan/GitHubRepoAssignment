@@ -11,9 +11,9 @@ LOCK_KEY = 'service/leader'
 TTL = '15s'  # Time-To-Live for the session
 
 def create_session(client, name, ttl):
-    """Create a new session in Consul."""
+    """Create a new session in Consul with 'release' behavior."""
     try:
-        session_id = client.session.create(name=name, behavior='delete', ttl=ttl)
+        session_id = client.session.create(name=name, behavior='release', ttl=ttl)
         print(f"Session created with ID: {session_id}")
         return session_id
     except RequestException as e:
@@ -34,26 +34,15 @@ def renew_session(client, session_id):
 def acquire_lock(client, session_id, lock_key):
     """Attempt to acquire the lock."""
     try:
-        response = client.kv.put(lock_key, socket.gethostname(), acquire=session_id)
-        if response:
+        if client.kv.put(lock_key, socket.gethostname(), acquire=session_id):
             print(f"Lock acquired by {socket.gethostname()}")
             return True
         else:
-            print("Lock acquisition failed, response:", response)
+            print("Lock acquisition failed.")
             return False
     except RequestException as e:
         print(f"Error acquiring lock: {str(e)}")
         return False
-
-
-def release_lock(client, session_id, lock_key):
-    """Release the lock and destroy the session."""
-    try:
-        client.kv.put(lock_key, release=session_id)
-        client.session.destroy(session_id)
-        print("Lock released and session destroyed")
-    except RequestException as e:
-        print(f"Error releasing lock or destroying session: {str(e)}")
 
 def perform_leader_tasks():
     """Perform tasks exclusive to the leader."""
@@ -63,20 +52,6 @@ def perform_leader_tasks():
             time.sleep(5)
     except KeyboardInterrupt:
         print("Stopping leader tasks...")
-
-def watch_key(client, session_id, lock_key):
-    """Watch the lock key for changes."""
-    last_index = None
-    while True:
-        index, data = client.kv.get(lock_key, index=last_index)
-        if index != last_index:
-            print("Detected change in lock key")
-            if not data or not data['Session']:
-                print("Lock is free, attempting to acquire")
-                if not acquire_lock(client, session_id, lock_key):
-                    print("Failed to acquire lock after it appeared free, retrying...")
-            last_index = index
-        time.sleep(1)
 
 def main():
     client = consul.Consul(host=CONSUL_HOST, port=CONSUL_PORT)
@@ -90,11 +65,11 @@ def main():
     renew_thread = threading.Thread(target=renew_session, args=(client, session_id))
     renew_thread.start()
 
-    # Start a thread to watch the lock key
-    watch_thread = threading.Thread(target=watch_key, args=(client, session_id, LOCK_KEY))
-    watch_thread.start()
+    # Acquire the lock and perform leader tasks if successful
+    if acquire_lock(client, session_id, LOCK_KEY):
+        perform_leader_tasks()
 
-    watch_thread.join()  # Wait for the watch thread to end
+    renew_thread.join()  # Wait for the renew thread to finish if it hasn't already
 
 if __name__ == "__main__":
     main()
