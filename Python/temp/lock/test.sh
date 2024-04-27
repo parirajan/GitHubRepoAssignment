@@ -1,64 +1,68 @@
 #!/bin/bash
 
-# Configuration variables
+# Define the Consul server endpoint
 CONSUL_SERVER="consul-server:8500"
-SESSION_NAME="service_leader_election"
-LOCK_KEY="service/leader"
-TTL="15s"  # Time-To-Live for the session
+COMMON_KEY="service/leader"
 
-# Create a session in Consul
-create_session() {
-    local session_id=$(curl --request PUT --data "{\"Name\": \"$SESSION_NAME\", \"TTL\": \"$TTL\", \"Behavior\": \"delete\"}" http://$CONSUL_SERVER/v1/session/create | jq -r '.ID')
-    echo $session_id
+# Create or renew a session in Consul using the common key
+create_or_renew_session() {
+    if [[ -z "$SESSION_ID" || "$SESSION_ID" == "null" ]]; then
+        # Create a new session if not already available
+        echo "Creating a new session for leadership contention..."
+        response=$(curl -s -X PUT --data "{\"Name\": \"$COMMON_KEY\", \"TTL\": \"15s\", \"Behavior\": \"delete\"}" "http://${CONSUL_SERVER}/v1/session/create")
+        SESSION_ID=$(echo "$response" | jq -r '.ID')
+        echo "Session created with ID: $SESSION_ID"
+    else
+        # Renew the existing session
+        echo "Renewing the existing session..."
+        curl -s -X PUT "http://${CONSUL_SERVER}/v1/session/renew/$SESSION_ID" > /dev/null
+    fi
 }
 
-# Renew the session
-renew_session() {
-    local session_id=$1
-    while true; do
-        curl --request PUT http://$CONSUL_SERVER/v1/session/renew/$session_id
-        sleep 10  # Renew every 10 seconds, half of the TTL
-    done
-}
-
-# Acquire the lock
+# Attempt to acquire the lock
 acquire_lock() {
-    local session_id=$1
+    result=$(curl -s -X PUT --data "{\"acquire\": \"$SESSION_ID\"}" "http://${CONSUL_SERVER}/v1/kv/$COMMON_KEY" | jq -r '.')
+    if [[ "$result" == "true" ]]; then
+        echo "$(hostname) has acquired the lock and is now the leader."
+        return 0
+    else
+        echo "$(hostname) did not acquire the lock and is a follower."
+        return 1
+    fi
+}
+
+# Monitor the lock and attempt to re-acquire if lost
+monitor_lock() {
     while true; do
-        local result=$(curl --request PUT --data "{\"acquire\": \"$session_id\"}" http://$CONSUL_SERVER/v1/kv/$LOCK_KEY | jq -r '.')
-        if [[ "$result" == "true" ]]; then
-            echo "Lock acquired, node is leader"
-            break
+        if acquire_lock; then
+            # Perform leader tasks
+            perform_leader_tasks
+        else
+            # Sleep and retry to acquire the lock
+            sleep 5
         fi
-        sleep 5  # Check every 5 seconds if the lock can be acquired
     done
 }
 
-# Leader tasks
+# Leader tasks performed by the instance that holds the lock
 perform_leader_tasks() {
-    echo "Performing leader tasks"
-    # Simulate long-running leader task
+    echo "Performing leader tasks..."
     while true; do
-        echo "Leader is active"
+        echo "Leader $(hostname) is active..."
         sleep 5
     done
 }
 
-# Main logic
-session_id=$(create_session)
-if [[ -z "$session_id" || "$session_id" == "null" ]]; then
-    echo "Failed to create session"
-    exit 1
-fi
-echo "Session created with ID: $session_id"
+# Setup trap for cleanup on script exit
+trap cleanup EXIT
 
-# Start session renewal in the background
-renew_session $session_id &
-renew_pid=$!
+cleanup() {
+    echo "Releasing the lock and destroying the session..."
+    curl -s -X PUT "http://${CONSUL_SERVER}/v1/kv/$COMMON_KEY?release=$SESSION_ID"
+    curl -s -X PUT "http://${CONSUL_SERVER}/v1/session/destroy/$SESSION_ID"
+    echo "Cleanup completed by $(hostname)."
+}
 
-# Attempt to acquire the lock and perform tasks if successful
-acquire_lock $session_id
-perform_leader_tasks
-
-# Cleanup when the node shuts down
-trap "curl --request PUT http://$CONSUL_SERVER/v1/session/destroy/$session_id; kill $renew_pid" EXIT
+# Main execution flow
+create_or_renew_session
+monitor_lock
