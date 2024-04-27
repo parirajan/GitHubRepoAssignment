@@ -62,7 +62,7 @@ def perform_leader_tasks():
     except KeyboardInterrupt:
         print("Stopping leader tasks...")
 
-def watch_key(client, lock_key):
+def watch_key(client, session_id, lock_key):
     """Watch the lock key for changes."""
     last_index = None
     while True:
@@ -90,7 +90,7 @@ def main():
     renew_thread.start()
 
     # Start a thread to watch the lock key
-    watch_thread = threading.Thread(target=watch_key, args=(client, LOCK_KEY))
+    watch_thread = threading.Thread(target=watch_key, args=(client, session_id, LOCK_KEY))
     watch_thread.start()
 
     watch_thread.join()  # Wait for the watch thread to end
