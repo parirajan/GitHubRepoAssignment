@@ -36,8 +36,17 @@ class LeaderElector:
     def run_leader_task(self):
         if self.is_leader:
             print("Running leader task...")
-            # Placeholder for the leader's task, e.g., os.system('your_leader_script.sh')
-            time.sleep(10)  # Simulate long-running task
+            counter = 0
+            try:
+                while True:
+                    counter += 1
+                    print(f"Leader task running... Current count: {counter}")
+                    time.sleep(1)  # Sleep for 1 second to slow down the output
+            except KeyboardInterrupt:
+                print("Leader task interrupted.")
+            except Exception as e:
+                print(f"Error during leader task: {e}")
+
 
     def step_down(self):
         self.release_lock()
