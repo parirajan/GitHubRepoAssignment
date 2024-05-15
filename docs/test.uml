@@ -27,10 +27,16 @@ rectangle "Web Application" as WebApp {
     node "Web App Node 6 (Down)" as AppNode6
 }
 
+rectangle "Identity Provider (IDP)" as IDP {
+    node "IDP Server" as IDPServer
+}
+
 User --> Proxy : Sends request
+Proxy --> IDPServer : IDP Authentication
+IDPServer --> Proxy : Auth Response
 Proxy --> Consul : Resolves healthy nodes
 Consul --> Proxy : Returns healthy node (Node 1)
-Proxy --> AppNode1 : Proxies request
+Proxy --> AppNode1 : Proxies request\n+ Custom Headers
 
 note right of AppNode2 : Other Nodes\nare marked down
 @enduml
