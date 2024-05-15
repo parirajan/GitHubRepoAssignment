@@ -1,54 +1,34 @@
 @startuml
-!define USERCOLOR #00FF00
-!define GITLABCOLOR #FFFF00
-!define RUNNERCOLOR #FC6D26
-!define IAMCOLOR #FF0000
-!define VAULTCOLOR #8B0000
+skinparam rectangle {
+    StrokeColor black
+    Shadowing false
+}
 
-' Setting background and border colors for participants
-skinparam ParticipantBackgroundColor AWSCOLOR
-skinparam ParticipantBorderColor AWSCOLOR
-skinparam ParticipantBackgroundColor<<user>> USERCOLOR
-skinparam ParticipantBorderColor<<user>> USERCOLOR
-skinparam ParticipantBackgroundColor<<gitlab>> GITLABCOLOR
-skinparam ParticipantBorderColor<<gitlab>> GITLABCOLOR
-skinparam ParticipantBackgroundColor<<runner>> RUNNERCOLOR
-skinparam ParticipantBorderColor<<runner>> RUNNERCOLOR
-skinparam ParticipantBackgroundColor<<iam>> IAMCOLOR
-skinparam ParticipantBorderColor<<iam>> IAMCOLOR
-skinparam ParticipantBackgroundColor<<vault>> VAULTCOLOR
-skinparam ParticipantBorderColor<<vault>> VAULTCOLOR
+rectangle User {
+    node "User" as User
+}
 
-' Define the boundary for AWS accounts
-skinparam BoxPadding 10
+rectangle "Reverse Proxy" as ReverseProxy {
+    node "NGINX/Other" as Proxy
+}
 
-box "AppCore AWS Account" #LightBlue
-participant User <<user>>
-participant "GitLab Repository" as Repo <<gitlab>>
-participant "GitLab Runner\nfrom AppCore" as AppCoreRunner <<runner>>
-end box
+rectangle "Service Discovery" as ServiceDiscovery {
+    database "Consul" as Consul
+}
 
-box "Vault AWS Account" #LightGreen
-participant "AWS IAM\n(for setup)" as SetupIAM <<iam>>
-participant Vault <<vault>>
-end box
+rectangle "Web Application" as WebApp {
+    node "Web App Node 1 (Healthy)" as AppNode1
+    node "Web App Node 2 (Down)" as AppNode2
+    node "Web App Node 3 (Down)" as AppNode3
+    node "Web App Node 4 (Down)" as AppNode4
+    node "Web App Node 5 (Down)" as AppNode5
+    node "Web App Node 6 (Down)" as AppNode6
+}
 
-' User commits code to a branch and creates an MR
-User -> Repo : Commits code to branch
-activate Repo
-User -> Repo : Creates merge request (MR)
-Repo -> User : MR reviewed
-Repo -> AppCoreRunner : Merge MR into main
-deactivate Repo
+User --> Proxy : Sends request
+Proxy --> Consul : Resolves healthy nodes
+Consul --> Proxy : Returns healthy node (Node 1)
+Proxy --> AppNode1 : Proxies request
 
-' Environment setup runner actions
-AppCoreRunner -> SetupIAM : Assumes role to the Vault account
-activate SetupIAM
-SetupIAM -> Vault : Creates Vault cluster
-SetupIAM -> Vault : Attaches Vault admin IAM role
-SetupIAM -> Vault : Creates Vault admin roles
-deactivate SetupIAM
-
-' Finalizing Phase 0
-AppCoreRunner --> Repo : Job executed and completed
+note right of AppNode2 : Other Nodes\nare marked down
 @enduml
