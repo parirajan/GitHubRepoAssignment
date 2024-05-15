@@ -1,0 +1,22 @@
+@startuml
+actor EndUser as "END USER"
+participant Browser
+participant IDP as "IDP"
+participant NGINX as "NGINX+"
+participant WebApp as "WEB APP"
+
+EndUser -> Browser : 1. Requests protected resource
+Browser -> IDP : 2. Redirected to IdP for authentication
+IDP -> Browser : 3. Requests login page
+Browser -> IDP : 4. Provides authentication and consent
+IDP -> Browser : 5. Sends redirect with\nauthorization code
+Browser -> NGINX : 6. Redirected to NGINX for code exchange
+NGINX -> IDP : 7. Sends authorization code
+IDP -> NGINX : 8. Sends ID Token
+NGINX -> WebApp : 9. Validates ID Token,\ncreates session cookie
+WebApp -> Browser : 10. Sends redirect to original URI
+Browser -> WebApp : 11. Requests original URI,\nsupplying session cookie
+WebApp -> NGINX : 12. Extracts JWT from cookie,\nvalidates signature
+NGINX -> WebApp : 13. Proxies request
+WebApp -> Browser : 14. Sends resource
+@enduml
