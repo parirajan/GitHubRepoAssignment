@@ -6,17 +6,23 @@ skinparam rectangle {
     Shadowing false
 }
 
-rectangle "Account-1" as Account1 {
+rectangle "External Account (Okta OIDC IDP)" as ExternalAccount {
+    node "Okta OIDC IDP" as Okta
+}
+
+rectangle "DMZ Account" as DMZAccount {
+    rectangle "NGINX OSS Proxy" as DMZProxy {
+        node "NGINX OSS (DMZ)" as NGINXOSS
+    }
+}
+
+rectangle "Application Account" as AppAccount {
     rectangle User {
         node "User" as User
     }
 
-    rectangle "Reverse Proxy" as ReverseProxy1 {
-        node "NGINX/Other (Account-1)" as Proxy1
-    }
-
-    rectangle "Service Discovery" as ServiceDiscovery {
-        database "Consul" as Consul
+    rectangle "NGINX Plus Reverse Proxy" as AppProxy {
+        node "NGINX Plus (App Account)" as Proxy1
     }
 
     rectangle "Web Application" as WebApp {
@@ -31,25 +37,13 @@ rectangle "Account-1" as Account1 {
             node "Web App Node 6 (Down)" as AppNode6
         }
     }
-
-    rectangle "Identity Provider (IDP)" as IDP {
-        node "IDP Server" as IDPServer
-    }
 }
 
-rectangle "Account-DMZ" as AccountDMZ {
-    rectangle "Reverse Proxy" as ReverseProxyDMZ {
-        node "NGINX/Other (DMZ)" as ProxyDMZ
-    }
-}
+User --> NGINXOSS : Sends request
+NGINXOSS --> Proxy1 : Forward with\nUpstream Sticky Session
+Proxy1 --> Okta : IDP Authentication
+Okta --> Proxy1 : Authentication Response
+Proxy1 --> AppNode1 : Proxies request to\nHealthy Node in Region1
 
-User --> ProxyDMZ : Sends request
-ProxyDMZ --> IDPServer : IDP Authentication
-IDPServer --> ProxyDMZ : Auth Response
-ProxyDMZ --> Proxy1 : Forward request\n+ Sticky Session
-Proxy1 --> Consul : Resolves healthy nodes
-Consul --> Proxy1 : Returns healthy node (Node 1)
-Proxy1 --> AppNode1 : Proxies request\n+ Custom Headers
-
-note right of AppNode2 : Other Nodes\nare marked down
+note right of AppNode2 : Other Nodes in Region1 and Region2\nare marked down
 @enduml
