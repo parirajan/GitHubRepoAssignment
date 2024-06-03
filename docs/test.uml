@@ -1,30 +1,44 @@
 @startuml
 actor User
-actor "Nginx Proxy" as Nginx
+left to right direction
 
-entity "Vault Agent (Nginx)" as VaultAgentNginx
-entity "Vault Agent (Safer Payment)" as VaultAgentPayment
-entity "MTLS Cert Path (Nginx)" as CertPathNginx
-entity "MTLS Cert Path (Safer Payment)" as CertPathPayment
-entity "Safer Payment Cluster" as PaymentCluster
 entity "Vault Server" as Vault
 
+' Left side entities
+entity "Vault Agent (Nginx)" as VaultAgentNginx
+entity "MTLS Cert Path (Nginx)" as CertPathNginx
+actor "Nginx Proxy" as Nginx
+
+' Right side entities
+entity "Safer Payment Cluster" as PaymentCluster
+entity "MTLS Cert Path (Safer Payment)" as CertPathPayment
+entity "Vault Agent (Safer Payment)" as VaultAgentPayment
+
+' Layout organization
+VaultAgentNginx -[hidden]-> Vault
+Vault -[hidden]-> VaultAgentPayment
+
+' User interaction
 User -> Nginx: Sends Request
 
+' Nginx interactions
 Nginx -> PaymentCluster: Forward Request with mTLS
-
 PaymentCluster -> CertPathPayment: Retrieve mTLS Cert and Key
 
+' Vault Agent interactions (Nginx)
 VaultAgentNginx -> Vault: Fetch mTLS Certs
 Vault -> VaultAgentNginx: Return mTLS Certs
 VaultAgentNginx -> CertPathNginx: Render and Store/Update mTLS Certs
 
+' Vault Agent interactions (Safer Payment)
 VaultAgentPayment -> Vault: Fetch mTLS Certs
 Vault -> VaultAgentPayment: Return mTLS Certs
 VaultAgentPayment -> CertPathPayment: Render and Store/Update mTLS Certs
 
+' Safer Payment initialization
 PaymentCluster -> PaymentCluster: Initialize Service with mTLS Enabled
 
+' End-to-end communication
 User -> Nginx: End-to-end Communication mTLS Trusted and Encrypted
 
 @enduml
