@@ -1,40 +1,33 @@
 @startuml
 actor "Consul Client" as Client
-actor "Node 1"
-actor "Node 2"
-actor "Node 3"
+participant "Node 1" as Node1
+participant "Node 2" as Node2
+participant "Node 3" as Node3
 
 entity "Consul Server" as Consul
 
-' Step 1: Session Creation
 Client -> Consul: Create Session
 
-' Step 2: Node 1 Acquires Lock
-Node 1 -> Consul: Acquire Lock with Session
-Consul -> Node 1: Lock Acquired
+Node1 -> Consul: Acquire Lock with Session
+Consul -> Node1: Lock Acquired
 
-' Step 3: Nodes 2 and 3 Attempt to Acquire Lock
-Node 2 -> Consul: Attempt to Acquire Lock
-Consul -> Node 2: Lock Denied
-Node 3 -> Consul: Attempt to Acquire Lock
-Consul -> Node 3: Lock Denied
+Node2 -> Consul: Attempt to Acquire Lock
+Consul -> Node2: Lock Denied
 
-' Step 4: Node 1 Executes Script
-Node 1 -> Node 1: Execute Script
+Node3 -> Consul: Attempt to Acquire Lock
+Consul -> Node3: Lock Denied
 
-' Step 5: Session Renewal (Keep Alive)
+Node1 -> Node1: Execute Script
+
 Client -> Consul: Renew Session
 
-' Step 6: Session Expiry or Failure
 Client -> Consul: Session Expired or Failure Detected
-Consul -> Node 1: Lock Released
+Consul -> Node1: Lock Released
 
-' Step 7: Node 2 Acquires Lock
-Node 2 -> Consul: Acquire Lock with New Session
-Consul -> Node 2: Lock Acquired
-Node 2 -> Node 2: Execute Script
+Node2 -> Consul: Acquire Lock with New Session
+Consul -> Node2: Lock Acquired
+Node2 -> Node2: Execute Script
 
-' Step 8: Node 3 Remains in Standby
-Consul -> Node 3: Lock Still Held by Node 2
+Consul -> Node3: Lock Still Held by Node2
 
 @enduml
