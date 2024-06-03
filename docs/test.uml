@@ -2,18 +2,25 @@
 actor User
 actor "Nginx Proxy" as Nginx
 
-entity "Vault Agent" as VaultAgent
-entity "MTLS Cert Path" as CertPath
+entity "Vault Agent (Nginx)" as VaultAgentNginx
+entity "Vault Agent (Safer Payment)" as VaultAgentPayment
+entity "MTLS Cert Path (Nginx)" as CertPathNginx
+entity "MTLS Cert Path (Safer Payment)" as CertPathPayment
 entity "Safer Payment Cluster" as PaymentCluster
+entity "Vault Server" as Vault
 
 User -> Nginx: Sends Request
 
 Nginx -> PaymentCluster: Forward Request with mTLS
-PaymentCluster -> CertPath: Retrieve mTLS Cert and Key
+PaymentCluster -> CertPathPayment: Retrieve mTLS Cert and Key
 
-VaultAgent -> Vault: Fetch mTLS Certs
-Vault -> VaultAgent: Return mTLS Certs
-VaultAgent -> CertPath: Render and Store/Update mTLS Certs
+VaultAgentNginx -> Vault: Fetch mTLS Certs
+Vault -> VaultAgentNginx: Return mTLS Certs
+VaultAgentNginx -> CertPathNginx: Render and Store/Update mTLS Certs
+
+VaultAgentPayment -> Vault: Fetch mTLS Certs
+Vault -> VaultAgentPayment: Return mTLS Certs
+VaultAgentPayment -> CertPathPayment: Render and Store/Update mTLS Certs
 
 PaymentCluster -> PaymentCluster: Initialize Service with mTLS Enabled
 
