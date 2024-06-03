@@ -4,8 +4,8 @@ actor "Nginx Proxy" as Proxy
 
 entity "Vault Agent (Nginx)" as VaultAgentNginx
 entity "Vault Agent (App)" as VaultAgentApp
-entity "MTLS Cert Path (Nginx)" as CertPathNginx
-entity "MTLS Cert Path (App)" as CertPathApp
+folder "MTLS Cert Path (Nginx)" as CertPathNginx
+folder "MTLS Cert Path (App)" as CertPathApp
 entity "Application Server" as AppServer
 entity "Vault Server" as Vault
 
