@@ -1,5 +1,5 @@
 @startuml
-actor "Consul Client" as Client
+participant "Consul Client" as Client
 participant "Node 1" as Node1
 participant "Node 2" as Node2
 participant "Node 3" as Node3
