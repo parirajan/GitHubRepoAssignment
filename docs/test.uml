@@ -1,44 +1,40 @@
 @startuml
-actor User
-left to right direction
+actor "Consul Client" as Client
+actor "Node 1"
+actor "Node 2"
+actor "Node 3"
 
-entity "Vault Server" as Vault
+entity "Consul Server" as Consul
 
-' Left side entities
-entity "Vault Agent (Nginx)" as VaultAgentNginx
-entity "MTLS Cert Path (Nginx)" as CertPathNginx
-actor "Nginx Proxy" as Nginx
+' Step 1: Session Creation
+Client -> Consul: Create Session
 
-' Right side entities
-entity "Safer Payment Cluster" as PaymentCluster
-entity "MTLS Cert Path (Safer Payment)" as CertPathPayment
-entity "Vault Agent (Safer Payment)" as VaultAgentPayment
+' Step 2: Node 1 Acquires Lock
+Node 1 -> Consul: Acquire Lock with Session
+Consul -> Node 1: Lock Acquired
 
-' Layout organization
-VaultAgentNginx -[hidden]-> Vault
-Vault -[hidden]-> VaultAgentPayment
+' Step 3: Nodes 2 and 3 Attempt to Acquire Lock
+Node 2 -> Consul: Attempt to Acquire Lock
+Consul -> Node 2: Lock Denied
+Node 3 -> Consul: Attempt to Acquire Lock
+Consul -> Node 3: Lock Denied
 
-' User interaction
-User -> Nginx: Sends Request
+' Step 4: Node 1 Executes Script
+Node 1 -> Node 1: Execute Script
 
-' Nginx interactions
-Nginx -> PaymentCluster: Forward Request with mTLS
-PaymentCluster -> CertPathPayment: Retrieve mTLS Cert and Key
+' Step 5: Session Renewal (Keep Alive)
+Client -> Consul: Renew Session
 
-' Vault Agent interactions (Nginx)
-VaultAgentNginx -> Vault: Fetch mTLS Certs
-Vault -> VaultAgentNginx: Return mTLS Certs
-VaultAgentNginx -> CertPathNginx: Render and Store/Update mTLS Certs
+' Step 6: Session Expiry or Failure
+Client -> Consul: Session Expired or Failure Detected
+Consul -> Node 1: Lock Released
 
-' Vault Agent interactions (Safer Payment)
-VaultAgentPayment -> Vault: Fetch mTLS Certs
-Vault -> VaultAgentPayment: Return mTLS Certs
-VaultAgentPayment -> CertPathPayment: Render and Store/Update mTLS Certs
+' Step 7: Node 2 Acquires Lock
+Node 2 -> Consul: Acquire Lock with New Session
+Consul -> Node 2: Lock Acquired
+Node 2 -> Node 2: Execute Script
 
-' Safer Payment initialization
-PaymentCluster -> PaymentCluster: Initialize Service with mTLS Enabled
-
-' End-to-end communication
-User -> Nginx: End-to-end Communication mTLS Trusted and Encrypted
+' Step 8: Node 3 Remains in Standby
+Consul -> Node 3: Lock Still Held by Node 2
 
 @enduml
