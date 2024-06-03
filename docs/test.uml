@@ -1,49 +1,22 @@
 @startuml
-allowmixing
+actor User
+actor "Nginx Proxy" as Nginx
 
-skinparam rectangle {
-    StrokeColor black
-    Shadowing false
-}
+entity "Vault Agent" as VaultAgent
+entity "MTLS Cert Path" as CertPath
+entity "Safer Payment Cluster" as PaymentCluster
 
-rectangle "External Account (Okta OIDC IDP)" as ExternalAccount {
-    node "Okta OIDC IDP" as Okta
-}
+User -> Nginx: Sends Request
 
-rectangle "DMZ Account" as DMZAccount {
-    rectangle "NGINX OSS Proxy" as DMZProxy {
-        node "NGINX OSS (DMZ)" as NGINXOSS
-    }
-}
+Nginx -> PaymentCluster: Forward Request with mTLS
+PaymentCluster -> CertPath: Retrieve mTLS Cert and Key
 
-rectangle "Application Account" as AppAccount {
-    rectangle User {
-        node "User" as User
-    }
+VaultAgent -> Vault: Fetch mTLS Certs
+Vault -> VaultAgent: Return mTLS Certs
+VaultAgent -> CertPath: Render and Store/Update mTLS Certs
 
-    rectangle "NGINX Plus Reverse Proxy" as AppProxy {
-        node "NGINX Plus (App Account)" as Proxy1
-    }
+PaymentCluster -> PaymentCluster: Initialize Service with mTLS Enabled
 
-    rectangle "Web Application" as WebApp {
-        rectangle "Region1" {
-            node "Web App Node 1 (Healthy)" as AppNode1
-            node "Web App Node 2 (Down)" as AppNode2
-            node "Web App Node 3 (Down)" as AppNode3
-        }
-        rectangle "Region2" {
-            node "Web App Node 4 (Down)" as AppNode4
-            node "Web App Node 5 (Down)" as AppNode5
-            node "Web App Node 6 (Down)" as AppNode6
-        }
-    }
-}
+User -> Nginx: End-to-end Communication mTLS Trusted and Encrypted
 
-User --> NGINXOSS : Sends request
-NGINXOSS --> Proxy1 : Forward with\nUpstream Sticky Session
-Proxy1 --> Okta : IDP Authentication
-Okta --> Proxy1 : Authentication Response
-Proxy1 --> AppNode1 : Proxies request to\nHealthy Node in Region1
-
-note right of AppNode2 : Other Nodes in Region1 and Region2\nare marked down
 @enduml
