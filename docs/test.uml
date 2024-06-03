@@ -12,6 +12,7 @@ entity "Vault Server" as Vault
 User -> Nginx: Sends Request
 
 Nginx -> PaymentCluster: Forward Request with mTLS
+
 PaymentCluster -> CertPathPayment: Retrieve mTLS Cert and Key
 
 VaultAgentNginx -> Vault: Fetch mTLS Certs
