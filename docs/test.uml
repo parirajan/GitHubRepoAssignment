@@ -1,12 +1,17 @@
 @startuml
-participant "Consul Client (Node 1)" as ClientNode1
-participant "Consul Client (Node 2)" as ClientNode2
-participant "Consul Client (Node 3)" as ClientNode3
 participant "Node 1" as Node1
 participant "Node 2" as Node2
 participant "Node 3" as Node3
 
 entity "Consul Server" as Consul
+
+participant "Consul Client (Node 1)" as ClientNode1
+participant "Consul Client (Node 2)" as ClientNode2
+participant "Consul Client (Node 3)" as ClientNode3
+
+ClientNode1 -[hidden]-> Node1
+ClientNode2 -[hidden]-> Node2
+ClientNode3 -[hidden]-> Node3
 
 ClientNode1 -> Consul: Create Session
 
