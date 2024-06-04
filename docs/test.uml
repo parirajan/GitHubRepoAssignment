@@ -1,44 +1,36 @@
 @startuml
-actor Browser
-actor "Nginx Proxy" as Proxy
+participant "Consul Client (Node 1)" as ClientNode1
+participant "Consul Client (Node 2)" as ClientNode2
+participant "Consul Client (Node 3)" as ClientNode3
+participant "Node 1" as Node1
+participant "Node 2" as Node2
+participant "Node 3" as Node3
 
-entity "Vault Agent (Nginx)" as VaultAgentNginx
-entity "Vault Agent (App)" as VaultAgentApp
-folder "MTLS Cert Path (Nginx)" as CertPathNginx
-folder "MTLS Cert Path (App)" as CertPathApp
-entity "Application Server" as AppServer
-entity "Vault Server" as Vault
+entity "Consul Server" as Consul
 
-' Layout organization
-VaultAgentNginx -[hidden]-> Vault
-Vault -[hidden]-> VaultAgentApp
+ClientNode1 -> Consul: Create Session
 
-' Step 1: Certificate Rendering by Vault Agents
-VaultAgentNginx -> Vault: Fetch mTLS Certs for Proxy
-Vault -> VaultAgentNginx: Return mTLS Certs
-VaultAgentNginx -> CertPathNginx: Render and Store/Update mTLS Certs
+Node1 -> Consul: Acquire Lock with Session
+Consul -> Node1: Lock Acquired
 
-VaultAgentApp -> Vault: Fetch mTLS Certs for App
-Vault -> VaultAgentApp: Return mTLS Certs
-VaultAgentApp -> CertPathApp: Render and Store/Update mTLS Certs
+Node2 -> Consul: Attempt to Acquire Lock
+Consul -> Node2: Lock Denied
 
-' Step 2: Nginx Proxy and AppServer Initialization
-Proxy -> CertPathNginx: Load mTLS Cert and Key
-Proxy -> Proxy: Initialize with mTLS
+Node3 -> Consul: Attempt to Acquire Lock
+Consul -> Node3: Lock Denied
 
-AppServer -> CertPathApp: Load mTLS Cert and Key
-AppServer -> AppServer: Initialize with mTLS
+Node1 -> Node1: Execute Script
 
-' Step 3: Browser to Proxy Communication
-Browser -> Proxy: HTTPS Request with mTLS
-Proxy -> Proxy: Validate Client Certificate
+ClientNode1 -> Consul: Renew Session
 
-' Step 4: Proxy to Application Communication
-Proxy -> AppServer: Forward Request with mTLS
-AppServer -> AppServer: Validate Client Certificate
+ClientNode1 -> Consul: Session Expired or Failure Detected
+Consul -> Node1: Lock Released
 
-' End-to-end communication
-Browser -> Proxy: End-to-end mTLS Communication Secured
-Proxy -> AppServer: End-to-end mTLS Communication Secured
+ClientNode2 -> Consul: Create New Session
+Node2 -> Consul: Acquire Lock with New Session
+Consul -> Node2: Lock Acquired
+Node2 -> Node2: Execute Script
+
+Consul -> Node3: Lock Still Held by Node2
 
 @enduml
