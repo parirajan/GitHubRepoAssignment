@@ -1,20 +1,41 @@
 @startuml
-participant "User" as User
-participant "NGINX OSS (WEB)" as NGINXOSS
-participant "mTLS\nSG Web" as TLSSGWeb
-participant "NGINX Plus (App Account)" as Proxy1
-participant "NGINX Plus (App Account)" as Proxy2
-participant "Okta OIDC IDP" as Okta
-participant "mTLS\nSG Reverse Proxy" as TLSSGProxy1
-participant "mTLS\nSG Reverse Proxy" as TLSSGProxy2
-participant "SaferPayment Node 1 (Healthy)" as SPNode1
-participant "SaferPayment Node 2 (Down)" as SPNode2
-participant "SaferPayment Node 3 (Down)" as SPNode3
-participant "SaferPayment Node 4 (Down)" as SPNode4
-participant "SaferPayment Node 5 (Down)" as SPNode5
-participant "SaferPayment Node 6 (Down)" as SPNode6
-entity "Consul" as Consul1
-entity "Consul" as Consul2
+skinparam ParticipantBackgroundColor #E3F2FD
+skinparam ParticipantBorderColor #2196F3
+skinparam ParticipantFontColor #0D47A1
+skinparam ParticipantFontSize 12
+
+box "Okta" #FFEBEE
+  participant "Okta OIDC IDP" as Okta
+end box
+
+box "User" #E8F5E9
+  participant "User" as User
+end box
+
+box "Web Access" #FFF3E0
+  participant "NGINX OSS (WEB)" as NGINXOSS
+  participant "mTLS\nSG Web" as TLSSGWeb
+end box
+
+box "Resources" #E0F7FA
+  box "Region 1" #B3E5FC
+    participant "NGINX Plus (App Account)1" as Proxy1
+    participant "mTLS\nSG Reverse Proxy1" as TLSSGProxy1
+    participant "SaferPayment Node 1 (Healthy)" as SPNode1
+    participant "SaferPayment Node 2 (Down)" as SPNode2
+    participant "SaferPayment Node 3 (Down)" as SPNode3
+    entity "Consul1" as Consul1
+  end box
+
+  box "Region 2" #B2DFDB
+    participant "NGINX Plus (App Account)2" as Proxy2
+    participant "mTLS\nSG Reverse Proxy2" as TLSSGProxy2
+    participant "SaferPayment Node 4 (Down)" as SPNode4
+    participant "SaferPayment Node 5 (Down)" as SPNode5
+    participant "SaferPayment Node 6 (Down)" as SPNode6
+    entity "Consul2" as Consul2
+  end box
+end box
 
 User -> NGINXOSS: Sends request
 NGINXOSS -> TLSSGWeb: mTLS enabled\nUpstream Sticky Session
