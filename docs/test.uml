@@ -1,41 +1,35 @@
 @startuml
-participant "Node 1" as Node1
-participant "Node 2" as Node2
-participant "Node 3" as Node3
+participant "User" as User
+participant "NGINX OSS (WEB)" as NGINXOSS
+participant "mTLS\nSG Web" as TLSSGWeb
+participant "NGINX Plus (App Account)" as Proxy1
+participant "NGINX Plus (App Account)" as Proxy2
+participant "Okta OIDC IDP" as Okta
+participant "mTLS\nSG Reverse Proxy" as TLSSGProxy1
+participant "mTLS\nSG Reverse Proxy" as TLSSGProxy2
+participant "SaferPayment Node 1 (Healthy)" as SPNode1
+participant "SaferPayment Node 2 (Down)" as SPNode2
+participant "SaferPayment Node 3 (Down)" as SPNode3
+participant "SaferPayment Node 4 (Down)" as SPNode4
+participant "SaferPayment Node 5 (Down)" as SPNode5
+participant "SaferPayment Node 6 (Down)" as SPNode6
+entity "Consul" as Consul1
+entity "Consul" as Consul2
 
-entity "Consul Server" as Consul
-
-participant "Consul Client (Node 1)" as ClientNode1
-participant "Consul Client (Node 2)" as ClientNode2
-participant "Consul Client (Node 3)" as ClientNode3
-
-ClientNode1 -[hidden]-> Node1
-ClientNode2 -[hidden]-> Node2
-ClientNode3 -[hidden]-> Node3
-
-ClientNode1 -> Consul: Create Session
-
-Node1 -> Consul: Acquire Lock with Session
-Consul -> Node1: Lock Acquired
-
-Node2 -> Consul: Attempt to Acquire Lock
-Consul -> Node2: Lock Denied
-
-Node3 -> Consul: Attempt to Acquire Lock
-Consul -> Node3: Lock Denied
-
-Node1 -> Node1: Execute Script
-
-ClientNode1 -> Consul: Renew Session
-
-ClientNode1 -> Consul: Session Expired or Failure Detected
-Consul -> Node1: Lock Released
-
-ClientNode2 -> Consul: Create New Session
-Node2 -> Consul: Acquire Lock with New Session
-Consul -> Node2: Lock Acquired
-Node2 -> Node2: Execute Script
-
-Consul -> Node3: Lock Still Held by Node2
-
+User -> NGINXOSS: Sends request
+NGINXOSS -> TLSSGWeb: mTLS enabled\nUpstream Sticky Session
+TLSSGWeb -> TLSSGProxy1: mTLS enabled\nUpstream Sticky Session
+TLSSGProxy1 -> Okta: IDP Authentication
+Okta -> TLSSGProxy1: Authentication Response
+TLSSGProxy1 -> Consul1: Register Node
+SPNode1 <-> Consul1
+SPNode2 <-> Consul1
+SPNode3 <-> Consul1
+SPNode4 <-> Consul2
+SPNode5 <-> Consul2
+SPNode6 <-> Consul2
+TLSSGProxy1 <-> Consul1: Returns healthy node (Node 1)
+TLSSGProxy2 <-> Consul2
+TLSSGProxy1 -> SPNode1: mTLS enabled\nProxies request to\nHealthy Node in Region1
+note right of SPNode2: Other Nodes in Region1 and Region2\nare marked down
 @enduml
