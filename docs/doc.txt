@@ -1,59 +1,56 @@
 Feature Description:
-Implement a service management system for the Safer Payment application using Consul for session-based leader election. The node elected as the leader will enable the BDI and API services on the cluster. Non-leader nodes will monitor for changes and take over leadership responsibilities in case the current leader goes down for rehydration, maintenance, or due to a crash.
+Enhance the deployment of the Safer Payment application by ensuring each instance in the 6-node cluster has a persistent EBS volume. These volumes should be provisioned in the same Availability Zones (AZs) as the instances to avoid cross-AZ data transfer costs and latency. Additionally, implement a startup script that attaches, formats (if needed), and mounts these EBS volumes based on instance and disk tags, ensuring the correct volume is always attached to the correct instance.
 
 Acceptance Criteria:
-Consul Setup:
+Persistent EBS Volumes:
 
-Consul must be installed and configured on all nodes in the cluster.
-Consul agents must be running on each node to participate in the leader election process.
-Leader Election:
+Each instance in the 6-node cluster must have an associated persistent EBS volume.
+EBS volumes must be created and managed using Terraform.
+Each EBS volume must be placed in the same AZ as its corresponding instance.
+Startup Script:
 
-Implement a session-based leader election process using Consul.
-Only the elected leader node will enable the BDI and API services.
-Non-leader nodes must monitor the leader status and be ready to take over if the leader goes down.
-Service Management:
+A startup script must be created to run during the instance launch.
+The script should attach the correct EBS volume to the instance based on instance and volume tags.
+The script should check if the attached EBS volume is formatted:
+If not formatted, the script should format the volume, create the file system, and mount it.
+If already formatted, the script should mount the volume directly.
+Tagging and Validation:
 
-Create scripts or systemd service files to manage the BDI and API services.
-Ensure that these services are only enabled on the leader node.
-Failover Mechanism:
+Each instance and EBS volume must have unique tags to ensure correct association.
+The startup script must validate that the attached disk is the correct one based on the tags.
+The tag association must be maintained throughout the lifecycle of the cluster, ensuring consistency during reboots or instance replacements.
+Terraform Code Quality:
 
-Non-leader nodes must continuously watch for changes in the leader status.
-In the event of a leader failure (rehydration, maintenance, or crash), a new leader must be elected.
-The new leader must enable the BDI and API services promptly.
-Monitoring and Alerts:
-
-Implement monitoring to track the status of the leader and the health of the services.
-Configure alerts to notify the operations team of any leadership changes or service disruptions.
+Terraform code must include configurations for creating and tagging EBS volumes.
+Code must follow best practices, ensuring modularity and reusability.
+Documentation must be provided for the Terraform code, explaining the tagging strategy and the startup script.
 Testing and Validation:
 
-Perform end-to-end testing to ensure the leader election process works as expected.
-Validate that only the leader node enables the BDI and API services.
-Test the failover mechanism by simulating leader node failures and ensuring a new leader is elected and services are enabled.
+Perform end-to-end testing to ensure EBS volumes are correctly created, tagged, and associated with instances.
+Validate the startup script’s functionality to correctly attach, format (if needed), and mount the EBS volumes.
+Test the resiliency of the tagging mechanism to ensure correct volume-instance association during various lifecycle events.
 Tasks:
-Consul Installation and Configuration:
+Terraform Configuration:
 
-Install Consul on all nodes in the cluster.
-Configure Consul agents to participate in the leader election process.
-Ensure Consul agents are correctly communicating with each other.
-Leader Election Implementation:
+Define Terraform configurations for creating EBS volumes and attaching them to instances.
+Ensure volumes are created in the same AZs as their corresponding instances.
+Implement tagging for both instances and volumes to establish the correct associations.
+Startup Script Development:
 
-Develop a session-based leader election process using Consul.
-Write scripts to enable BDI and API services on the leader node.
-Ensure non-leader nodes are watching for leadership changes.
-Service Management Scripts:
+Write a startup script that runs on instance launch.
+The script should:
+Retrieve the instance and volume tags.
+Attach the correct volume to the instance.
+Check if the volume is formatted and, if not, format it and create the file system.
+Mount the volume to a predefined mount point.
+Ensure the script validates the volume-instance association based on tags.
+Testing and Validation:
 
-Create scripts or systemd service files to start, stop, and monitor the BDI and API services.
-Ensure these scripts are integrated with the leader election process.
-Failover Testing:
-
-Simulate leader node failures to test the failover mechanism.
-Ensure that non-leader nodes can detect the failure, elect a new leader, and enable the necessary services.
-Monitoring and Alerts Setup:
-
-Set up monitoring for Consul leader status and service health.
-Configure alerts to notify the operations team of any leadership changes or service issues.
+Deploy the infrastructure using Terraform and validate the creation of EBS volumes.
+Test the startup script by launching instances and ensuring the volumes are correctly attached, formatted (if needed), and mounted.
+Validate the tagging mechanism by simulating instance reboots and replacements, ensuring the correct volumes are always associated with the correct instances.
 Documentation:
 
-Document the Consul setup, leader election process, and service management scripts.
-Provide guidelines for future maintenance and troubleshooting of the leader election and failover mechanisms.
-By meeting these acceptance criteria, the Safer Payment application will have a robust service management system with Consul-based leader election, ensuring high availability and automatic failover of critical services (BDI and API) in the cluster.
+Document the Terraform configurations, tagging strategy, and startup script.
+Provide clear guidelines for future maintenance and scaling of the EBS volumes and instances.
+By meeting these acceptance criteria, the Safer Payment application will have a robust setup where each instance is consistently associated with a persistent EBS volume, ensuring data integrity and availability across the cluster's lifecycle.
