@@ -1,52 +1,56 @@
 Feature Description:
-Automate the installation and configuration of the Safer Payment software on the 6-node AWS cluster. This includes setting up paths and directories for data, configurations, and settings, as well as customizing and templatizing configuration files (settings.iris and cluster.iris). Use Ansible to provision the AMI with these configurations to ensure consistency across all nodes in the cluster.
+Enhance the deployment of the Safer Payment application by ensuring each instance in the 6-node cluster has a persistent EBS volume. These volumes should be provisioned in the same Availability Zones (AZs) as the instances to avoid cross-AZ data transfer costs and latency. Additionally, implement a startup script that attaches, formats (if needed), and mounts these EBS volumes based on instance and disk tags, ensuring the correct volume is always attached to the correct instance.
 
 Acceptance Criteria:
-Software Installation:
+Persistent EBS Volumes:
 
-Safer Payment software must be installed on each instance in the cluster.
-Installation should be automated using Ansible playbooks.
-Custom Configurations:
+Each instance in the 6-node cluster must have an associated persistent EBS volume.
+EBS volumes must be created and managed using Terraform.
+Each EBS volume must be placed in the same AZ as its corresponding instance.
+Startup Script:
 
-Paths and directories for Safer Payment data, configurations, and settings must be properly set up.
-Directories must include locations for data storage, configuration files, logs, and any other necessary components.
-Templatized Configuration Files:
+A startup script must be created to run during the instance launch.
+The script should attach the correct EBS volume to the instance based on instance and volume tags.
+The script should check if the attached EBS volume is formatted:
+If not formatted, the script should format the volume, create the file system, and mount it.
+If already formatted, the script should mount the volume directly.
+Tagging and Validation:
 
-Configuration files (settings.iris and cluster.iris) must be customized and templatized to be used across all nodes.
-Templates should allow for node-specific configurations to be dynamically applied during provisioning.
-Ansible Provisioning:
+Each instance and EBS volume must have unique tags to ensure correct association.
+The startup script must validate that the attached disk is the correct one based on the tags.
+The tag association must be maintained throughout the lifecycle of the cluster, ensuring consistency during reboots or instance replacements.
+Terraform Code Quality:
 
-Ansible playbooks must be created to automate the entire provisioning process.
-Playbooks should include tasks for installing the software, setting up directories, and applying configuration templates.
-AMI Provisioning:
-
-Ansible playbooks must be used to create a custom AMI with the Safer Payment software and configurations pre-installed.
-The custom AMI should be used to launch instances in the cluster to ensure consistency and reduce setup time.
+Terraform code must include configurations for creating and tagging EBS volumes.
+Code must follow best practices, ensuring modularity and reusability.
+Documentation must be provided for the Terraform code, explaining the tagging strategy and the startup script.
 Testing and Validation:
 
-Perform end-to-end testing to ensure the software is correctly installed and configured on all nodes.
-Validate that all custom paths and directories are correctly set up and accessible.
-Test the templatized configuration files to ensure they are correctly applied and functional on all nodes.
+Perform end-to-end testing to ensure EBS volumes are correctly created, tagged, and associated with instances.
+Validate the startup script’s functionality to correctly attach, format (if needed), and mount the EBS volumes.
+Test the resiliency of the tagging mechanism to ensure correct volume-instance association during various lifecycle events.
 Tasks:
-Ansible Playbook Development:
+Terraform Configuration:
 
-Create Ansible playbooks to automate the installation of the Safer Payment software.
-Develop playbooks to set up custom paths and directories for data, configurations, and settings.
-Configuration Templatization:
+Define Terraform configurations for creating EBS volumes and attaching them to instances.
+Ensure volumes are created in the same AZs as their corresponding instances.
+Implement tagging for both instances and volumes to establish the correct associations.
+Startup Script Development:
 
-Create templates for settings.iris and cluster.iris configuration files.
-Ensure templates can dynamically apply node-specific configurations during provisioning.
-AMI Provisioning:
-
-Use Ansible to create a custom AMI with the Safer Payment software and configurations pre-installed.
-Ensure the AMI includes all necessary software, configurations, and directory structures.
+Write a startup script that runs on instance launch.
+The script should:
+Retrieve the instance and volume tags.
+Attach the correct volume to the instance.
+Check if the volume is formatted and, if not, format it and create the file system.
+Mount the volume to a predefined mount point.
+Ensure the script validates the volume-instance association based on tags.
 Testing and Validation:
 
-Deploy instances using the custom AMI and validate the installation and configuration.
-Test the custom configurations and paths to ensure they are correctly set up and functional.
-Validate the templatized configuration files by checking their application on all nodes.
+Deploy the infrastructure using Terraform and validate the creation of EBS volumes.
+Test the startup script by launching instances and ensuring the volumes are correctly attached, formatted (if needed), and mounted.
+Validate the tagging mechanism by simulating instance reboots and replacements, ensuring the correct volumes are always associated with the correct instances.
 Documentation:
 
-Document the Ansible playbooks, configuration templates, and the AMI creation process.
-Provide clear guidelines for future maintenance, updates, and scaling of the software and configurations.
-By meeting these acceptance criteria, the Safer Payment application will be consistently and correctly installed and configured across all nodes in the cluster, ensuring a stable and reliable deployment environment.
+Document the Terraform configurations, tagging strategy, and startup script.
+Provide clear guidelines for future maintenance and scaling of the EBS volumes and instances.
+By meeting these acceptance criteria, the Safer Payment application will have a robust setup where each instance is consistently associated with a persistent EBS volume, ensuring data integrity and availability across the cluster's lifecycle.
