@@ -1,56 +1,59 @@
 Feature Description:
-Enhance the deployment of the Safer Payment application by ensuring each instance in the 6-node cluster has a persistent EBS volume. These volumes should be provisioned in the same Availability Zones (AZs) as the instances to avoid cross-AZ data transfer costs and latency. Additionally, implement a startup script that attaches, formats (if needed), and mounts these EBS volumes based on instance and disk tags, ensuring the correct volume is always attached to the correct instance.
+Implement a rolling rehydration process for the 6-node AWS cluster, ensuring that nodes are rehydrated every 30 days without causing downtime for the entire cluster. Use Consul watch processes to manage the rehydration by sequentially disabling cluster services, quiescing nodes, and then terminating and relaunching instances. Ensure the API, BDI, and MCI services are rolled seamlessly.
 
 Acceptance Criteria:
-Persistent EBS Volumes:
+Consul Watch Process:
 
-Each instance in the 6-node cluster must have an associated persistent EBS volume.
-EBS volumes must be created and managed using Terraform.
-Each EBS volume must be placed in the same AZ as its corresponding instance.
-Startup Script:
+Consul must be configured to watch for rehydration events.
+The watch process must sequentially manage each node in the cluster for rehydration.
+Service Quiescing and Disabling:
 
-A startup script must be created to run during the instance launch.
-The script should attach the correct EBS volume to the instance based on instance and volume tags.
-The script should check if the attached EBS volume is formatted:
-If not formatted, the script should format the volume, create the file system, and mount it.
-If already formatted, the script should mount the volume directly.
-Tagging and Validation:
+Before terminating a node, ensure cluster services are disabled and the node is quiesced (not accepting new connections).
+Ensure all active processes are completed or gracefully terminated.
+Node Termination and Relaunch:
 
-Each instance and EBS volume must have unique tags to ensure correct association.
-The startup script must validate that the attached disk is the correct one based on the tags.
-The tag association must be maintained throughout the lifecycle of the cluster, ensuring consistency during reboots or instance replacements.
-Terraform Code Quality:
+After disabling services, terminate the node and relaunch a new instance.
+Ensure the new instance is correctly configured and rejoins the cluster.
+Rolling Deployment:
 
-Terraform code must include configurations for creating and tagging EBS volumes.
-Code must follow best practices, ensuring modularity and reusability.
-Documentation must be provided for the Terraform code, explaining the tagging strategy and the startup script.
+Perform the rehydration process one node at a time to maintain cluster availability.
+Ensure the cluster as a whole is never down, and the API, BDI, and MCI services are seamlessly rolled over.
+Monitoring and Alerts:
+
+Implement monitoring to track the status of the rehydration process.
+Configure alerts to notify the operations team of any issues during rehydration.
 Testing and Validation:
 
-Perform end-to-end testing to ensure EBS volumes are correctly created, tagged, and associated with instances.
-Validate the startup script’s functionality to correctly attach, format (if needed), and mount the EBS volumes.
-Test the resiliency of the tagging mechanism to ensure correct volume-instance association during various lifecycle events.
+Perform end-to-end testing to validate the rolling rehydration process.
+Ensure each node is correctly quiesced, terminated, and relaunched.
+Validate that the API, BDI, and MCI services are not disrupted during the rehydration process.
 Tasks:
-Terraform Configuration:
+Consul Configuration:
 
-Define Terraform configurations for creating EBS volumes and attaching them to instances.
-Ensure volumes are created in the same AZs as their corresponding instances.
-Implement tagging for both instances and volumes to establish the correct associations.
-Startup Script Development:
+Configure Consul to watch for rehydration events.
+Set up Consul to manage the sequential rehydration process.
+Service Management Scripts:
 
-Write a startup script that runs on instance launch.
-The script should:
-Retrieve the instance and volume tags.
-Attach the correct volume to the instance.
-Check if the volume is formatted and, if not, format it and create the file system.
-Mount the volume to a predefined mount point.
-Ensure the script validates the volume-instance association based on tags.
+Create scripts to disable cluster services and quiesce nodes.
+Ensure scripts handle graceful termination of active processes.
+Node Termination and Relaunch Automation:
+
+Develop automation to terminate and relaunch instances via AWS.
+Ensure new instances are correctly configured and automatically rejoin the cluster.
+Rolling Deployment Implementation:
+
+Implement the rolling rehydration process to handle one node at a time.
+Ensure seamless transition of API, BDI, and MCI services.
+Monitoring and Alerts Setup:
+
+Set up monitoring to track the status of each node during rehydration.
+Configure alerts to notify the operations team of any rehydration issues.
 Testing and Validation:
 
-Deploy the infrastructure using Terraform and validate the creation of EBS volumes.
-Test the startup script by launching instances and ensuring the volumes are correctly attached, formatted (if needed), and mounted.
-Validate the tagging mechanism by simulating instance reboots and replacements, ensuring the correct volumes are always associated with the correct instances.
+Perform end-to-end testing to ensure the rehydration process works as expected.
+Validate that cluster services are not disrupted and the rolling rehydration process maintains cluster availability.
 Documentation:
 
-Document the Terraform configurations, tagging strategy, and startup script.
-Provide clear guidelines for future maintenance and scaling of the EBS volumes and instances.
-By meeting these acceptance criteria, the Safer Payment application will have a robust setup where each instance is consistently associated with a persistent EBS volume, ensuring data integrity and availability across the cluster's lifecycle.
+Document the Consul watch process, service management scripts, and automation for node termination and relaunch.
+Provide guidelines for future maintenance and troubleshooting of the rehydration process.
+By meeting these acceptance criteria, the Safer Payment application will have a robust rolling rehydration process, ensuring that nodes are rehydrated every 30 days without causing downtime, and the API, BDI, and MCI services are maintained seamlessly throughout the rehydration process.
