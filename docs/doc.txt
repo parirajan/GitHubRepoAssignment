@@ -1,0 +1,76 @@
+Feature Description:
+Deploy the Safer Payment application in the AWS cloud as a highly available and resilient 6-node cluster. The deployment will span across two AWS regions (East and West), with each region containing 3 nodes. Each node will be placed in its own Availability Zone (AZ) and managed by its own Auto Scaling Group (ASG). The entire setup will be provisioned and managed using Terraform.
+
+Acceptance Criteria:
+Cluster Deployment:
+
+The Safer Payment application must be deployed as a 6-node cluster.
+The deployment must span across two AWS regions: US East (N. Virginia) and US West (Oregon).
+Node Distribution:
+
+There must be 3 nodes in the US East (N. Virginia) region.
+There must be 3 nodes in the US West (Oregon) region.
+Each node must be deployed in a separate Availability Zone within its respective region.
+Auto Scaling Groups (ASGs):
+
+Each node must be part of its own Auto Scaling Group (ASG).
+Each ASG must be configured to ensure high availability and resiliency.
+ASGs must be configured to automatically replace unhealthy instances.
+Infrastructure Provisioning:
+
+The entire infrastructure must be provisioned using Terraform.
+Terraform configurations must include:
+VPCs, subnets, and routing tables for each region.
+EC2 instances for each node with appropriate instance types and AMIs.
+Auto Scaling Groups for each node.
+Security Groups to control traffic to and from the nodes.
+Elastic Load Balancers (ELBs) if necessary for traffic distribution.
+Networking:
+
+Each node must have appropriate networking configurations, including private IP addresses and security group rules.
+Cross-region networking must be configured to ensure nodes in different regions can communicate securely.
+Resiliency and High Availability:
+
+The deployment must ensure no single point of failure.
+Each node’s ASG must ensure a minimum of one instance is always running.
+Health checks must be configured to monitor the status of each node and trigger instance replacement if necessary.
+Terraform Code Quality:
+
+Terraform code must be modular and reusable.
+Code must follow best practices for Terraform, including state management, version control, and use of variables and modules.
+Documentation must be provided for the Terraform code, explaining the infrastructure setup and configurations.
+Testing and Validation:
+
+Perform end-to-end testing to ensure the application is running correctly in the cluster.
+Validate that the nodes are properly distributed across AZs and regions.
+Test the resiliency by simulating failures and ensuring the ASGs automatically replace unhealthy instances.
+Tasks:
+Terraform Configuration:
+
+Write Terraform configurations to define VPCs, subnets, routing tables, and other networking components.
+Define EC2 instances, ASGs, and security groups for each node.
+Configure cross-region networking and security group rules.
+Terraform Module Creation:
+
+Create reusable Terraform modules for common components such as VPC, EC2 instances, and ASGs.
+Deployment and Testing:
+
+Deploy the infrastructure using Terraform.
+Perform initial testing to ensure all components are correctly provisioned.
+Validate the distribution of nodes across AZs and regions.
+Resiliency Testing:
+
+Simulate node failures to test the ASG’s ability to replace unhealthy instances.
+Ensure high availability by testing the application’s functionality during simulated failures.
+Documentation:
+
+Document the entire setup process, including Terraform code explanations and deployment steps.
+Provide guidelines for future maintenance and scaling of the infrastructure.
+By meeting these acceptance criteria, the Safer Payment application will be deployed in a highly available and resilient 6-node cluster across two AWS regions, with each node managed by its own Auto Scaling Group, ensuring optimal performance and fault tolerance.
+
+
+
+  
+
+
+  
