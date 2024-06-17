@@ -1,76 +1,56 @@
 Feature Description:
-Deploy the Safer Payment application in the AWS cloud as a highly available and resilient 6-node cluster. The deployment will span across two AWS regions (East and West), with each region containing 3 nodes. Each node will be placed in its own Availability Zone (AZ) and managed by its own Auto Scaling Group (ASG). The entire setup will be provisioned and managed using Terraform.
+Enhance the deployment of the Safer Payment application by ensuring each instance in the 6-node cluster has a persistent EBS volume. These volumes should be provisioned in the same Availability Zones (AZs) as the instances to avoid cross-AZ data transfer costs and latency. Additionally, implement a startup script that attaches, formats (if needed), and mounts these EBS volumes based on instance and disk tags, ensuring the correct volume is always attached to the correct instance.
 
 Acceptance Criteria:
-Cluster Deployment:
+Persistent EBS Volumes:
 
-The Safer Payment application must be deployed as a 6-node cluster.
-The deployment must span across two AWS regions: US East (N. Virginia) and US West (Oregon).
-Node Distribution:
+Each instance in the 6-node cluster must have an associated persistent EBS volume.
+EBS volumes must be created and managed using Terraform.
+Each EBS volume must be placed in the same AZ as its corresponding instance.
+Startup Script:
 
-There must be 3 nodes in the US East (N. Virginia) region.
-There must be 3 nodes in the US West (Oregon) region.
-Each node must be deployed in a separate Availability Zone within its respective region.
-Auto Scaling Groups (ASGs):
+A startup script must be created to run during the instance launch.
+The script should attach the correct EBS volume to the instance based on instance and volume tags.
+The script should check if the attached EBS volume is formatted:
+If not formatted, the script should format the volume, create the file system, and mount it.
+If already formatted, the script should mount the volume directly.
+Tagging and Validation:
 
-Each node must be part of its own Auto Scaling Group (ASG).
-Each ASG must be configured to ensure high availability and resiliency.
-ASGs must be configured to automatically replace unhealthy instances.
-Infrastructure Provisioning:
-
-The entire infrastructure must be provisioned using Terraform.
-Terraform configurations must include:
-VPCs, subnets, and routing tables for each region.
-EC2 instances for each node with appropriate instance types and AMIs.
-Auto Scaling Groups for each node.
-Security Groups to control traffic to and from the nodes.
-Elastic Load Balancers (ELBs) if necessary for traffic distribution.
-Networking:
-
-Each node must have appropriate networking configurations, including private IP addresses and security group rules.
-Cross-region networking must be configured to ensure nodes in different regions can communicate securely.
-Resiliency and High Availability:
-
-The deployment must ensure no single point of failure.
-Each node’s ASG must ensure a minimum of one instance is always running.
-Health checks must be configured to monitor the status of each node and trigger instance replacement if necessary.
+Each instance and EBS volume must have unique tags to ensure correct association.
+The startup script must validate that the attached disk is the correct one based on the tags.
+The tag association must be maintained throughout the lifecycle of the cluster, ensuring consistency during reboots or instance replacements.
 Terraform Code Quality:
 
-Terraform code must be modular and reusable.
-Code must follow best practices for Terraform, including state management, version control, and use of variables and modules.
-Documentation must be provided for the Terraform code, explaining the infrastructure setup and configurations.
+Terraform code must include configurations for creating and tagging EBS volumes.
+Code must follow best practices, ensuring modularity and reusability.
+Documentation must be provided for the Terraform code, explaining the tagging strategy and the startup script.
 Testing and Validation:
 
-Perform end-to-end testing to ensure the application is running correctly in the cluster.
-Validate that the nodes are properly distributed across AZs and regions.
-Test the resiliency by simulating failures and ensuring the ASGs automatically replace unhealthy instances.
+Perform end-to-end testing to ensure EBS volumes are correctly created, tagged, and associated with instances.
+Validate the startup script’s functionality to correctly attach, format (if needed), and mount the EBS volumes.
+Test the resiliency of the tagging mechanism to ensure correct volume-instance association during various lifecycle events.
 Tasks:
 Terraform Configuration:
 
-Write Terraform configurations to define VPCs, subnets, routing tables, and other networking components.
-Define EC2 instances, ASGs, and security groups for each node.
-Configure cross-region networking and security group rules.
-Terraform Module Creation:
+Define Terraform configurations for creating EBS volumes and attaching them to instances.
+Ensure volumes are created in the same AZs as their corresponding instances.
+Implement tagging for both instances and volumes to establish the correct associations.
+Startup Script Development:
 
-Create reusable Terraform modules for common components such as VPC, EC2 instances, and ASGs.
-Deployment and Testing:
+Write a startup script that runs on instance launch.
+The script should:
+Retrieve the instance and volume tags.
+Attach the correct volume to the instance.
+Check if the volume is formatted and, if not, format it and create the file system.
+Mount the volume to a predefined mount point.
+Ensure the script validates the volume-instance association based on tags.
+Testing and Validation:
 
-Deploy the infrastructure using Terraform.
-Perform initial testing to ensure all components are correctly provisioned.
-Validate the distribution of nodes across AZs and regions.
-Resiliency Testing:
-
-Simulate node failures to test the ASG’s ability to replace unhealthy instances.
-Ensure high availability by testing the application’s functionality during simulated failures.
+Deploy the infrastructure using Terraform and validate the creation of EBS volumes.
+Test the startup script by launching instances and ensuring the volumes are correctly attached, formatted (if needed), and mounted.
+Validate the tagging mechanism by simulating instance reboots and replacements, ensuring the correct volumes are always associated with the correct instances.
 Documentation:
 
-Document the entire setup process, including Terraform code explanations and deployment steps.
-Provide guidelines for future maintenance and scaling of the infrastructure.
-By meeting these acceptance criteria, the Safer Payment application will be deployed in a highly available and resilient 6-node cluster across two AWS regions, with each node managed by its own Auto Scaling Group, ensuring optimal performance and fault tolerance.
-
-
-
-  
-
-
-  
+Document the Terraform configurations, tagging strategy, and startup script.
+Provide clear guidelines for future maintenance and scaling of the EBS volumes and instances.
+By meeting these acceptance criteria, the Safer Payment application will have a robust setup where each instance is consistently associated with a persistent EBS volume, ensuring data integrity and availability across the cluster's lifecycle.
