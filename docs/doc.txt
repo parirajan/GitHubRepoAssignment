@@ -1,52 +1,59 @@
 Feature Description:
-Automate the installation and configuration of the Safer Payment software on the 6-node AWS cluster. This includes setting up paths and directories for data, configurations, and settings, as well as customizing and templatizing configuration files (settings.iris and cluster.iris). Use Ansible to provision the AMI with these configurations to ensure consistency across all nodes in the cluster.
+Implement a service management system for the Safer Payment application using Consul for session-based leader election. The node elected as the leader will enable the BDI and API services on the cluster. Non-leader nodes will monitor for changes and take over leadership responsibilities in case the current leader goes down for rehydration, maintenance, or due to a crash.
 
 Acceptance Criteria:
-Software Installation:
+Consul Setup:
 
-Safer Payment software must be installed on each instance in the cluster.
-Installation should be automated using Ansible playbooks.
-Custom Configurations:
+Consul must be installed and configured on all nodes in the cluster.
+Consul agents must be running on each node to participate in the leader election process.
+Leader Election:
 
-Paths and directories for Safer Payment data, configurations, and settings must be properly set up.
-Directories must include locations for data storage, configuration files, logs, and any other necessary components.
-Templatized Configuration Files:
+Implement a session-based leader election process using Consul.
+Only the elected leader node will enable the BDI and API services.
+Non-leader nodes must monitor the leader status and be ready to take over if the leader goes down.
+Service Management:
 
-Configuration files (settings.iris and cluster.iris) must be customized and templatized to be used across all nodes.
-Templates should allow for node-specific configurations to be dynamically applied during provisioning.
-Ansible Provisioning:
+Create scripts or systemd service files to manage the BDI and API services.
+Ensure that these services are only enabled on the leader node.
+Failover Mechanism:
 
-Ansible playbooks must be created to automate the entire provisioning process.
-Playbooks should include tasks for installing the software, setting up directories, and applying configuration templates.
-AMI Provisioning:
+Non-leader nodes must continuously watch for changes in the leader status.
+In the event of a leader failure (rehydration, maintenance, or crash), a new leader must be elected.
+The new leader must enable the BDI and API services promptly.
+Monitoring and Alerts:
 
-Ansible playbooks must be used to create a custom AMI with the Safer Payment software and configurations pre-installed.
-The custom AMI should be used to launch instances in the cluster to ensure consistency and reduce setup time.
+Implement monitoring to track the status of the leader and the health of the services.
+Configure alerts to notify the operations team of any leadership changes or service disruptions.
 Testing and Validation:
 
-Perform end-to-end testing to ensure the software is correctly installed and configured on all nodes.
-Validate that all custom paths and directories are correctly set up and accessible.
-Test the templatized configuration files to ensure they are correctly applied and functional on all nodes.
+Perform end-to-end testing to ensure the leader election process works as expected.
+Validate that only the leader node enables the BDI and API services.
+Test the failover mechanism by simulating leader node failures and ensuring a new leader is elected and services are enabled.
 Tasks:
-Ansible Playbook Development:
+Consul Installation and Configuration:
 
-Create Ansible playbooks to automate the installation of the Safer Payment software.
-Develop playbooks to set up custom paths and directories for data, configurations, and settings.
-Configuration Templatization:
+Install Consul on all nodes in the cluster.
+Configure Consul agents to participate in the leader election process.
+Ensure Consul agents are correctly communicating with each other.
+Leader Election Implementation:
 
-Create templates for settings.iris and cluster.iris configuration files.
-Ensure templates can dynamically apply node-specific configurations during provisioning.
-AMI Provisioning:
+Develop a session-based leader election process using Consul.
+Write scripts to enable BDI and API services on the leader node.
+Ensure non-leader nodes are watching for leadership changes.
+Service Management Scripts:
 
-Use Ansible to create a custom AMI with the Safer Payment software and configurations pre-installed.
-Ensure the AMI includes all necessary software, configurations, and directory structures.
-Testing and Validation:
+Create scripts or systemd service files to start, stop, and monitor the BDI and API services.
+Ensure these scripts are integrated with the leader election process.
+Failover Testing:
 
-Deploy instances using the custom AMI and validate the installation and configuration.
-Test the custom configurations and paths to ensure they are correctly set up and functional.
-Validate the templatized configuration files by checking their application on all nodes.
+Simulate leader node failures to test the failover mechanism.
+Ensure that non-leader nodes can detect the failure, elect a new leader, and enable the necessary services.
+Monitoring and Alerts Setup:
+
+Set up monitoring for Consul leader status and service health.
+Configure alerts to notify the operations team of any leadership changes or service issues.
 Documentation:
 
-Document the Ansible playbooks, configuration templates, and the AMI creation process.
-Provide clear guidelines for future maintenance, updates, and scaling of the software and configurations.
-By meeting these acceptance criteria, the Safer Payment application will be consistently and correctly installed and configured across all nodes in the cluster, ensuring a stable and reliable deployment environment.
+Document the Consul setup, leader election process, and service management scripts.
+Provide guidelines for future maintenance and troubleshooting of the leader election and failover mechanisms.
+By meeting these acceptance criteria, the Safer Payment application will have a robust service management system with Consul-based leader election, ensuring high availability and automatic failover of critical services (BDI and API) in the cluster.
