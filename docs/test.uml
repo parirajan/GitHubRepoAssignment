@@ -1,62 +1,13 @@
 @startuml
-skinparam ParticipantBackgroundColor #E3F2FD
-skinparam ParticipantBorderColor #2196F3
-skinparam ParticipantFontColor #0D47A1
-skinparam ParticipantFontSize 12
-skinparam BoxFontSize 10
-skinparam BoxPadding 10
+participant "Pipeline" as Pipeline
+participant "Consul KV Store" as Consul
+participant "Consul Watch" as Watch
+participant "Script" as Script
 
-box "Okta" #FFEBEE
-  participant "Okta OIDC IDP" as Okta
-end box
+Pipeline -> Consul: Update KV Data
+Watch --> Consul: Poll Change
+Consul --> Watch: Notify Handler
+Watch -> Script: Trigger Script
+Script -> Script: Execute Action
 
-box "User" #E8F5E9
-  participant "User" as User
-end box
-
-box "Web Access" #FFF3E0
-  participant "NGINX OSS (WEB)" as NGINXOSS
-  participant "mTLS\nSG Web" as TLSSGWeb
-end box
-
-box "App Account" #E0F7FA
-  box "Region 1" #B3E5FC
-    entity "Consul1" as Consul1
-    box "Proxy Group 1" #E1F5FE
-      participant "NGINX Plus (App Account)1" as Proxy1
-      participant "mTLS\nSG Reverse Proxy1" as TLSSGProxy1
-    end box
-    participant "SaferPayment Node 1 (Healthy)" as SPNode1
-    participant "SaferPayment Node 2 (Down)" as SPNode2
-    participant "SaferPayment Node 3 (Down)" as SPNode3
-  end box
-
-  box "Region 2" #B2DFDB
-    entity "Consul2" as Consul2
-    box "Proxy Group 2" #E0F2F1
-      participant "NGINX Plus (App Account)2" as Proxy2
-      participant "mTLS\nSG Reverse Proxy2" as TLSSGProxy2
-    end box
-    participant "SaferPayment Node 4 (Down)" as SPNode4
-    participant "SaferPayment Node 5 (Down)" as SPNode5
-    participant "SaferPayment Node 6 (Down)" as SPNode6
-  end box
-end box
-
-User -> NGINXOSS: Sends request
-NGINXOSS -> TLSSGWeb: mTLS enabled\nUpstream Sticky Session
-TLSSGWeb -> TLSSGProxy1: mTLS enabled\nUpstream Sticky Session
-TLSSGProxy1 -> Okta: IDP Authentication
-Okta -> TLSSGProxy1: Authentication Response
-TLSSGProxy1 -> Consul1: Register Node
-SPNode1 <-> Consul1
-SPNode2 <-> Consul1
-SPNode3 <-> Consul1
-SPNode4 <-> Consul2
-SPNode5 <-> Consul2
-SPNode6 <-> Consul2
-TLSSGProxy1 <-> Consul1: Returns healthy node (Node 1)
-TLSSGProxy2 <-> Consul2
-TLSSGProxy1 -> SPNode1: mTLS enabled\nProxies request to\nHealthy Node in Region1
-note right of SPNode2: Other Nodes in Region1 and Region2\nare marked down
 @enduml
