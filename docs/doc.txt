@@ -1,1 +1,6 @@
-
+Consul KV Store: The Consul KV store holds the key-value pairs and updates them as necessary.
+Consul Agent: The Consul agent runs on a node and can be configured to watch for changes in the KV store. The watch configuration tells the Consul agent to monitor specific keys or prefixes.
+Watch Notification: When a change occurs in the KV store, the Consul agent detects this change based on the configured watch. The KV store itself does not actively notify; rather, the Consul agent is continuously monitoring for changes.
+How the Watch Mechanism Works:
+Polling: The Consul agent periodically polls the KV store for changes. This is done efficiently using a blocking query mechanism, where the agent asks the KV store to wait for a change before returning.
+Handler Execution: When the Consul agent detects a change, it executes the handler (a script or a command) specified in the watch configuration.
