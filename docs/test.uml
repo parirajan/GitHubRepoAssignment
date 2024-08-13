@@ -1,41 +1,54 @@
 @startuml
-actor Local
-entity DevCluster as "Dev Cluster"
-entity ModelCluster as "Model Cluster"
-database GitLab as "GitLab Projects"
-entity TransactionClusters as "Transaction Clusters"
-database ServiceNow as "ServiceNow"
+start
 
-== Configuration Creation and Distribution ==
-Local -> Local : Create settings locally
-Local -> ServiceNow : Document settings in ServiceNow
-ServiceNow -> DevCluster : Update settings via UI
-DevCluster -> GitLab : Save and version settings
-GitLab -> ModelCluster : Restore saved configurations (version tracked)
-GitLab -> TransactionClusters : Restore saved configurations (version tracked)
+' Define split for parallel tasks
+fork
+    partition "Configuration/Settings Changes" {
+        :Developer makes settings/config changes in Dev Cluster;
+        :Execute Save API to capture settings/configurations;
+        :Upload Configurations to GitLab;
+        note right
+            Tag this upload as Configuration Version
+        end note
+    }
+fork again
+    partition "Tech Head Changes" {
+        :Developer updates Tech Head Challenger in Dev Cluster;
+        :Capture Tech Head Challenger Journal;
+        :Upload Journal to GitLab;
+        note right
+            Tag this upload as Tech Head Challenger Version
+        end note
+    }
+fork again
+    partition "Model Changes" {
+        :Developer updates Business/Tech Challengers in Model Cluster;
+        :Capture Business/Tech Challenger Journal;
+        :Upload Journal to GitLab;
+        note right
+            Tag this upload as Business/Tech Challenger Version
+        end note
+    }
+end fork
 
-== Tech Challenger Rules ==
-Local -> Local : Create tech challenger rules locally
-Local -> ServiceNow : Document tech challenger rules in ServiceNow
-ServiceNow -> DevCluster : Update rules via UI
-DevCluster -> GitLab : Export and version rules
-GitLab -> ModelCluster : Import tech challenger rules (version tracked)
-GitLab -> TransactionClusters : Import tech challenger rules (version tracked)
+' Version control and deployment check
+partition "Version Control and Deployment" {
+    :Check for sequential version integrity across all sources;
+    note right
+        Ensure that all versions are in sequence before deployment:
+        Configurations -> Tech Head Challenger -> Business/Tech Challenger
+    end note
+    if (All Versions in Sequence?) then (yes)
+        fork
+            :Independently deploy to Dev and Model Clusters;
+        fork again
+            :Independently deploy to Execution Clusters;
+        end fork
+    else (no)
+        :Halt Deployment;
+        :Notify Team to Resolve Versioning Issues;
+    endif
+}
 
-== Custom Models ==
-Local -> Local : Create custom models locally
-Local -> ServiceNow : Document custom models in ServiceNow
-ServiceNow -> ModelCluster : Update models via UI
-ModelCluster -> GitLab : Export and version custom models
-GitLab -> DevCluster : Import custom models (version tracked)
-GitLab -> TransactionClusters : Import custom models (version tracked)
-
-== Business Rules ==
-Local -> Local : Validate and create business rules locally
-Local -> ServiceNow : Document business rules in ServiceNow
-ServiceNow -> ModelCluster : Update business rules via UI
-ModelCluster -> GitLab : Export and version business rules
-GitLab -> DevCluster : Import business rules (version tracked)
-GitLab -> TransactionClusters : Import business rules (version tracked)
-
+stop
 @enduml
