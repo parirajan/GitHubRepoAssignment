@@ -1,13 +1,41 @@
 @startuml
-participant "Pipeline" as Pipeline
-participant "Consul KV Store" as Consul
-participant "Consul Watch" as Watch
-participant "Script" as Script
+actor Local
+entity DevCluster as "Dev Cluster"
+entity ModelCluster as "Model Cluster"
+database GitLab as "GitLab Projects"
+entity TransactionClusters as "Transaction Clusters"
+database ServiceNow as "ServiceNow"
 
-Pipeline -> Consul: Update KV Data
-Watch --> Consul: Poll Change
-Consul --> Watch: Notify Handler
-Watch -> Script: Trigger Script
-Script -> Script: Execute Action
+== Configuration Creation and Distribution ==
+Local -> Local : Create settings locally
+Local -> ServiceNow : Document settings in ServiceNow
+ServiceNow -> DevCluster : Update settings via UI
+DevCluster -> GitLab : Save and version settings
+GitLab -> ModelCluster : Restore saved configurations (version tracked)
+GitLab -> TransactionClusters : Restore saved configurations (version tracked)
+
+== Tech Challenger Rules ==
+Local -> Local : Create tech challenger rules locally
+Local -> ServiceNow : Document tech challenger rules in ServiceNow
+ServiceNow -> DevCluster : Update rules via UI
+DevCluster -> GitLab : Export and version rules
+GitLab -> ModelCluster : Import tech challenger rules (version tracked)
+GitLab -> TransactionClusters : Import tech challenger rules (version tracked)
+
+== Custom Models ==
+Local -> Local : Create custom models locally
+Local -> ServiceNow : Document custom models in ServiceNow
+ServiceNow -> ModelCluster : Update models via UI
+ModelCluster -> GitLab : Export and version custom models
+GitLab -> DevCluster : Import custom models (version tracked)
+GitLab -> TransactionClusters : Import custom models (version tracked)
+
+== Business Rules ==
+Local -> Local : Validate and create business rules locally
+Local -> ServiceNow : Document business rules in ServiceNow
+ServiceNow -> ModelCluster : Update business rules via UI
+ModelCluster -> GitLab : Export and version business rules
+GitLab -> DevCluster : Import business rules (version tracked)
+GitLab -> TransactionClusters : Import business rules (version tracked)
 
 @enduml
