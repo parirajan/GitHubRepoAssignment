@@ -1,7 +1,10 @@
 @startuml
 start
 
-' Define split for parallel tasks
+' Documentation in ServiceNow for all developer changes
+:Document all changes in ServiceNow;
+
+' Define split for parallel development tasks
 fork
     partition "Configuration/Settings Changes" {
         :Developer makes settings/config changes in Dev Cluster;
@@ -31,14 +34,47 @@ fork again
     }
 end fork
 
-' Version control and deployment check
+' Integration of Remote API triggering via Consul or AWS SSM
+fork
+    partition "Trigger Remote API via Consul" {
+        :Set up Consul Watch;
+        :Execute Script when Watch triggers;
+        :Script calls Remote API;
+        :Capture API Response and Upload to GitLab;
+        note right
+            Include in versioning process
+        end note
+    }
+fork again
+    partition "Trigger Remote API via AWS SSM" {
+        :Send Command via AWS SSM;
+        :AWS SSM Executes on Remote Instance;
+        :Instance Executes API Call;
+        :Capture Output and Upload to GitLab;
+        note right
+            Include in versioning process
+        end note
+    }
+end fork
+
+' Incorporating into SBOM
+partition "SBOM Integration" {
+    :Consolidate API Payloads and Journals;
+    :Generate SBOM Entries;
+    :Upload SBOM to GitLab;
+}
+
+' Version control and deployment checks
 partition "Version Control and Deployment" {
     :Check for sequential version integrity across all sources;
     note right
-        Ensure that all versions are in sequence before deployment:
-        Configurations -> Tech Head Challenger -> Business/Tech Challenger
+        Ensures all versions are ready and in sequence before deployment
     end note
-    if (All Versions in Sequence?) then (yes)
+    :Validate Current Version in Clusters;
+    note right
+        Confirm current cluster version is compatible for update
+    end note
+    if (All Versions in Sequence? and Current Version Validated?) then (yes)
         fork
             :Independently deploy to Dev and Model Clusters;
         fork again
@@ -48,6 +84,9 @@ partition "Version Control and Deployment" {
         :Halt Deployment;
         :Notify Team to Resolve Versioning Issues;
     endif
+    note left
+        Deployment respects version sequence and current cluster state
+    end note
 }
 
 stop
