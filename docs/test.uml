@@ -1,67 +1,44 @@
 @startuml
+skinparam monochrome true
+
 start
 
-' Documentation in ServiceNow
 :Document all changes in ServiceNow;
 
-' Parallel UI Updates for Dev Cluster and Model Cluster
-fork
-    ' UI Update for Dev Cluster
-    partition "Update Dev Cluster via UI" {
-        :Update Dev Cluster via UI;
-        }
-        ' Post-UI Update Activities for Dev Cluster
-        fork
-            ' Save API Data Payload
-            partition "Capture and Save API Data in Dev Cluster" {
-                :Execute API to capture data;
-                :Save API data payload;
-            }
-        fork again
-            ' Export Journals from Dev Cluster
-            partition "Export Journals from Dev Cluster" {
-                :Export journals from Dev Cluster;
-            }
-        end fork
-    
-fork again
-    ' UI Update for Model Cluster
-    partition "Update Model Cluster via UI" {
-        :Update Model Cluster via UI;
-        }
-        ' Post-UI Update Activity for Model Cluster
-        fork
-            ' Export Journals from Model Cluster
-            partition "Export Journals from Model Cluster" {
-                :Export journals from Model Cluster;
-            }
-        end fork
-    
-end fork
+partition "Collect Data" {
+    fork
+        :Trigger script to collect data\nfrom Dev Cluster;
+        :Save data payload and tech head journal\nto temporary storage;
+    fork again
+        :Trigger script to collect data\nfrom Model Cluster;
+        :Save business head journal and app journal\nto temporary storage;
+    end fork
+}
 
-' Parallel Execution of Consul Watch, Upload, and Tagging
-fork
-    partition "Trigger Consul Watch Command" {
-        :Trigger Consul Watch Command;
-    }
-fork again
-    partition "Upload Data to GitLab" {
-        :Upload API data payload and journals to GitLab;
-    }
-fork again
-    partition "Tagging Data Artifacts" {
-        :Tag data payload, journals with timestamp;
-        :Organize artifacts in GitLab based on timestamp;
-    }
-end fork
+partition "Prepare Artifacts" {
+    :Format and label data with timestamp and version;
+    :Package all data into structured directories;
+}
 
-' Listing Data Objects in SBOM
-:Run job to list data objects in SBOM;
+partition "Upload Artifacts" {
+    :Upload packaged artifacts to GitLab;
+    :Set artifact expiration policy;
+}
 
-' Sequential Deployment
-:Run deploy job to organize data objects listed in SBOM;
-:Sequentially deploy API data, import journals to clusters;
+partition "Version File Creation" {
+    :Generate version file based on CI_PIPELINE_IID;
+    :Upload version file alongside artifacts;
+}
+
+partition "Deployment" {
+    :Check current version on target clusters;
+    :Calculate versions to deploy;
+    if (Need to deploy new versions?) then (yes)
+        :Deploy new versions sequentially;
+    else (no)
+        :Skip deployment;
+    endif
+}
 
 stop
 @enduml
-
