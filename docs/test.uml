@@ -1,93 +1,67 @@
 @startuml
 start
 
-' Documentation in ServiceNow for all developer changes
+' Documentation in ServiceNow
 :Document all changes in ServiceNow;
 
-' Define split for parallel development tasks
+' Parallel UI Updates for Dev Cluster and Model Cluster
 fork
-    partition "Configuration/Settings Changes" {
-        :Developer makes settings/config changes in Dev Cluster;
-        :Execute Save API to capture settings/configurations;
-        :Upload Configurations to GitLab;
-        note right
-            Tag this upload as Configuration Version
-        end note
-    }
-fork again
-    partition "Tech Head Changes" {
-        :Developer updates Tech Head Challenger in Dev Cluster;
-        :Capture Tech Head Challenger Journal;
-        :Upload Journal to GitLab;
-        note right
-            Tag this upload as Tech Head Challenger Version
-        end note
-    }
-fork again
-    partition "Model Changes" {
-        :Developer updates Business/Tech Challengers in Model Cluster;
-        :Capture Business/Tech Challenger Journal;
-        :Upload Journal to GitLab;
-        note right
-            Tag this upload as Business/Tech Challenger Version
-        end note
-    }
-end fork
-
-' Integration of Remote API triggering via Consul or AWS SSM
-fork
-    partition "Trigger Remote API via Consul" {
-        :Set up Consul Watch;
-        :Execute Script when Watch triggers;
-        :Script calls Remote API;
-        :Capture API Response and Upload to GitLab;
-        note right
-            Include in versioning process
-        end note
-    }
-fork again
-    partition "Trigger Remote API via AWS SSM" {
-        :Send Command via AWS SSM;
-        :AWS SSM Executes on Remote Instance;
-        :Instance Executes API Call;
-        :Capture Output and Upload to GitLab;
-        note right
-            Include in versioning process
-        end note
-    }
-end fork
-
-' Incorporating into SBOM
-partition "SBOM Integration" {
-    :Consolidate API Payloads and Journals;
-    :Generate SBOM Entries;
-    :Upload SBOM to GitLab;
-}
-
-' Version control and deployment checks
-partition "Version Control and Deployment" {
-    :Check for sequential version integrity across all sources;
-    note right
-        Ensures all versions are ready and in sequence before deployment
-    end note
-    :Validate Current Version in Clusters;
-    note right
-        Confirm current cluster version is compatible for update
-    end note
-    if (All Versions in Sequence? and Current Version Validated?) then (yes)
+    ' UI Update for Dev Cluster
+    partition "Update Dev Cluster via UI" {
+        :Update Dev Cluster via UI;
+        }
+        ' Post-UI Update Activities for Dev Cluster
         fork
-            :Independently deploy to Dev and Model Clusters;
+            ' Save API Data Payload
+            partition "Capture and Save API Data in Dev Cluster" {
+                :Execute API to capture data;
+                :Save API data payload;
+            }
         fork again
-            :Independently deploy to Execution Clusters;
+            ' Export Journals from Dev Cluster
+            partition "Export Journals from Dev Cluster" {
+                :Export journals from Dev Cluster;
+            }
         end fork
-    else (no)
-        :Halt Deployment;
-        :Notify Team to Resolve Versioning Issues;
-    endif
-    note left
-        Deployment respects version sequence and current cluster state
-    end note
-}
+    
+fork again
+    ' UI Update for Model Cluster
+    partition "Update Model Cluster via UI" {
+        :Update Model Cluster via UI;
+        }
+        ' Post-UI Update Activity for Model Cluster
+        fork
+            ' Export Journals from Model Cluster
+            partition "Export Journals from Model Cluster" {
+                :Export journals from Model Cluster;
+            }
+        end fork
+    
+end fork
+
+' Parallel Execution of Consul Watch, Upload, and Tagging
+fork
+    partition "Trigger Consul Watch Command" {
+        :Trigger Consul Watch Command;
+    }
+fork again
+    partition "Upload Data to GitLab" {
+        :Upload API data payload and journals to GitLab;
+    }
+fork again
+    partition "Tagging Data Artifacts" {
+        :Tag data payload, journals with timestamp;
+        :Organize artifacts in GitLab based on timestamp;
+    }
+end fork
+
+' Listing Data Objects in SBOM
+:Run job to list data objects in SBOM;
+
+' Sequential Deployment
+:Run deploy job to organize data objects listed in SBOM;
+:Sequentially deploy API data, import journals to clusters;
 
 stop
 @enduml
+
