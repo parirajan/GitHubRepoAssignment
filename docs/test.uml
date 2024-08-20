@@ -39,7 +39,12 @@ partition "Sequential Deployment" {
 
 partition "Verify Deployment" {
     :Check all artifacts are deployed correctly;
-    :Update cluster version state;
+    if (Deployment successful?) then (yes)
+        :Update cluster version state to new version;
+    else (no)
+        :Log deployment failure;
+        stop
+    endif
 }
 
 stop
