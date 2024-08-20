@@ -3,31 +3,43 @@ skinparam monochrome true
 
 start
 
-:Start SBOM/OBOM Generation Process;
+:Start Deployment Process;
 
-partition "Identify Latest Artifacts" {
-    :Query GitLab for latest versions\nof four artifacts;
-    :Retrieve Artifact IDs and Metadata;
+partition "Retrieve SBOM/OBOM" {
+    :Fetch latest SBOM/OBOM from secure storage;
+    :Extract artifact version and timestamp info;
 }
 
-partition "Validate Artifact Integrity" {
-    :Check artifact integrity\n(e.g., hash validation);
-    :Confirm all artifacts are up-to-date;
+partition "Check Cluster Version" {
+    :Query current running version on cluster;
+    :Compare with SBOM/OBOM version;
 }
 
-partition "Compile SBOM/OBOM Data" {
-    :Format data with Artifact IDs,\nTimestamps, and Version Info;
-    :Add additional metadata\ne.g., source, author, licenses;
+partition "Determine Delta Versions" {
+    if (Delta exists?) then (yes)
+        :List all intermediate versions\nbetween current and SBOM/OBOM version;
+        :Query GitLab for delta artifacts;
+    else (no)
+        :No update required;
+        stop
+    endif
 }
 
-partition "Create SBOM/OBOM Document" {
-    :Generate SBOM/OBOM in desired format\n(e.g., JSON, XML, SPDX);
-    :Incorporate compliance and security checks;
+partition "Stage Delta Artifacts" {
+    :Pull delta artifacts for all\nfour types to staging area;
 }
 
-partition "Save and Distribute SBOM/OBOM" {
-    :Save SBOM/OBOM to a secure location;
-    :Distribute SBOM/OBOM to relevant stakeholders;
+partition "Sequential Deployment" {
+    :Run pre-deployment checks;
+    loop For each version in delta
+        :Deploy artifacts sequentially;
+        :Execute import/API save scripts;
+    end loop
+}
+
+partition "Verify Deployment" {
+    :Check all artifacts are deployed correctly;
+    :Update cluster version state;
 }
 
 stop
