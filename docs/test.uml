@@ -3,41 +3,31 @@ skinparam monochrome true
 
 start
 
-:Document all changes in ServiceNow;
+:Start SBOM/OBOM Generation Process;
 
-partition "Collect Data" {
-    fork
-        :Trigger script to collect data\nfrom Dev Cluster;
-        :Save data payload and tech head journal\nto temporary storage;
-    fork again
-        :Trigger script to collect data\nfrom Model Cluster;
-        :Save business head journal and app journal\nto temporary storage;
-    end fork
+partition "Identify Latest Artifacts" {
+    :Query GitLab for latest versions\nof four artifacts;
+    :Retrieve Artifact IDs and Metadata;
 }
 
-partition "Prepare Artifacts" {
-    :Format and label data with timestamp and version;
-    :Package all data into structured directories;
+partition "Validate Artifact Integrity" {
+    :Check artifact integrity\n(e.g., hash validation);
+    :Confirm all artifacts are up-to-date;
 }
 
-partition "Upload Artifacts" {
-    :Upload packaged artifacts to GitLab;
-    :Set artifact expiration policy;
+partition "Compile SBOM/OBOM Data" {
+    :Format data with Artifact IDs,\nTimestamps, and Version Info;
+    :Add additional metadata\ne.g., source, author, licenses;
 }
 
-partition "Version File Creation" {
-    :Generate version file based on CI_PIPELINE_IID;
-    :Upload version file alongside artifacts;
+partition "Create SBOM/OBOM Document" {
+    :Generate SBOM/OBOM in desired format\n(e.g., JSON, XML, SPDX);
+    :Incorporate compliance and security checks;
 }
 
-partition "Deployment" {
-    :Check current version on target clusters;
-    :Calculate versions to deploy;
-    if (Need to deploy new versions?) then (yes)
-        :Deploy new versions sequentially;
-    else (no)
-        :Skip deployment;
-    endif
+partition "Save and Distribute SBOM/OBOM" {
+    :Save SBOM/OBOM to a secure location;
+    :Distribute SBOM/OBOM to relevant stakeholders;
 }
 
 stop
