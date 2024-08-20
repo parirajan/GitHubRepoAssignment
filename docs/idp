@@ -6,7 +6,6 @@ variables:
   AWS_ACCESS_KEY_ID: "<your-access-key-id>"
   AWS_SECRET_ACCESS_KEY: "<your-secret-access-key>"
 
-# Function to update Launch Template with the latest AMI
 before_script:
   - |
     function update_launch_template_with_latest_ami() {
@@ -14,22 +13,22 @@ before_script:
         local LAUNCH_TEMPLATE_NAME=$2
         local AMI_NAME_PREFIX=$3
 
-        echo "Updating Launch Template: ${LAUNCH_TEMPLATE_NAME} in region: ${REGION} with the latest AMI matching prefix: ${AMI_NAME_PREFIX}"
+        echo "Updating Launch Template: ${LAUNCH_TEMPLATE_NAME} in region: ${REGION} with the latest private AMI matching prefix: ${AMI_NAME_PREFIX}"
 
-        # Fetch the latest AMI ID based on the AMI name prefix
+        # Fetch the latest private AMI ID based on the AMI name prefix
         LATEST_AMI_ID=$(aws ec2 describe-images \
             --region ${REGION} \
-            --owners self \
             --filters "Name=name,Values=${AMI_NAME_PREFIX}*" \
+                      "Name=is-public,Values=false" \
             --query "Images | sort_by(@, &CreationDate)[-1].ImageId" \
             --output text)
 
         if [ -z "$LATEST_AMI_ID" ]; then
-            echo "No AMI found with the prefix: ${AMI_NAME_PREFIX} in region: ${REGION}"
+            echo "No private AMI found with the prefix: ${AMI_NAME_PREFIX} in region: ${REGION}"
             exit 1
         fi
 
-        echo "Latest AMI ID in ${REGION}: ${LATEST_AMI_ID}"
+        echo "Latest private AMI ID in ${REGION}: ${LATEST_AMI_ID}"
 
         # Fetch the Launch Template ID based on the name
         LAUNCH_TEMPLATE_ID=$(aws ec2 describe-launch-templates \
@@ -49,7 +48,7 @@ before_script:
         aws ec2 create-launch-template-version \
             --region ${REGION} \
             --launch-template-id ${LAUNCH_TEMPLATE_ID} \
-            --version-description "Updated to latest AMI with prefix '${AMI_NAME_PREFIX}'" \
+            --version-description "Updated to latest private AMI with prefix '${AMI_NAME_PREFIX}'" \
             --source-version 1 \
             --launch-template-data "{\"ImageId\":\"${LATEST_AMI_ID}\"}"
 
@@ -68,13 +67,11 @@ before_script:
         echo "Launch Template ${LAUNCH_TEMPLATE_NAME} in region ${REGION} updated to version ${NEW_VERSION} with AMI ${LATEST_AMI_ID}"
     }
 
-# Job to update AMI in us-west-2 region
 update_ami_in_west:
   stage: update_ami_west
   script:
     - update_launch_template_with_latest_ami "us-west-2" "my-launch-template-west" "my-custom-ami-prefix"
 
-# Job to update AMI in us-east-1 region
 update_ami_in_east:
   stage: update_ami_east
   script:
