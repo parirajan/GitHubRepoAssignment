@@ -31,10 +31,10 @@ partition "Stage Delta Artifacts" {
 
 partition "Sequential Deployment" {
     :Run pre-deployment checks;
-    loop For each version in delta
+    while (Each version in delta)
         :Deploy artifacts sequentially;
         :Execute import/API save scripts;
-    end loop
+    endwhile
 }
 
 partition "Verify Deployment" {
