@@ -15,26 +15,26 @@ before_script:
 
         echo "Updating Launch Template for ASG: ${ASG_NAME} in region: ${REGION} with the latest private AMI matching prefix: ${AMI_NAME_PREFIX}"
 
-        # Derive the Launch Template ID or name from the ASG
-        LAUNCH_TEMPLATE_INFO=$(aws autoscaling describe-auto-scaling-groups \
+        # Derive the Launch Template name and version from the ASG
+        LAUNCH_TEMPLATE_NAME=$(aws autoscaling describe-auto-scaling-groups \
             --region ${REGION} \
             --auto-scaling-group-names ${ASG_NAME} \
-            --query "AutoScalingGroups[0].LaunchTemplate" \
-            --output json)
+            --query "AutoScalingGroups[0].LaunchTemplate.LaunchTemplateName" \
+            --output text)
 
-        if [ -z "$LAUNCH_TEMPLATE_INFO" ]; then
+        LAUNCH_TEMPLATE_VERSION=$(aws autoscaling describe-auto-scaling-groups \
+            --region ${REGION} \
+            --auto-scaling-group-names ${ASG_NAME} \
+            --query "AutoScalingGroups[0].LaunchTemplate.Version" \
+            --output text)
+
+        if [ -z "$LAUNCH_TEMPLATE_NAME" ]; then
             echo "No Launch Template found for ASG: ${ASG_NAME} in region: ${REGION}"
             exit 1
         fi
 
-        LAUNCH_TEMPLATE_ID=$(echo $LAUNCH_TEMPLATE_INFO | jq -r '.LaunchTemplateId')
-        LAUNCH_TEMPLATE_NAME=$(echo $LAUNCH_TEMPLATE_INFO | jq -r '.LaunchTemplateName')
-
-        if [ -z "$LAUNCH_TEMPLATE_ID" ]; then
-            echo "No Launch Template ID found, using Launch Template Name: ${LAUNCH_TEMPLATE_NAME}"
-        else
-            echo "Launch Template ID: ${LAUNCH_TEMPLATE_ID}"
-        fi
+        echo "Launch Template Name: ${LAUNCH_TEMPLATE_NAME}"
+        echo "Launch Template Version: ${LAUNCH_TEMPLATE_VERSION}"
 
         # Fetch the latest private AMI ID based on the AMI name prefix
         LATEST_AMI_ID=$(aws ec2 describe-images \
@@ -52,48 +52,26 @@ before_script:
         echo "Latest private AMI ID in ${REGION}: ${LATEST_AMI_ID}"
 
         # Create a new version of the launch template with the latest AMI ID
-        if [ -n "$LAUNCH_TEMPLATE_ID" ]; then
-            aws ec2 create-launch-template-version \
-                --region ${REGION} \
-                --launch-template-id ${LAUNCH_TEMPLATE_ID} \
-                --version-description "Updated to latest private AMI with prefix '${AMI_NAME_PREFIX}'" \
-                --source-version 1 \
-                --launch-template-data "{\"ImageId\":\"${LATEST_AMI_ID}\"}"
-        else
-            aws ec2 create-launch-template-version \
-                --region ${REGION} \
-                --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
-                --version-description "Updated to latest private AMI with prefix '${AMI_NAME_PREFIX}'" \
-                --source-version 1 \
-                --launch-template-data "{\"ImageId\":\"${LATEST_AMI_ID}\"}"
-        fi
+        aws ec2 create-launch-template-version \
+            --region ${REGION} \
+            --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
+            --version-description "Updated to latest private AMI with prefix '${AMI_NAME_PREFIX}'" \
+            --source-version ${LAUNCH_TEMPLATE_VERSION} \
+            --launch-template-data "{\"ImageId\":\"${LATEST_AMI_ID}\"}"
 
         # Optionally, make the new version the default version
-        if [ -n "$LAUNCH_TEMPLATE_ID" ]; then
-            NEW_VERSION=$(aws ec2 describe-launch-template-versions \
-                --region ${REGION} \
-                --launch-template-id ${LAUNCH_TEMPLATE_ID} \
-                --query "LaunchTemplateVersions[-1].VersionNumber" \
-                --output text)
+        NEW_VERSION=$(aws ec2 describe-launch-template-versions \
+            --region ${REGION} \
+            --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
+            --query "LaunchTemplateVersions[-1].VersionNumber" \
+            --output text)
 
-            aws ec2 modify-launch-template \
-                --region ${REGION} \
-                --launch-template-id ${LAUNCH_TEMPLATE_ID} \
-                --default-version ${NEW_VERSION}
-        else
-            NEW_VERSION=$(aws ec2 describe-launch-template-versions \
-                --region ${REGION} \
-                --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
-                --query "LaunchTemplateVersions[-1].VersionNumber" \
-                --output text)
+        aws ec2 modify-launch-template \
+            --region ${REGION} \
+            --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
+            --default-version ${NEW_VERSION}
 
-            aws ec2 modify-launch-template \
-                --region ${REGION} \
-                --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
-                --default-version ${NEW_VERSION}
-        fi
-
-        echo "Launch Template for ASG ${ASG_NAME} in region ${REGION} updated to version ${NEW_VERSION} with AMI ${LATEST_AMI_ID}"
+        echo "Launch Template ${LAUNCH_TEMPLATE_NAME} in region ${REGION} updated to version ${NEW_VERSION} with AMI ${LATEST_AMI_ID}"
     }
 
 update_ami_in_west:
