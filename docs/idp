@@ -1,22 +1,81 @@
-@startuml
-actor EndUser as "END USER"
-participant Browser
-participant IDP as "IDP"
-participant NGINX as "NGINX+"
-participant WebApp as "WEB APP"
+stages:
+  - update_ami_west
+  - update_ami_east
 
-EndUser -> Browser : 1. Requests protected resource
-Browser -> IDP : 2. Redirected to IdP for authentication
-IDP -> Browser : 3. Requests login page
-Browser -> IDP : 4. Provides authentication and consent
-IDP -> Browser : 5. Sends redirect with\nauthorization code
-Browser -> NGINX : 6. Redirected to NGINX for code exchange
-NGINX -> IDP : 7. Sends authorization code
-IDP -> NGINX : 8. Sends ID Token
-NGINX -> WebApp : 9. Validates ID Token,\ncreates session cookie
-WebApp -> Browser : 10. Sends redirect to original URI
-Browser -> WebApp : 11. Requests original URI,\nsupplying session cookie
-WebApp -> NGINX : 12. Extracts JWT from cookie,\nvalidates signature
-NGINX -> WebApp : 13. Proxies request
-WebApp -> Browser : 14. Sends resource
-@enduml
+variables:
+  AWS_ACCESS_KEY_ID: "<your-access-key-id>"
+  AWS_SECRET_ACCESS_KEY: "<your-secret-access-key>"
+
+# Function to update Launch Template with the latest AMI
+before_script:
+  - |
+    function update_launch_template_with_latest_ami() {
+        local REGION=$1
+        local LAUNCH_TEMPLATE_NAME=$2
+        local AMI_NAME_PREFIX=$3
+
+        echo "Updating Launch Template: ${LAUNCH_TEMPLATE_NAME} in region: ${REGION} with the latest AMI matching prefix: ${AMI_NAME_PREFIX}"
+
+        # Fetch the latest AMI ID based on the AMI name prefix
+        LATEST_AMI_ID=$(aws ec2 describe-images \
+            --region ${REGION} \
+            --owners self \
+            --filters "Name=name,Values=${AMI_NAME_PREFIX}*" \
+            --query "Images | sort_by(@, &CreationDate)[-1].ImageId" \
+            --output text)
+
+        if [ -z "$LATEST_AMI_ID" ]; then
+            echo "No AMI found with the prefix: ${AMI_NAME_PREFIX} in region: ${REGION}"
+            exit 1
+        fi
+
+        echo "Latest AMI ID in ${REGION}: ${LATEST_AMI_ID}"
+
+        # Fetch the Launch Template ID based on the name
+        LAUNCH_TEMPLATE_ID=$(aws ec2 describe-launch-templates \
+            --region ${REGION} \
+            --filters "Name=launch-template-name,Values=${LAUNCH_TEMPLATE_NAME}" \
+            --query "LaunchTemplates[0].LaunchTemplateId" \
+            --output text)
+
+        if [ -z "$LAUNCH_TEMPLATE_ID" ]; then
+            echo "Launch Template with name ${LAUNCH_TEMPLATE_NAME} not found in region: ${REGION}."
+            exit 1
+        fi
+
+        echo "Launch Template ID in ${REGION}: ${LAUNCH_TEMPLATE_ID}"
+
+        # Create a new version of the launch template with the latest AMI ID
+        aws ec2 create-launch-template-version \
+            --region ${REGION} \
+            --launch-template-id ${LAUNCH_TEMPLATE_ID} \
+            --version-description "Updated to latest AMI with prefix '${AMI_NAME_PREFIX}'" \
+            --source-version 1 \
+            --launch-template-data "{\"ImageId\":\"${LATEST_AMI_ID}\"}"
+
+        # Optionally, make the new version the default version
+        NEW_VERSION=$(aws ec2 describe-launch-template-versions \
+            --region ${REGION} \
+            --launch-template-id ${LAUNCH_TEMPLATE_ID} \
+            --query "LaunchTemplateVersions[-1].VersionNumber" \
+            --output text)
+
+        aws ec2 modify-launch-template \
+            --region ${REGION} \
+            --launch-template-id ${LAUNCH_TEMPLATE_ID} \
+            --default-version ${NEW_VERSION}
+
+        echo "Launch Template ${LAUNCH_TEMPLATE_NAME} in region ${REGION} updated to version ${NEW_VERSION} with AMI ${LATEST_AMI_ID}"
+    }
+
+# Job to update AMI in us-west-2 region
+update_ami_in_west:
+  stage: update_ami_west
+  script:
+    - update_launch_template_with_latest_ami "us-west-2" "my-launch-template-west" "my-custom-ami-prefix"
+
+# Job to update AMI in us-east-1 region
+update_ami_in_east:
+  stage: update_ami_east
+  script:
+    - update_launch_template_with_latest_ami "us-east-1" "my-launch-template-east" "another-ami-prefix"
