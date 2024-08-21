@@ -1,39 +1,22 @@
-workflow:
-  rules:
-    - when: manual
+        # Wait for the refresh to complete by polling the status
+        while true; do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+                --region ${REGION} \
+                --auto-scaling-group-name ${ASG_NAME} \
+                --instance-refresh-ids ${REFRESH_ID} \
+                --query "InstanceRefreshes[0].Status" \
+                --output text)
 
+            echo "Current refresh status for ASG: ${ASG_NAME} is ${STATUS}"
 
-
-update_ami_in_west:
-  stage: update_ami
-  script:
-    - |
-      for i in 1 2 3; do
-        update_launch_template_or_config "us-west-1" "svc-us-west-1-${i}" "my-custom-ami-prefix"
-      done
-
-update_ami_in_east:
-  stage: update_ami
-  script:
-    - |
-      for i in 1 2 3; do
-        update_launch_template_or_config "us-east-1" "svc-us-east-1-${i}" "my-custom-ami-prefix"
-      done
-
-refresh_asg_in_west:
-  stage: refresh_asg
-  needs: [update_ami_in_west]  # This job needs the 'update_ami_in_west' job to complete first
-  script:
-    - |
-      for i in 1 2 3; do
-        refresh_autoscaling_group "us-west-1" "svc-us-west-1-${i}"
-      done
-
-refresh_asg_in_east:
-  stage: refresh_asg
-  needs: [update_ami_in_east]  # This job needs the 'update_ami_in_east' job to complete first
-  script:
-    - |
-      for i in 1 2 3; do
-        refresh_autoscaling_group "us-east-1" "svc-us-east-1-${i}"
-      done
+            if [ "$STATUS" == "Successful" ]; then
+                echo "Instance refresh completed successfully for ASG: ${ASG_NAME}"
+                break
+            elif [ "$STATUS" == "Failed" ]; then
+                echo "Instance refresh failed for ASG: ${ASG_NAME}"
+                exit 1
+            else
+                echo "Instance refresh in progress for ASG: ${ASG_NAME}, waiting..."
+                sleep 30  # Wait for 30 seconds before checking the status again
+            fi
+        done
