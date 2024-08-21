@@ -1,22 +1,13 @@
-        # Wait for the refresh to complete by polling the status
-        while true; do
-            STATUS=$(aws autoscaling describe-instance-refreshes \
-                --region ${REGION} \
-                --auto-scaling-group-name ${ASG_NAME} \
-                --instance-refresh-ids ${REFRESH_ID} \
-                --query "InstanceRefreshes[0].Status" \
-                --output text)
+        echo "Checking for existing instance refresh for ASG: ${ASG_NAME} in region: ${REGION}"
 
-            echo "Current refresh status for ASG: ${ASG_NAME} is ${STATUS}"
+        # Check for an existing instance refresh
+        STATUS=$(aws autoscaling describe-instance-refreshes \
+            --region ${REGION} \
+            --auto-scaling-group-name ${ASG_NAME} \
+            --query "InstanceRefreshes[?Status=='InProgress'].Status" \
+            --output text)
 
-            if [ "$STATUS" == "Successful" ]; then
-                echo "Instance refresh completed successfully for ASG: ${ASG_NAME}"
-                break
-            elif [ "$STATUS" == "Failed" ]; then
-                echo "Instance refresh failed for ASG: ${ASG_NAME}"
-                exit 1
-            else
-                echo "Instance refresh in progress for ASG: ${ASG_NAME}, waiting..."
-                sleep 30  # Wait for 30 seconds before checking the status again
-            fi
-        done
+        if [ "$STATUS" == "InProgress" ]; then
+            echo "An instance refresh is already in progress for ASG: ${ASG_NAME}. Exiting."
+            exit 0  # Exit successfully without starting a new refresh
+        fi
