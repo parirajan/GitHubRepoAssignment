@@ -1,138 +1,11 @@
-stages:
-  - update_ami_west
-  - update_ami_east
-  - refresh_asg_west
-  - refresh_asg_east
+workflow:
+  rules:
+    - when: manual
 
-variables:
-  AWS_ACCESS_KEY_ID: "<your-access-key-id>"
-  AWS_SECRET_ACCESS_KEY: "<your-secret-access-key>"
 
-before_script:
-  - |
-    function update_launch_template_or_config() {
-        local REGION=$1
-        local ASG_NAME=$2
-        local AMI_NAME_PREFIX=$3
-
-        echo "Checking ASG: ${ASG_NAME} in region: ${REGION}"
-
-        # Check if the ASG is using a Launch Template
-        LAUNCH_TEMPLATE_NAME=$(aws autoscaling describe-auto-scaling-groups \
-            --region ${REGION} \
-            --auto-scaling-group-names ${ASG_NAME} \
-            --query "AutoScalingGroups[0].LaunchTemplate.LaunchTemplateName" \
-            --output text)
-
-        LAUNCH_TEMPLATE_VERSION=$(aws autoscaling describe-auto-scaling-groups \
-            --region ${REGION} \
-            --auto-scaling-group-names ${ASG_NAME} \
-            --query "AutoScalingGroups[0].LaunchTemplate.Version" \
-            --output text)
-
-        if [ "$LAUNCH_TEMPLATE_NAME" != "None" ] && [ -n "$LAUNCH_TEMPLATE_NAME" ]; then
-            echo "ASG ${ASG_NAME} is using Launch Template: ${LAUNCH_TEMPLATE_NAME} (Version: ${LAUNCH_TEMPLATE_VERSION})"
-
-            # Fetch the latest private AMI ID based on the AMI name prefix
-            LATEST_AMI_ID=$(aws ec2 describe-images \
-                --region ${REGION} \
-                --filters "Name=name,Values=${AMI_NAME_PREFIX}*" \
-                          "Name=is-public,Values=false" \
-                --query "Images | sort_by(@, &CreationDate)[-1].ImageId" \
-                --output text)
-
-            if [ -z "$LATEST_AMI_ID" ]; then
-                echo "No private AMI found with the prefix: ${AMI_NAME_PREFIX} in region: ${REGION}"
-                exit 1
-            fi
-
-            echo "Latest private AMI ID in ${REGION}: ${LATEST_AMI_ID}"
-
-            # Create a new version of the launch template with the latest AMI ID
-            aws ec2 create-launch-template-version \
-                --region ${REGION} \
-                --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
-                --version-description "Updated to latest private AMI with prefix '${AMI_NAME_PREFIX}'" \
-                --source-version ${LAUNCH_TEMPLATE_VERSION} \
-                --launch-template-data "{\"ImageId\":\"${LATEST_AMI_ID}\"}"
-
-            # Retrieve the latest version number of the launch template
-            NEW_VERSION=$(aws ec2 describe-launch-template-versions \
-                --region ${REGION} \
-                --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
-                --query "LaunchTemplateVersions[-1].VersionNumber" \
-                --output text)
-
-            # Update the default version of the launch template to the latest version
-            aws ec2 modify-launch-template \
-                --region ${REGION} \
-                --launch-template-name ${LAUNCH_TEMPLATE_NAME} \
-                --default-version ${NEW_VERSION}
-
-            echo "Launch Template ${LAUNCH_TEMPLATE_NAME} in region ${REGION} updated to version ${NEW_VERSION} and set as the default version."
-
-        else
-            # Check if the ASG is using a Launch Configuration
-            LAUNCH_CONFIG_NAME=$(aws autoscaling describe-auto-scaling-groups \
-                --region ${REGION} \
-                --auto-scaling-group-names ${ASG_NAME} \
-                --query "AutoScalingGroups[0].LaunchConfigurationName" \
-                --output text)
-
-            if [ "$LAUNCH_CONFIG_NAME" != "None" ] && [ -n "$LAUNCH_CONFIG_NAME" ]; then
-                echo "ASG ${ASG_NAME} is using Launch Configuration: ${LAUNCH_CONFIG_NAME}"
-
-                # If needed, fetch the AMI from the existing Launch Configuration
-                EXISTING_AMI_ID=$(aws autoscaling describe-launch-configurations \
-                    --region ${REGION} \
-                    --launch-configuration-names ${LAUNCH_CONFIG_NAME} \
-                    --query "LaunchConfigurations[0].ImageId" \
-                    --output text)
-
-                echo "Existing AMI ID in Launch Configuration ${LAUNCH_CONFIG_NAME}: ${EXISTING_AMI_ID}"
-
-                # Handle Launch Configuration updates here (e.g., create a new LC with the latest AMI)
-                echo "Note: Launch Configurations are immutable. You would need to create a new LC and update the ASG to use it."
-
-            else
-                echo "No Launch Template or Launch Configuration found for ASG: ${ASG_NAME} in region: ${REGION}"
-                exit 1
-            fi
-        fi
-    }
-
-    function refresh_autoscaling_group() {
-        local REGION=$1
-        local ASG_NAME=$2
-
-        echo "Starting refresh for ASG: ${ASG_NAME} in region: ${REGION}"
-
-        # Start the instance refresh process
-        REFRESH_ID=$(aws autoscaling start-instance-refresh \
-            --region ${REGION} \
-            --auto-scaling-group-name ${ASG_NAME} \
-            --preferences '{"MinHealthyPercentage": 90, "InstanceWarmup": 300}' \
-            --query "InstanceRefreshId" \
-            --output text)
-
-        if [ -z "$REFRESH_ID" ]; then
-            echo "Failed to start instance refresh for ASG: ${ASG_NAME} in region: ${REGION}"
-            exit 1
-        fi
-
-        echo "Instance refresh started for ASG: ${ASG_NAME} with ID: ${REFRESH_ID}"
-
-        # Wait for the refresh to complete
-        aws autoscaling wait instance-refresh-complete \
-            --region ${REGION} \
-            --auto-scaling-group-name ${ASG_NAME} \
-            --instance-refresh-id ${REFRESH_ID}
-
-        echo "Instance refresh completed for ASG: ${ASG_NAME} in region: ${REGION}"
-    }
 
 update_ami_in_west:
-  stage: update_ami_west
+  stage: update_ami
   script:
     - |
       for i in 1 2 3; do
@@ -140,7 +13,7 @@ update_ami_in_west:
       done
 
 update_ami_in_east:
-  stage: update_ami_east
+  stage: update_ami
   script:
     - |
       for i in 1 2 3; do
@@ -148,7 +21,8 @@ update_ami_in_east:
       done
 
 refresh_asg_in_west:
-  stage: refresh_asg_west
+  stage: refresh_asg
+  needs: [update_ami_in_west]  # This job needs the 'update_ami_in_west' job to complete first
   script:
     - |
       for i in 1 2 3; do
@@ -156,7 +30,8 @@ refresh_asg_in_west:
       done
 
 refresh_asg_in_east:
-  stage: refresh_asg_east
+  stage: refresh_asg
+  needs: [update_ami_in_east]  # This job needs the 'update_ami_in_east' job to complete first
   script:
     - |
       for i in 1 2 3; do
