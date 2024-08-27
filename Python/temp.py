@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 
 # Base URL for the request
-url = "http://172.16.0.2:17501"
+url = "http://localhost:27911"
 
 # Function to generate a new transaction request payload
 def generate_payload():
@@ -14,27 +14,23 @@ def generate_payload():
     amount = round(100 * (1 + 0.01 * (2 * (0.5 - uuid.uuid4().int % 1000 / 1000))), 2)  # Random amount close to 100
 
     payload = {
-        "RequestType": {
-            "Request": {
-                "MessageType": "3",
-                "MessageID": message_id,
-                "TransactionReceiveDate": transaction_receive_time,
-                "TransactionFinalDate": transaction_final_time,
-                "TransactionAmtTypeCD": "PACS009",
-                "TransactionCD": "PACS009",
-                "SettleID": "SettleID",
-                "Amount": amount,
-                "FraudScreenDataArray": [1, 6, 1, 0],
-                "ProprietaryRejectionsArray": []
-            }
-        }
+        "MsgId": message_id,
+        "TransactionReceiveDtm": transaction_receive_time,
+        "TransactionFinalDtm": transaction_final_time,
+        "TransactionTypeCd": "PACS008",
+        "StatusCd": "Settled",
+        "Amount": amount,
+        "FraudScreenDataArray": [1, 0, 1, 0],
+        "ProprietaryRejectionCdArray": []
     }
     
     return payload
 
 # Headers for the request
 headers = {
-    'Content-Type': 'application/json'
+    'Content-Type': 'text/json',
+    'X-SP-Request-Type': 'ModelRequest',
+    'X-SP-Message-Type-Id': '1'
 }
 
 # Function to send a single request
