@@ -13,7 +13,7 @@ class GetSession:
         self.download_token = None
         
         # Handle TLS verification and certificate loading
-        self.verify_tls = self.config.get("tls_verify", True)
+        self.verify_tls = self.config.get("tls_verify", True)  # Default is True (verify enabled)
         self.cert = (self.config["cert"]["cert_path"], self.config["cert"]["key_path"]) if not self.verify_tls else None
 
     def sso_login(self):
@@ -29,7 +29,7 @@ class GetSession:
             "x-fn-oidc-info": oidc_info
         }
         
-        # Perform the POST request for SSO login
+        # Perform the POST request for SSO login, skip TLS if tls_verify is false
         response = self.session.post(url, data=login_data, headers=headers, verify=self.verify_tls, cert=self.cert)
         response_json = response.json()
         self.csrf_token = response_json.get("csrfToken")
