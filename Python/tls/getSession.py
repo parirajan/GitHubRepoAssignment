@@ -1,24 +1,22 @@
 import requests
+from utils import ConfigLoader, LoggingHandler, sso_login
 import json
-from utils import ConfigLoader, LoggingHandler
 
 def getSession(session: requests.Session, config_path: str):
     try:
         config_loader = ConfigLoader(config_path)
         logger = LoggingHandler().get_execution_logger(__name__)
 
-        ssoLogin = config_loader.get_config('ssoLogin', 'enabled', False)
-        tlsConfig = config_loader.get_config('validateTls', 'enabled', False)
-        ssoEnabled = ssoLogin.get('enabled', False)
-        ssoHeaders = ssoLogin.get('reqHeaders', {})
-
+        # Perform SSO login if enabled
+        ssoEnabled = config_loader.get_config('ssoLogin', 'enabled', False)
         if ssoEnabled:
-            ssoHeaders = {
-                key: (json.dumps(value) if isinstance(value, dict) else str(value))
-                for key, value in ssoHeaders.items()
-            }
-            session.headers.update(ssoHeaders)
+            session = sso_login(session, config_loader, logger)
+            if not session:
+                logger.error("SSO login failed. Exiting.")
+                return None
 
+        # Add TLS certificates if TLS validation is enabled
+        tlsConfig = config_loader.get_config('validateTls', 'enabled', False)
         if tlsConfig:
             session.verify = config_loader.get_config('validateTls', 'caCert', None)
             session.cert = (
@@ -29,5 +27,5 @@ def getSession(session: requests.Session, config_path: str):
         return session
 
     except Exception as e:
-        logger.error("No session provided", str(e))
+        logger.error(f"Error creating session: {str(e)}")
         return None
