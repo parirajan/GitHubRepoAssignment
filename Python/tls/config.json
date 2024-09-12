@@ -1,6 +1,12 @@
 {
   "base_url": "https://your-api-url.com",
+  "port": 443,
   "oidc_login": true,
+  "tls_verify": true,
+  "cert": {
+    "cert_path": "/path/to/cert.pem",
+    "key_path": "/path/to/key.pem"
+  },
   "endpoints": {
     "tryssologin": "/api/login",
     "get_instances": "/api/getInstancesTable"
@@ -10,10 +16,10 @@
     "password": "pass"
   },
   "headers": {
-    "AuthToken": "From OKTA",
     "Content-Type": "application/json",
     "x-fn-oidc-info": {
       "loginname": "user"
     }
-  }
+  },
+  "uid": 123  # Example UID
 }
