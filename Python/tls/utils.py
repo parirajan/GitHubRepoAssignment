@@ -52,11 +52,15 @@ def sso_login(session: requests.Session, config_loader: ConfigLoader, logger):
         target_config = config_loader.get_config('target', {})
         api_url = f"https://{target_config.get('ip')}:{target_config.get('apiPort')}{login_url}"
 
-        # Get required headers from the config
+        # Get required headers from the config and ensure 'x-fn-oidc-info' is a string
         headers = config_loader.get_config('ssoLogin', 'reqHeaders', {})
         if not isinstance(headers, dict):
             logger.error("SSO login headers are not properly formatted")
             return None
+
+        # Convert 'x-fn-oidc-info' from dict to string if necessary
+        if 'x-fn-oidc-info' in headers and isinstance(headers['x-fn-oidc-info'], dict):
+            headers['x-fn-oidc-info'] = json.dumps(headers['x-fn-oidc-info'])  # Convert dict to string
 
         # Example login data payload
         login_data = {"request": {"trySsoLogin": "Y"}}  # Based on the image you shared
@@ -85,11 +89,14 @@ def sso_login(session: requests.Session, config_loader: ConfigLoader, logger):
         session.headers.update({
             'downloadToken': download_token,
             'csrftoken': csrf_token,
-            'x-fn-oidc-info': '{"loginname": "user"}'  # Update with dynamic login if needed
+            'x-fn-oidc-info': '{"loginname": "user"}'  # Ensure this is a string, update dynamically if needed
         })
 
         return session
 
+    except Exception as e:
+        logger.error(f"Error during SSO login: {str(e)}")
+        return None
     except Exception as e:
         logger.error(f"Error during SSO login: {str(e)}")
         return None
