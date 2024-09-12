@@ -13,7 +13,7 @@ class GetSession:
         self.download_token = None
         
         # Handle TLS verification and certificate loading
-        self.verify_tls = self.config.get("tls_verify", True)  # Default is True (verify enabled)
+        self.verify_tls = self.config.get("tls_verify", True)
         self.cert = (self.config["cert"]["cert_path"], self.config["cert"]["key_path"]) if not self.verify_tls else None
 
     def sso_login(self):
@@ -29,17 +29,33 @@ class GetSession:
             "x-fn-oidc-info": oidc_info
         }
         
-        # Perform the POST request for SSO login, skip TLS if tls_verify is false
+        # Perform the POST request for SSO login
         response = self.session.post(url, data=login_data, headers=headers, verify=self.verify_tls, cert=self.cert)
-        response_json = response.json()
+        
+        # Log the full response for debugging
+        logging.info("Login response status: %s", response.status_code)
+        logging.info("Login response text: %s", response.text)
+
+        # Attempt to parse the JSON response
+        try:
+            response_json = response.json()
+            logging.info("Parsed JSON: %s", response_json)
+        except json.JSONDecodeError as e:
+            logging.error("Failed to parse response as JSON: %s", e)
+            return None, None, None
+        
+        # Extract tokens
         self.csrf_token = response_json.get("csrfToken")
         self.download_token = response_json.get("downloadToken")
-        logging.info(f"Login successful, CSRF Token: {self.csrf_token}")
+        
+        # Log the tokens to verify if they're being extracted correctly
+        logging.info("CSRF Token: %s", self.csrf_token)
+        logging.info("Download Token: %s", self.download_token)
+        
         return self.session, self.csrf_token, self.download_token
     
     def basic_auth_login(self):
         """Perform basic auth login (for future implementation)."""
-        # You can implement this method for username/password-based login
         pass
 
     def get_session(self):
