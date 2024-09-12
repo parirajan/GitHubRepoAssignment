@@ -33,6 +33,6 @@ class APIUtils:
         url = self.build_url(self.config["endpoints"]["get_instances"]) + f'?uid={uid}'
         headers = self.get_headers()
         
-        # Perform the GET request for cluster status
+        # Perform the GET request for cluster status, skip TLS if tls_verify is false
         response = self.session.get(url, headers=headers, verify=self.config["tls_verify"], cert=self.config["cert"])
         return response.json()
