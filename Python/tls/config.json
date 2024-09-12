@@ -1,23 +1,19 @@
 {
-    "target": {
-        "ip": "api.example.com",
-        "apiPort": "443"
-    },
-    "ssoLogin": {
-        "enabled": true,
-        "reqHeaders": {
-            "Authorization": "Bearer some_token"
-        }
-    },
-    "validateTls": {
-        "enabled": true,
-        "caCert": "/path/to/ca-cert.pem",
-        "clientCert": "/path/to/client-cert.pem",
-        "clientKey": "/path/to/client-key.pem"
-    },
-    "endpoints": {
-        "loginUrl": "/login",
-        "clusterHealthUrl": "/getClusterHealth",
-        "fliStatusUrl": "/getFLIStatus"
+  "base_url": "https://your-api-url.com",
+  "oidc_login": true,
+  "endpoints": {
+    "tryssologin": "/api/login",
+    "get_instances": "/api/getInstancesTable"
+  },
+  "auth": {
+    "username": "user",
+    "password": "pass"
+  },
+  "headers": {
+    "AuthToken": "From OKTA",
+    "Content-Type": "application/json",
+    "x-fn-oidc-info": {
+      "loginname": "user"
     }
+  }
 }
