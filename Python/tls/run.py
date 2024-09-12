@@ -52,7 +52,7 @@ def get_fli_status(session, config_path):
 if __name__ == "__main__":
     config_path = "path_to_config.json"
 
-    # Initialize session
+    # Initialize session with SSO login
     session = getSession(requests.Session(), config_path)
 
     if session:
