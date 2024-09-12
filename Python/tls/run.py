@@ -1,19 +1,24 @@
+import json
 import utils
+import getsession
 
 def main():
     # Load the configuration
-    config = utils.load_config("config.json")
+    with open("config.json") as f:
+        config = json.load(f)
     
-    # Initialize the API utility class
-    api_utils = utils.APIUtils(config)
+    # Initialize the GetSession class for authentication
+    auth_session = getsession.GetSession(config)
     
-    # Perform SSO login
-    api_utils.sso_login()
+    # Obtain session, csrf_token, and download_token from the chosen auth method
+    session, csrf_token, download_token = auth_session.get_session()
     
-    # Fetch cluster status for a specific UID
-    uid = 123  # Example UID
-    cluster_status = api_utils.get_cluster_status(uid)
-    print(cluster_status)
+    # Initialize the API utility class with session and tokens
+    api_utils = utils.APIUtils(session, csrf_token, download_token, config)
+    
+    # Fetch cluster status
+    cluster_status = api_utils.get_cluster_status()
+    print(json.dumps(cluster_status, indent=4))
 
 if __name__ == "__main__":
     main()
