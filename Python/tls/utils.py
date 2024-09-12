@@ -1,4 +1,3 @@
-import requests
 import json
 import logging
 
@@ -6,35 +5,15 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 class APIUtils:
-    def __init__(self, config):
+    def __init__(self, session, csrf_token, download_token, config):
         self.config = config
-        self.session = requests.Session()
-        self.csrf_token = None
-        self.download_token = None
+        self.session = session
+        self.csrf_token = csrf_token
+        self.download_token = download_token
     
-    def sso_login(self):
-        """Perform SSO login and obtain CSRF token."""
-        if self.config["oidc_login"]:
-            login_data = json.dumps({"request": "trySsoLogin"})
-            url = f'{self.config["base_url"]}{self.config["endpoints"]["tryssologin"]}'
-            
-            # Convert "x-fn-oidc-info" to JSON string as required in headers
-            oidc_info = json.dumps(self.config["headers"]["x-fn-oidc-info"])
-            
-            headers = {
-                "AuthToken": self.config["headers"]["AuthToken"],
-                "Content-Type": self.config["headers"]["Content-Type"],
-                "x-fn-oidc-info": oidc_info
-            }
-            
-            response = self.session.post(url, data=login_data, headers=headers, verify=False)
-            response_json = response.json()
-            self.csrf_token = response_json.get("csrfToken")
-            self.download_token = response_json.get("downloadToken")
-            logging.info(f"Login successful, CSRF Token: {self.csrf_token}")
-        else:
-            # Future implementation for non-OIDC login
-            pass
+    def build_url(self, endpoint):
+        """Construct the full URL with port and endpoint."""
+        return f'{self.config["base_url"]}:{self.config["port"]}{endpoint}'
     
     def get_headers(self):
         """Create headers with tokens for further API requests."""
@@ -48,15 +27,10 @@ class APIUtils:
         }
         return headers
     
-    def get_cluster_status(self, uid):
-        """Get the cluster health status."""
-        url = f'{self.config["base_url"]}{self.config["endpoints"]["get_instances"]}?uid={uid}'
+    def get_cluster_status(self):
+        """Get the cluster health status using the variable uid."""
+        uid = self.config["uid"]
+        url = self.build_url(self.config["endpoints"]["get_instances"]) + f'?uid={uid}'
         headers = self.get_headers()
-        response = self.session.get(url, headers=headers, verify=False)
+        response = self.session.get(url, headers=headers, verify=self.config["tls_verify"], cert=self.config["cert"])
         return response.json()
-
-# Load config.json
-def load_config(config_file):
-    with open(config_file) as f:
-        config = json.load(f)
-    return config
