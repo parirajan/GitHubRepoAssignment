@@ -1,102 +1,62 @@
+import requests
 import json
 import logging
-import os
-import requests
 
-class ConfigLoader:
-    def __init__(self, config_path):
-        self.config = self._load_config(config_path)
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 
-    def _load_config(self, config_path):
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Configuration file not found at {config_path}")
-        with open(config_path, 'r') as file:
-            return json.load(file)
-
-    def get_config(self, section, key, default=None):
-        return self.config.get(section, {}).get(key, default)
-
-
-class LoggingHandler:
-    def __init__(self, log_file='application.log'):
-        self.logger = self._setup_logger(log_file)
-
-    def _setup_logger(self, log_file):
-        logger = logging.getLogger('session_logger')
-        logger.setLevel(logging.DEBUG)
-
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
-
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-        return logger
-
-    def get_execution_logger(self, name):
-        return logging.getLogger(name)
-
-
-def sso_login(session: requests.Session, config_loader: ConfigLoader, logger):
-    """Performs SSO login and returns session with updated headers."""
-    try:
-        # Get login URL and headers from the configuration
-        login_url = config_loader.get_config('endpoints', 'loginUrl')
-        target_config = config_loader.get_config('target', {})
-        api_url = f"https://{target_config.get('ip')}:{target_config.get('apiPort')}{login_url}"
-
-        # Get required headers from the config and ensure 'x-fn-oidc-info' is a string
-        headers = config_loader.get_config('ssoLogin', 'reqHeaders', {})
-        if not isinstance(headers, dict):
-            logger.error("SSO login headers are not properly formatted")
-            return None
-
-        # Convert 'x-fn-oidc-info' from dict to string if necessary
-        if 'x-fn-oidc-info' in headers and isinstance(headers['x-fn-oidc-info'], dict):
-            headers['x-fn-oidc-info'] = json.dumps(headers['x-fn-oidc-info'])  # Convert dict to string
-
-        # Example login data payload
-        login_data = {"request": {"trySsoLogin": "Y"}}  # Based on the image you shared
-
-        # Make the SSO login request
-        logger.info(f"Attempting SSO login at {api_url}")
-        login_response = session.post(api_url, json=login_data, headers=headers, verify=False)
+class APIUtils:
+    def __init__(self, config):
+        self.config = config
+        self.session = requests.Session()
+        self.csrf_token = None
+        self.download_token = None
+    
+    def sso_login(self):
+        """Perform SSO login and obtain CSRF token."""
+        if self.config["oidc_login"]:
+            login_data = json.dumps({"request": "trySsoLogin"})
+            url = f'{self.config["base_url"]}{self.config["endpoints"]["tryssologin"]}'
+            
+            # Convert "x-fn-oidc-info" to JSON string as required in headers
+            oidc_info = json.dumps(self.config["headers"]["x-fn-oidc-info"])
+            
+            headers = {
+                "AuthToken": self.config["headers"]["AuthToken"],
+                "Content-Type": self.config["headers"]["Content-Type"],
+                "x-fn-oidc-info": oidc_info
+            }
+            
+            response = self.session.post(url, data=login_data, headers=headers, verify=False)
+            response_json = response.json()
+            self.csrf_token = response_json.get("csrfToken")
+            self.download_token = response_json.get("downloadToken")
+            logging.info(f"Login successful, CSRF Token: {self.csrf_token}")
+        else:
+            # Future implementation for non-OIDC login
+            pass
+    
+    def get_headers(self):
+        """Create headers with tokens for further API requests."""
+        # Convert "x-fn-oidc-info" to JSON string as required in headers
+        oidc_info = json.dumps(self.config["headers"]["x-fn-oidc-info"])
         
-        if login_response.status_code != 200:
-            logger.error(f"SSO login failed with status code: {login_response.status_code}")
-            return None
+        headers = {
+            "downloadToken": self.download_token,
+            "csrfToken": self.csrf_token,
+            "x-fn-oidc-info": oidc_info
+        }
+        return headers
+    
+    def get_cluster_status(self, uid):
+        """Get the cluster health status."""
+        url = f'{self.config["base_url"]}{self.config["endpoints"]["get_instances"]}?uid={uid}'
+        headers = self.get_headers()
+        response = self.session.get(url, headers=headers, verify=False)
+        return response.json()
 
-        # Parse response for tokens and cookies
-        logger.info(f"SSO login successful, processing tokens.")
-        cookie_header = login_response.headers.get('Set-Cookie')
-        if cookie_header:
-            # Add the cookie to the session headers
-            session.headers.update({"Cookie": cookie_header})
-
-        # Extract tokens from the login response JSON
-        login_response_json = login_response.json()
-        download_token = login_response_json.get('downloadToken', '')
-        csrf_token = login_response_json.get('csrfToken', '')
-
-        # Add tokens to the session headers
-        session.headers.update({
-            'downloadToken': download_token,
-            'csrftoken': csrf_token,
-            'x-fn-oidc-info': '{"loginname": "user"}'  # Ensure this is a string, update dynamically if needed
-        })
-
-        return session
-
-    except Exception as e:
-        logger.error(f"Error during SSO login: {str(e)}")
-        return None
-    except Exception as e:
-        logger.error(f"Error during SSO login: {str(e)}")
-        return None
+# Load config.json
+def load_config(config_file):
+    with open(config_file) as f:
+        config = json.load(f)
+    return config
