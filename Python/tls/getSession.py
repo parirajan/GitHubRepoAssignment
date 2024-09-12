@@ -18,7 +18,12 @@ class GetSession:
 
     def sso_login(self):
         """Perform SSO login and obtain CSRF token."""
-        login_data = json.dumps({"request": "trySsoLogin"})
+        # The correct data format to send to the server
+        login_data = {
+            "request": "trySsoLogin",  # Make sure this matches the API's expected request format
+            "data": {}  # Add any additional required data for the login if necessary
+        }
+        
         url = f'{self.config["base_url"]}:{self.config["port"]}{self.config["endpoints"]["tryssologin"]}'
         
         # Convert "x-fn-oidc-info" to JSON string as required in headers
@@ -29,8 +34,13 @@ class GetSession:
             "x-fn-oidc-info": oidc_info
         }
         
+        # Log the request details for debugging
+        logging.info("Sending POST request to URL: %s", url)
+        logging.info("Login data: %s", login_data)
+        logging.info("Headers: %s", headers)
+        
         # Perform the POST request for SSO login
-        response = self.session.post(url, data=login_data, headers=headers, verify=self.verify_tls, cert=self.cert)
+        response = self.session.post(url, json=login_data, headers=headers, verify=self.verify_tls, cert=self.cert)
         
         # Log the full response for debugging
         logging.info("Login response status: %s", response.status_code)
@@ -44,7 +54,7 @@ class GetSession:
             logging.error("Failed to parse response as JSON: %s", e)
             return None, None, None
         
-        # Extract tokens
+        # Extract tokens (if available)
         self.csrf_token = response_json.get("csrfToken")
         self.download_token = response_json.get("downloadToken")
         
