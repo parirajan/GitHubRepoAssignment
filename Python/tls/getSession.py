@@ -29,7 +29,7 @@ class GetSession:
             "x-fn-oidc-info": oidc_info
         }
         
-        # Perform the login request
+        # Perform the POST request for SSO login
         response = self.session.post(url, data=login_data, headers=headers, verify=self.verify_tls, cert=self.cert)
         response_json = response.json()
         self.csrf_token = response_json.get("csrfToken")
