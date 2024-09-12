@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import requests
 
 class ConfigLoader:
     def __init__(self, config_path):
@@ -41,3 +42,43 @@ class LoggingHandler:
 
     def get_execution_logger(self, name):
         return logging.getLogger(name)
+
+
+def sso_login(session: requests.Session, config_loader: ConfigLoader, logger):
+    """Performs SSO login and returns session with updated headers."""
+    try:
+        login_url = config_loader.get_config('endpoints', 'loginUrl')
+        target_config = config_loader.get_config('target', {})
+        api_url = f"https://{target_config.get('ip')}:{target_config.get('apiPort')}{login_url}"
+
+        headers = config_loader.get_config('ssoLogin', 'reqHeaders', {})
+        login_data = {"request": {"trySsoLogin": "Y"}}  # Based on your image
+
+        logger.info(f"Attempting SSO login at {api_url}")
+        login_response = session.post(api_url, json=login_data, headers=headers, verify=False)
+        
+        if login_response.status_code != 200:
+            logger.error(f"SSO login failed with status code: {login_response.status_code}")
+            return None
+
+        logger.info(f"SSO login successful, processing tokens.")
+        # Extract tokens and cookies
+        cookie_header = login_response.headers.get('Set-Cookie', None)
+        if cookie_header:
+            session.headers.update({"Cookie": cookie_header})
+
+        login_response_json = login_response.json()
+        download_token = login_response_json.get('downloadToken', '')
+        csrf_token = login_response_json.get('csrfToken', '')
+
+        session.headers.update({
+            'downloadToken': download_token,
+            'csrftoken': csrf_token,
+            'x-fn-oidc-info': f"{{'loginname': 'user'}}"  # This assumes a static loginname, modify as needed
+        })
+
+        return session
+
+    except Exception as e:
+        logger.error(f"Error during SSO login: {str(e)}")
+        return None
