@@ -38,7 +38,7 @@ class Utils:
         if not tls_enabled:
             return {"verify": False}
 
-        # If TLS is enabled but verification is disabled, do not verify certificates
+        # If TLS is enabled but verification is disabled, return verify=False (no certs)
         if tls_enabled and not tls_verify:
             return {"verify": False}
 
@@ -46,13 +46,13 @@ class Utils:
         tls_options = {"verify": True}  # Default to system trust store
 
         # Use CA cert if provided, otherwise system trust store (verify=True)
-        ca_cert = config["tls_options"].get("ca_file")
+        ca_cert = config.get("tls_options", {}).get("ca_file")
         if ca_cert:
             tls_options["verify"] = ca_cert  # Use custom CA cert if provided
 
         # Add client certificate and key if provided
-        client_cert = config["tls_options"].get("cert")
-        client_key = config["tls_options"].get("key")
+        client_cert = config.get("tls_options", {}).get("cert")
+        client_key = config.get("tls_options", {}).get("key")
         if client_cert and client_key:
             tls_options["cert"] = (client_cert, client_key)
 
