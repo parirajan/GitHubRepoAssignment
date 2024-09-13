@@ -1,53 +1,31 @@
-import requests
 import json
 from utils import Utils, Logger
+from getSession import get_session
 
-def get_session(config):
-    # Setup logging
-    logger = Logger.setup_logger()
+# Load configuration and setup logging
+config = Utils.load_config("config.json")
+logger = Logger.setup_logger()
 
-    # Create headers from the config (directly use tokenname as a JSON object)
-    headers = {
-        "tokenname": json.dumps(config["headers"]["tokenname"]),
-        "Content-Type": config["headers"]["Content-Type"]
-    }
+# Get session and login payload from getSession
+session, loginpayload = get_session(config)
 
-    # Initialize session
-    s = requests.session()
+# Build the URL for getInstancesTable with request as a query string
+api_url = Utils.get_full_url(config, "api", "getInstancesTable") + '?{"request":"getInstancesTable"}'
+request_type = Utils.get_request_type(config, "api", "getInstancesTable")
+uid = config["uid"]
 
-    # Get TLS options
-    tls_verify = config["tls_verify"]  # True or False based on config
-    tls_options = Utils.get_tls_options(config)
+logger.info(f"Sending {request_type} request to {api_url} with UID: {uid}")
 
-    # Prepare the data payload for the login request, including the login_type
-    login_data = json.dumps({
-        "request": config["login_type"]
-    })
+# Get TLS verification flag
+tls_verify = config["tls_verify"]
+tls_options = Utils.get_tls_options(config)
 
-    # Build URL with request as a query string
-    session_url = Utils.get_full_url(config, "session", "postRequest") + '?{"request":"postRequest"}'
-    
-    logger.info(f"Sending POST request to {session_url} with login_type: {config['login_type']}")
+# Make the GET request to fetch the cluster status
+if request_type == "GET":
+    getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=tls_verify, **tls_options).text
 
-    # Make the postRequest (POST request)
-    loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=tls_verify, **tls_options)
-
-    loginResponse = loginResponseObject.text
-    logger.info("Login Response: %s", loginResponse)
-
-    # Parse login response and extract tokens
-    loginResponseJson = json.loads(loginResponse)
-    downloadToken = loginResponseJson["downloadToken"]
-    csrfToken = loginResponseJson["csrfToken"]
-
-    # Prepare login payload for subsequent requests
-    loginpayload = {
-        'downloadToken': downloadToken,
-        'csrfToken': csrfToken,
-        'tokenname': config["headers"]["tokenname"]  # Directly use the tokenname JSON object here
-    }
-
-    logger.info("Login Payload: %s", loginpayload)
-
-    # Return session and loginpayload
-    return s, loginpayload
+# Log and print the cluster status
+getClusterStatusJson = json.loads(getClusterStatus)
+cluster_status_pretty = json.dumps(getClusterStatusJson, indent=4, sort_keys=True)
+logger.info("Cluster Status: %s", cluster_status_pretty)
+print(cluster_status_pretty)
