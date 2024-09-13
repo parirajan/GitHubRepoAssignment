@@ -25,8 +25,8 @@
     "Content-Type": "application/json"
   },
   "uid": 100,
-  "tls_enabled": true,  # Whether TLS is enabled or not
-  "tls_verify": true,    # Whether TLS verification is enabled when TLS is enabled
+  "tls_enabled": true,  
+  "tls_verify": true,   
   "tls_options": {
     "cert": "/path/to/client-cert.pem",
     "key": "/path/to/client-key.pem",
