@@ -16,7 +16,7 @@ uid = config["uid"]
 
 logger.info(f"Sending {request_type} request to {api_url} with UID: {uid}")
 
-# Get TLS options (includes both cert and verify)
+# Get TLS options (includes both cert and verify options)
 tls_options = Utils.get_tls_options(config)
 
 # Make the GET request to fetch the cluster status
