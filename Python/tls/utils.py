@@ -26,12 +26,14 @@ class Utils:
     def get_tls_options(config):
         """Gets the TLS verification settings and certificate options."""
         tls_verify = config.get("tls_verify", True)
+
+        # Only include cert if tls_verify is true
         cert = (config["tls_options"]["cert"], config["tls_options"]["key"]) if tls_verify else None
         ca_file = config["tls_options"].get("ca_file") if tls_verify else None
 
         return {
             "verify": ca_file if tls_verify else False,
-            "cert": cert
+            "cert": cert if tls_verify else None  # Cert is only included if tls_verify is True
         }
 
 class Logger:
