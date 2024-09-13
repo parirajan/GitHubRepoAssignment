@@ -1,25 +1,38 @@
 {
-  "base_url": "https://your-api-url.com",
-  "port": 443,
-  "oidc_login": true,
-  "tls_verify": true,
-  "cert": {
-    "cert_path": "/path/to/cert.pem",
-    "key_path": "/path/to/key.pem"
+  "connection": {
+    "protocol": "https",
+    "host": "somehost",
+    "port": 8001
   },
   "endpoints": {
-    "tryssologin": "/api/login",
-    "get_instances": "/api/getInstancesTable"
-  },
-  "auth": {
-    "username": "user",
-    "password": "pass"
-  },
-  "headers": {
-    "Content-Type": "application/json",
-    "x-fn-oidc-info": {
-      "loginname": "user"
+    "session": {
+      "trySsoLogin": {
+        "url": "/trySsoLogin",
+        "request_type": "POST"
+      }
+    },
+    "api": {
+      "postRequest": {
+        "url": "/postRequest",
+        "request_type": "POST"
+      },
+      "getInstancesTable": {
+        "url": "/getInstancesTable",
+        "request_type": "GET"
+      }
     }
   },
-  "uid": 123  # Example UID
+  "headers": {
+    "tokenname": {
+      "myusername": "user"
+    },
+    "Content-Type": "application/json"
+  },
+  "uid": 100,
+  "tls_verify": true,
+  "tls_options": {
+    "cert": "/path/to/client-cert.pem",
+    "key": "/path/to/client-key.pem",
+    "ca_file": "/path/to/ca-cert.pem"
+  }
 }
