@@ -1,38 +1,57 @@
 import json
 import logging
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+class Utils:
+    @staticmethod
+    def load_config(config_file="config.json"):
+        """Loads configuration from config.json file."""
+        with open(config_file, 'r') as f:
+            return json.load(f)
 
-class APIUtils:
-    def __init__(self, session, csrf_token, download_token, config):
-        self.config = config
-        self.session = session
-        self.csrf_token = csrf_token
-        self.download_token = download_token
-    
-    def build_url(self, endpoint):
-        """Construct the full URL with port and endpoint."""
-        return f'{self.config["base_url"]}:{self.config["port"]}{endpoint}'
-    
-    def get_headers(self):
-        """Create headers with tokens for further API requests."""
-        # Convert "x-fn-oidc-info" to JSON string as required in headers
-        oidc_info = json.dumps(self.config["headers"]["x-fn-oidc-info"])
-        
-        headers = {
-            "downloadToken": self.download_token,
-            "csrfToken": self.csrf_token,
-            "x-fn-oidc-info": oidc_info
-        }
-        return headers
-    
-    def get_cluster_status(self):
-        """Get the cluster health status using the variable uid."""
-        uid = self.config["uid"]
-        url = self.build_url(self.config["endpoints"]["get_instances"]) + f'?uid={uid}'
-        headers = self.get_headers()
-        
-        # Perform the GET request for cluster status, skip TLS if tls_verify is false
-        response = self.session.get(url, headers=headers, verify=self.config["tls_verify"], cert=self.config["cert"])
-        return response.json()
+    @staticmethod
+    def get_full_url(config, category, endpoint_name):
+        """Builds the full URL based on the config file and the given endpoint category."""
+        protocol = config["connection"]["protocol"]
+        host = config["connection"]["host"]
+        port = config["connection"]["port"]
+        endpoint = config["endpoints"][category].get(endpoint_name, {}).get("url", "")
+        return f"{protocol}://{host}:{port}{endpoint}"
+
+    @staticmethod
+    def get_request_type(config, category, endpoint_name):
+        """Gets the request type (GET/POST) for a given endpoint."""
+        return config["endpoints"][category].get(endpoint_name, {}).get("request_type", "GET")
+
+    @staticmethod
+    def get_tls_options(config):
+        """Gets the TLS verification settings and certificate options."""
+        if config["tls_verify"]:
+            # Return tuple for cert/key and CA file path for requests
+            cert = (config["tls_options"]["cert"], config["tls_options"]["key"])
+            ca_file = config["tls_options"]["ca_file"]
+            return {"verify": ca_file, "cert": cert}
+        else:
+            # Skip TLS verification
+            return {"verify": False, "cert": None}
+
+class Logger:
+    @staticmethod
+    def setup_logger():
+        """Sets up a reusable logger."""
+        logger = logging.getLogger("app_logger")
+        logger.setLevel(logging.DEBUG)
+
+        # Create handlers
+        console_handler = logging.StreamHandler()
+        file_handler = logging.FileHandler("app.log")
+
+        # Create formatters and add to handlers
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
+
+        # Add handlers to logger
+        logger.addHandler(console_handler)
+        logger.addHandler(file_handler)
+
+        return logger
