@@ -1,100 +1,53 @@
 import requests
 import json
-import logging
+from utils import Utils, Logger
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+def get_session(config):
+    # Setup logging
+    logger = Logger.setup_logger()
 
-class GetSession:
-    def __init__(self, config):
-        self.config = config
-        self.session = requests.Session()  # Initialize session here
-        self.csrf_token = None
-        self.download_token = None
-        
-        # Handle TLS verification and certificate loading
-        self.verify_tls = self.config.get("tls_verify", True)
-        self.cert = (self.config["cert"]["cert_path"], self.config["cert"]["key_path"]) if not self.verify_tls else None
+    # Create headers from the config (directly use tokenname as a JSON object)
+    headers = {
+        "tokenname": json.dumps(config["headers"]["tokenname"]),
+        "Content-Type": config["headers"]["Content-Type"]
+    }
 
-    def try_sso_login(self):
-        """Perform the initial SSO login to get a request session."""
-        login_data = {
-            "request": "trySsoLogin"
-        }
-        
-        url = f'{self.config["base_url"]}:{self.config["port"]}{self.config["endpoints"]["tryssologin"]}'
-        
-        # Prepare headers (without tokens initially)
-        oidc_info = json.dumps(self.config["headers"]["x-fn-oidc-info"])
-        headers = {
-            "Content-Type": self.config["headers"]["Content-Type"],
-            "x-fn-oidc-info": oidc_info
-        }
+    # Initialize session
+    s = requests.session()
 
-        # Log the request details for debugging
-        logging.info("Sending initial SSO login request to URL: %s", url)
-        
-        # Perform the initial SSO login request
-        response = self.session.post(url, json=login_data, headers=headers, verify=self.verify_tls, cert=self.cert)
-        
-        # Log the full response for debugging
-        logging.info("SSO login response status: %s", response.status_code)
-        logging.info("SSO login response text: %s", response.text)
+    # Get TLS options
+    tls_options = Utils.get_tls_options(config)
 
-        # Check if the response is successful
-        if response.status_code != 200:
-            logging.error("Failed to establish session. Check the request and try again.")
-            return None, None
+    # Perform trySsoLogin (Session Management)
+    session_url = Utils.get_full_url(config, "session", "trySsoLogin")
+    request_type = Utils.get_request_type(config, "session", "trySsoLogin")
+    login_data = "{\"request\":\"trySsoLogin\"}"
 
-        # At this point, the session object holds any session-related cookies
-        return self.session  # Return the session for the next step
-    
-    def post_request_with_login_data(self, session):
-        """Use the session from trySsoLogin to make a second POST request with login data."""
-        post_data = {
-            "request": "postRequest",
-            "login_data": {}  # Replace with the actual login data
-        }
-        
-        url = f'{self.config["base_url"]}:{self.config["port"]}{self.config["endpoints"]["postRequest"]}'
-        
-        # Reuse headers, modify if needed (no csrfToken yet, as this is before CSRF token is needed)
-        oidc_info = json.dumps(self.config["headers"]["x-fn-oidc-info"])
-        headers = {
-            "Content-Type": self.config["headers"]["Content-Type"],
-            "x-fn-oidc-info": oidc_info
-        }
+    # Log the request details
+    logger.info(f"Sending {request_type} request to {session_url}")
 
-        # Log the request details for debugging
-        logging.info("Sending POST request with login data to URL: %s", url)
-        logging.info("POST data: %s", post_data)
-        
-        # Perform the second POST request using the same session
-        response = session.post(url, json=post_data, headers=headers, verify=self.verify_tls, cert=self.cert)
-        
-        # Log the response
-        logging.info("POST request response status: %s", response.status_code)
-        logging.info("POST request response text: %s", response.text)
+    # Make the trySsoLogin request (POST request)
+    if request_type == "POST":
+        loginResponseObject = s.post(session_url, data=login_data, headers=headers, **tls_options)
+    elif request_type == "GET":
+        loginResponseObject = s.get(session_url, headers=headers, **tls_options)
 
-        # Check if the response is successful
-        if response.status_code != 200:
-            logging.error("POST request failed. Check the request and try again.")
-            return None
+    loginResponse = loginResponseObject.text
+    logger.info("Login Response: %s", loginResponse)
 
-        return response
+    # Parse login response and extract tokens
+    loginResponseJson = json.loads(loginResponse)
+    downloadToken = loginResponseJson["downloadToken"]
+    csrfToken = loginResponseJson["csrfToken"]
 
-    def get_session(self):
-        """Main function to handle the overall login flow."""
-        # First, try SSO login to establish a session
-        session = self.try_sso_login()
-        if session is None:
-            logging.error("SSO login failed. Cannot proceed.")
-            return None
+    # Prepare login payload for subsequent requests
+    loginpayload = {
+        'downloadToken': downloadToken,
+        'csrfToken': csrfToken,
+        'tokenname': config["headers"]["tokenname"]  # Directly use the tokenname JSON object here
+    }
 
-        # After establishing a session, perform the second request with login data
-        response = self.post_request_with_login_data(session)
-        if response is None:
-            logging.error("POST request with login data failed.")
-            return None
+    logger.info("Login Payload: %s", loginpayload)
 
-        return session  # Return the session for any future requests
+    # Return session and loginpayload
+    return s, loginpayload
