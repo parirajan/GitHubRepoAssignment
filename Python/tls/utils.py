@@ -1,3 +1,6 @@
+import json
+import logging
+
 class Utils:
     @staticmethod
     def load_config(config_file="config.json"):
@@ -23,7 +26,7 @@ class Utils:
     def get_tls_options(config):
         """
         Gets the TLS options based on the config.
-        - If tls_enabled is false, returns empty options (no TLS).
+        - If tls_enabled is false, returns verify=False (no TLS).
         - If tls_enabled is true:
           - If tls_verify is false: returns verify=False.
           - If tls_verify is true: sends verify=True (or caCert if provided), along with clientCert and clientKey.
@@ -31,7 +34,7 @@ class Utils:
         tls_enabled = config.get("tls_enabled", True)
         tls_verify = config.get("tls_verify", True)
         
-        # If TLS is disabled, return empty options (no TLS)
+        # If TLS is disabled, return verify=False (no TLS)
         if not tls_enabled:
             return {"verify": False}
 
@@ -54,3 +57,25 @@ class Utils:
             tls_options["cert"] = (client_cert, client_key)
 
         return tls_options
+
+class Logger:
+    @staticmethod
+    def setup_logger():
+        """Sets up a reusable logger."""
+        logger = logging.getLogger("app_logger")
+        logger.setLevel(logging.DEBUG)
+
+        # Create handlers
+        console_handler = logging.StreamHandler()
+        file_handler = logging.FileHandler("app.log")
+
+        # Create formatters and add to handlers
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
+
+        # Add handlers to logger
+        logger.addHandler(console_handler)
+        logger.addHandler(file_handler)
+
+        return logger
