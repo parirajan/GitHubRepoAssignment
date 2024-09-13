@@ -15,8 +15,7 @@ def get_session(config):
     # Initialize session
     s = requests.session()
 
-    # Get TLS options
-    tls_verify = config["tls_verify"]  # True or False based on config
+    # Get TLS options (includes both cert and verify)
     tls_options = Utils.get_tls_options(config)
 
     # Prepare the data payload for the login request, including the login_type
@@ -30,7 +29,7 @@ def get_session(config):
     logger.info(f"Sending POST request to {session_url} with login_type: {config['login_type']}")
 
     # Make the postRequest (POST request)
-    loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=tls_verify, **tls_options)
+    loginResponseObject = s.post(session_url, data=login_data, headers=headers, **tls_options)
 
     loginResponse = loginResponseObject.text
     logger.info("Login Response: %s", loginResponse)
