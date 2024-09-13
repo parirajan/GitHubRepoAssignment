@@ -28,8 +28,17 @@ def get_session(config):
     
     logger.info(f"Sending POST request to {session_url} with login_type: {config['login_type']}")
 
-    # Make the postRequest (POST request)
-    loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=tls_options["verify"], cert=tls_options.get("cert"))
+    # Conditional handling of TLS verification and cert
+    if config.get("tls_enabled", True):
+        if "cert" in tls_options:
+            # Pass verify (True or ca_file) and cert (if available)
+            loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=tls_options["verify"], cert=tls_options["cert"])
+        else:
+            # Pass only verify (True or ca_file)
+            loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=tls_options["verify"])
+    else:
+        # TLS is disabled, explicitly pass verify=False
+        loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=False)
 
     loginResponse = loginResponseObject.text
     logger.info("Login Response: %s", loginResponse)
