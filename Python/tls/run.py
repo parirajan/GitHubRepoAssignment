@@ -20,8 +20,7 @@ logger.info(f"Sending {request_type} request to {api_url} with UID: {uid}")
 tls_options = Utils.get_tls_options(config)
 
 # Make the GET request to fetch the cluster status
-if request_type == "GET":
-    getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=tls_options["verify"], cert=tls_options.get("cert")).text
+getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=tls_options["verify"], cert=tls_options.get("cert"))
 
 # Log and print the cluster status
 getClusterStatusJson = json.loads(getClusterStatus)
