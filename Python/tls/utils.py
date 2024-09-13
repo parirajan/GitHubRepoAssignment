@@ -30,8 +30,7 @@ class Utils:
         # If tls_verify is False, no cert is sent, and verify is set to False
         if not tls_verify:
             return {
-                "verify": False,  # Disable TLS verification
-                "cert": None      # Don't send client cert and key
+                "verify": False  # Disable TLS verification
             }
         
         # If tls_verify is True, cert is sent with CA cert for verification
