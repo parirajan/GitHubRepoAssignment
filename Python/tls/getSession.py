@@ -15,7 +15,7 @@ def get_session(config):
     # Initialize session
     s = requests.session()
 
-    # Get TLS options (includes both cert and verify)
+    # Get TLS options (includes both cert and verify options)
     tls_options = Utils.get_tls_options(config)
 
     # Prepare the data payload for the login request, including the login_type
