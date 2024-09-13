@@ -19,8 +19,17 @@ logger.info(f"Sending {request_type} request to {api_url} with UID: {uid}")
 # Get TLS options (verify and cert handling)
 tls_options = Utils.get_tls_options(config)
 
-# Make the GET request to fetch the cluster status
-getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=tls_options["verify"], cert=tls_options.get("cert"))
+# Conditional handling of TLS verification and cert
+if config.get("tls_enabled", True):
+    if "cert" in tls_options:
+        # Pass verify (True or ca_file) and cert (if available)
+        getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=tls_options["verify"], cert=tls_options["cert"])
+    else:
+        # Pass only verify (True or ca_file)
+        getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=tls_options["verify"])
+else:
+    # TLS is disabled, explicitly pass verify=False
+    getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=False)
 
 # Log and print the cluster status
 getClusterStatusJson = json.loads(getClusterStatus)
