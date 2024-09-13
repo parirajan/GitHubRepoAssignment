@@ -18,19 +18,20 @@ def get_session(config):
     # Get TLS options
     tls_options = Utils.get_tls_options(config)
 
-    # Perform trySsoLogin (Session Management)
-    session_url = Utils.get_full_url(config, "session", "trySsoLogin")
-    request_type = Utils.get_request_type(config, "session", "trySsoLogin")
-    login_data = "{\"request\":\"trySsoLogin\"}"
+    # Prepare the data payload for the login request, including the login_type
+    login_data = json.dumps({
+        "request": config["login_type"]
+    })
+
+    # Perform postRequest (Session Management)
+    session_url = Utils.get_full_url(config, "session", "postRequest")
+    request_type = Utils.get_request_type(config, "session", "postRequest")
 
     # Log the request details
-    logger.info(f"Sending {request_type} request to {session_url}")
+    logger.info(f"Sending {request_type} request to {session_url} with login_type: {config['login_type']}")
 
-    # Make the trySsoLogin request (POST request)
-    if request_type == "POST":
-        loginResponseObject = s.post(session_url, data=login_data, headers=headers, **tls_options)
-    elif request_type == "GET":
-        loginResponseObject = s.get(session_url, headers=headers, **tls_options)
+    # Make the postRequest (POST request)
+    loginResponseObject = s.post(session_url, data=login_data, headers=headers, **tls_options)
 
     loginResponse = loginResponseObject.text
     logger.info("Login Response: %s", loginResponse)
