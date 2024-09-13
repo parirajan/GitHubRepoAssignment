@@ -25,14 +25,14 @@ class Utils:
     @staticmethod
     def get_tls_options(config):
         """Gets the TLS verification settings and certificate options."""
-        if config["tls_verify"]:
-            # Return tuple for cert/key and CA file path for requests
-            cert = (config["tls_options"]["cert"], config["tls_options"]["key"])
-            ca_file = config["tls_options"]["ca_file"]
-            return {"verify": ca_file, "cert": cert}
-        else:
-            # Skip TLS verification
-            return {"verify": False, "cert": None}
+        tls_verify = config.get("tls_verify", True)
+        cert = (config["tls_options"]["cert"], config["tls_options"]["key"]) if tls_verify else None
+        ca_file = config["tls_options"].get("ca_file") if tls_verify else None
+
+        return {
+            "verify": ca_file if tls_verify else False,
+            "cert": cert
+        }
 
 class Logger:
     @staticmethod
