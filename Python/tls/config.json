@@ -7,13 +7,13 @@
   "endpoints": {
     "session": {
       "postRequest": {
-        "url": "/postRequest",
+        "url": "/",
         "request_type": "POST"
       }
     },
     "api": {
       "getInstancesTable": {
-        "url": "/getInstancesTable",
+        "url": "/",
         "request_type": "GET"
       }
     }
@@ -24,7 +24,7 @@
     },
     "Content-Type": "application/json"
   },
-  "login_type": "trySsoLogin",  // The login type data
+  "login_type": "trySsoLogin",
   "uid": 100,
   "tls_verify": true,
   "tls_options": {
