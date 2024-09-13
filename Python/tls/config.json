@@ -25,11 +25,11 @@
     "Content-Type": "application/json"
   },
   "uid": 100,
-  "tls_enabled": true,  
-  "tls_verify": true,   
+  "tls_enabled": true,  # Whether TLS is enabled
+  "tls_verify": true,    # Whether to verify TLS with certs
   "tls_options": {
-    "cert": "/path/to/client-cert.pem",
-    "key": "/path/to/client-key.pem",
-    "ca_file": "/path/to/ca-cert.pem"
+    "cert": "/path/to/client-cert.pem",   # Path to client cert
+    "key": "/path/to/client-key.pem",     # Path to client key
+    "ca_file": "/path/to/ca-cert.pem"     # Path to CA cert (optional)
   }
 }
