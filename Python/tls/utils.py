@@ -24,22 +24,16 @@ class Utils:
 
     @staticmethod
     def get_tls_options(config):
-        """Gets the TLS verification settings and certificate options."""
-        tls_verify = config.get("tls_verify", True)
-        
-        # If tls_verify is False, no cert is sent, and verify is set to False
-        if not tls_verify:
-            return {
-                "verify": False  # Disable TLS verification
-            }
-        
-        # If tls_verify is True, cert is sent with CA cert for verification
-        cert = (config["tls_options"]["cert"], config["tls_options"]["key"])
-        ca_file = config["tls_options"].get("ca_file", True)  # Use CA file if specified, otherwise True (default system trust store)
+        """Gets the TLS verification settings and certificate options based on the config."""
 
+        # If TLS verification is disabled, return verify=False with no certs
+        if not config.get("tls_verify", True):
+            return {"verify": False}
+
+        # If TLS verification is enabled, return verify=True along with the client cert, key, and CA cert
         return {
-            "verify": ca_file,  # Path to CA cert or True to use default trust store
-            "cert": cert        # Send client cert and key
+            "verify": config["tls_options"].get("ca_file", True),  # True if CA file is not provided (default trust store)
+            "cert": (config["tls_options"]["cert"], config["tls_options"]["key"])  # Client cert and key
         }
 
 class Logger:
