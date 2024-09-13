@@ -29,7 +29,7 @@ def get_session(config):
     logger.info(f"Sending POST request to {session_url} with login_type: {config['login_type']}")
 
     # Make the postRequest (POST request)
-    loginResponseObject = s.post(session_url, data=login_data, headers=headers, **tls_options)
+    loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=tls_options["verify"], cert=tls_options.get("cert"))
 
     loginResponse = loginResponseObject.text
     logger.info("Login Response: %s", loginResponse)
