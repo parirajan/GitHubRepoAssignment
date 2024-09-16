@@ -22,10 +22,10 @@ def create_login_session(config):
     })
 
     # Fetch the request type from config
-    request_type = sso_config.get("request_type", "postRequest")
+    request_type = sso_config.get("request_type", "PostRequest")
     
-    # Construct URL with dynamic request type
-    login_url = Utils.get_target_url(config, f'/?{{"request":"{request_type}"}}')  # URL with dynamic request_type
+    # Construct URL with dynamic request type and colon at the end
+    login_url = Utils.get_target_url(config, f'/?{{"request":"{request_type}:"}}')  # URL with dynamic request_type and colon
     
     # Log the request details
     logger.info(f"Sending POST request to {login_url} with headers: {headers} and data: {login_data}")
