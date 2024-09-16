@@ -1,32 +1,33 @@
 import requests
-from utils import Utils
-from login_session import create_login_session
+from utils import load_config, setup_logger, get_tls_options
 
-def get_session(config):
-    logger = Utils.setup_logger()
+def create_session():
+    config = load_config()
+    logger = setup_logger()
+    headers = config['ssoLogin']['headers']
+    headers['x-fn-oidc-info'] = json.dumps(headers['x-fn-oidc-info'])
 
-    # Create the login session and get tokens
-    session_data = create_login_session(config)
-    if not session_data:
-        logger.error("Failed to create login session.")
-        return None
-
-    # Extract tokens from the login response
-    download_token = session_data.get("downloadToken")
-    csrf_token = session_data.get("csrfToken")
+    session = requests.Session()
+    tls_options = get_tls_options(config)
     
-    if not download_token or not csrf_token:
-        logger.error("Download token or CSRF token not found in login response.")
-        return None
+    login_url = f"{config['target']['protocol']}://{config['target']['ip']}:{config['target']['api_port']}"
+    login_url += f"?{{'request':'{config['request_type']}'}}"
 
-    # Prepare the session headers with loginname
-    session_headers = {
-        "downloadToken": download_token,
-        "csrfToken": csrf_token,
-        "loginname": json.dumps(config["ssoLogin"]["headers"]["loginname"])  # Reuse loginname from config
-    }
-
-    logger.info(f"Session established with headers: {session_headers}")
-    print(f"Session Headers: {session_headers}")
+    login_response = session.post(login_url, headers=headers, json={'request': 'trySsoLogin'}, **tls_options)
     
-    return session_headers
+    if login_response.status_code == 200:
+        logger.info("Successfully logged in")
+        tokens = login_response.json()
+        headers['downloadToken'] = tokens.get('downloadToken')
+        headers['csrfToken'] = tokens.get('csrfToken')
+        return session, headers
+    else:
+        logger.error("Failed to log in")
+        return None, None
+
+if __name__ == "__main__":
+    session, headers = create_session()
+    if session:
+        print("Session created with headers:", headers)
+    else:
+        print("Failed to create session")
