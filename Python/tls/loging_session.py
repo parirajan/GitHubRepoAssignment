@@ -27,11 +27,15 @@ def create_login_session(config):
     # Construct URL with dynamic request type and colon at the end
     login_url = Utils.get_target_url(config, f'/?{{"request":"{request_type}:"}}')  # URL with dynamic request_type and colon
     
-    # Log the request details
-    logger.info(f"Sending POST request to {login_url} with headers: {headers} and data: {login_data}")
+    # Log the fully-formed POST request details before sending
+    logger.info(f"POST Request URL: {login_url}")
+    logger.info(f"POST Request Headers: {headers}")
+    logger.info(f"POST Request Data: {login_data}")
+    logger.info(f"POST Request Verify: {tls_options['verify']}")
     print(f"POST Request URL: {login_url}")
     print(f"POST Request Headers: {headers}")
     print(f"POST Request Data: {login_data}")
+    print(f"POST Request Verify: {tls_options['verify']}")
 
     # Create a session object
     session = requests.Session()
