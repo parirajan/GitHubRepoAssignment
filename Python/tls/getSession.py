@@ -1,46 +1,32 @@
 import requests
-import json
 from utils import Utils
+from login_session import create_login_session
 
-def create_login_session(config):
+def get_session(config):
     logger = Utils.setup_logger()
 
-    # Check if SSO login is enabled
-    sso_config = config.get("ssoLogin", {})
-    if not sso_config.get("enabled", False):
-        logger.error("SSO Login is disabled.")
+    # Create the login session and get tokens
+    session_data = create_login_session(config)
+    if not session_data:
+        logger.error("Failed to create login session.")
         return None
 
-    # Get TLS options
-    tls_options = Utils.get_tls_options(config)
-
-    # Prepare headers
-    headers = sso_config.get("headers", {})
-    headers["loginname"] = json.dumps(headers.get("loginname", {}))  # Ensure loginname is passed as a JSON string
-    login_data = json.dumps({
-        "request": "trySsoLogin"
-    })
-
-    # Build the login URL
-    login_url = Utils.get_target_url(config, "/login")
+    # Extract tokens from the login response
+    download_token = session_data.get("downloadToken")
+    csrf_token = session_data.get("csrfToken")
     
-    # Log the request details
-    logger.info(f"Sending POST request to {login_url} with headers: {headers} and data: {login_data}")
-    print(f"POST Request URL: {login_url}")
-    print(f"POST Request Headers: {headers}")
-    print(f"POST Request Data: {login_data}")
-
-    # Make the POST request for SSO login
-    response = requests.post(login_url, headers=headers, data=login_data, **tls_options)
-
-    # Log and print the response
-    logger.info(f"Login Response: {response.status_code} - {response.text}")
-    print(f"Login Response: {response.status_code} - {response.text}")
-
-    if response.status_code != 200:
-        logger.error("Login failed.")
+    if not download_token or not csrf_token:
+        logger.error("Download token or CSRF token not found in login response.")
         return None
 
-    response_data = response.json()
-    return response_data  # Assuming response contains tokens
+    # Prepare the session headers with loginname
+    session_headers = {
+        "downloadToken": download_token,
+        "csrfToken": csrf_token,
+        "loginname": json.dumps(config["ssoLogin"]["headers"]["loginname"])  # Reuse loginname from config
+    }
 
+    logger.info(f"Session established with headers: {session_headers}")
+    print(f"Session Headers: {session_headers}")
+    
+    return session_headers
