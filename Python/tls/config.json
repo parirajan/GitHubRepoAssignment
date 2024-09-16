@@ -1,35 +1,23 @@
 {
-  "connection": {
+  "target": {
     "protocol": "https",
-    "host": "somehost",
-    "port": 8001
+    "ip": "example.com",
+    "api_port": 443
   },
-  "endpoints": {
-    "session": {
-      "postRequest": {
-        "url": "/",
-        "request_type": "POST"
-      }
-    },
-    "api": {
-      "getInstancesTable": {
-        "url": "/",
-        "request_type": "GET"
+  "ssoLogin": {
+    "enabled": true,
+    "headers": {
+      "Content-Type": "application/json",
+      "loginname": {
+        "myusername": "user"
       }
     }
   },
-  "headers": {
-    "tokenname": {
-      "myusername": "user"
-    },
-    "Content-Type": "application/json"
-  },
-  "uid": 100,
-  "tls_enabled": true,  # Whether TLS is enabled
-  "tls_verify": true,    # Whether to verify TLS with certs
-  "tls_options": {
-    "cert": "/path/to/client-cert.pem",   # Path to client cert
-    "key": "/path/to/client-key.pem",     # Path to client key
-    "ca_file": "/path/to/ca-cert.pem"     # Path to CA cert (optional)
+  "tls_validation": {
+    "enabled": true,
+    "verify": true,
+    "caCert": "/path/to/caCert.pem",
+    "clientCert": "/path/to/client-cert.pem",
+    "clientKey": "/path/to/client-key.pem"
   }
 }
