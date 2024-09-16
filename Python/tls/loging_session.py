@@ -16,26 +16,16 @@ def create_login_session(config):
 
     # Prepare headers
     headers = sso_config.get("headers", {})
-    headers["loginname"] = json.dumps(headers.get("loginname", {}))  # Ensure loginname is passed as a JSON string
-    login_data = json.dumps({
-        "request": "trySsoLogin"
-    })
+    headers["x-fn-oidc-info"] = json.dumps({"loginname":"user"})
 
-    # Fetch the request type from config
-    request_type = sso_config.get("request_type", "PostRequest")
+    # Prepare the data as a JSON object
+    login_data = json.dumps({"request": "trySsoLogin"})
+
+    # Construct the URL with the request query
+    login_url = Utils.get_target_url(config) + '?{"request":"postRequest"}'
     
-    # Construct URL with dynamic request type and colon at the end
-    login_url = Utils.get_target_url(config, f'/?{{"request":"{request_type}:"}}')  # URL with dynamic request_type and colon
-    
-    # Log the fully-formed POST request details before sending
-    logger.info(f"POST Request URL: {login_url}")
-    logger.info(f"POST Request Headers: {headers}")
-    logger.info(f"POST Request Data: {login_data}")
-    logger.info(f"POST Request Verify: {tls_options['verify']}")
-    print(f"POST Request URL: {login_url}")
-    print(f"POST Request Headers: {headers}")
-    print(f"POST Request Data: {login_data}")
-    print(f"POST Request Verify: {tls_options['verify']}")
+    # Log the request details
+    logger.info(f"Sending POST request to {login_url} with headers: {headers} and data: {login_data}")
 
     # Create a session object
     session = requests.Session()
@@ -45,11 +35,11 @@ def create_login_session(config):
 
     # Log and print the response
     logger.info(f"Login Response: {response.status_code} - {response.text}")
-    print(f"Login Response: {response.status_code} - {response.text}")
 
     if response.status_code != 200:
         logger.error("Login failed.")
         return None
 
     response_data = response.json()
-    return response_data  # Assuming response contains tokens
+    return response_data
+
