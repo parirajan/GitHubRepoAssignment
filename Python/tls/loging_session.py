@@ -21,8 +21,8 @@ def create_login_session(config):
         "request": "trySsoLogin"
     })
 
-    # Use "/" as the login URL
-    login_url = Utils.get_target_url(config, "/")  # Using "/" as the login URL
+    # Use "/" as the login URL with ?{"request":"postRequest"} as query string
+    login_url = Utils.get_target_url(config, '/?{"request":"postRequest"}')  # Add the query parameter here
     
     # Log the request details
     logger.info(f"Sending POST request to {login_url} with headers: {headers} and data: {login_data}")
@@ -30,8 +30,8 @@ def create_login_session(config):
     print(f"POST Request Headers: {headers}")
     print(f"POST Request Data: {login_data}")
 
-    # Make the POST request for SSO login
-    response = requests.post(login_url, headers=headers, data=login_data, **tls_options)
+    # Make the POST request with headers, data, and TLS options
+    response = requests.post(login_url, data=login_data, headers=headers, verify=tls_options["verify"], cert=tls_options.get("cert"))
 
     # Log and print the response
     logger.info(f"Login Response: {response.status_code} - {response.text}")
