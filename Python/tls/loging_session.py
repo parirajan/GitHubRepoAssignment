@@ -33,8 +33,11 @@ def create_login_session(config):
     print(f"POST Request Headers: {headers}")
     print(f"POST Request Data: {login_data}")
 
-    # Make the POST request with headers, data, and TLS options
-    response = requests.post(login_url, data=login_data, headers=headers, verify=tls_options["verify"], cert=tls_options.get("cert"))
+    # Create a session object
+    session = requests.Session()
+
+    # Make the POST request using session object, with headers, data, and TLS options
+    response = session.post(login_url, data=login_data, headers=headers, verify=tls_options["verify"], cert=tls_options.get("cert"))
 
     # Log and print the response
     logger.info(f"Login Response: {response.status_code} - {response.text}")
