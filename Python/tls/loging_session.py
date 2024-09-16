@@ -1,45 +1,41 @@
 import requests
 import json
-from utils import Utils
+from urllib.parse import quote
 
 def create_login_session(config):
-    logger = Utils.setup_logger()
+    # Sample configuration and logger setup
+    logger = config.get('logger', print)
 
-    # Check if SSO login is enabled
-    sso_config = config.get("ssoLogin", {})
-    if not sso_config.get("enabled", False):
-        logger.error("SSO Login is disabled.")
-        return None
-
-    # Get TLS options
-    tls_options = Utils.get_tls_options(config)
-
-    # Prepare headers
-    headers = sso_config.get("headers", {})
-    headers["x-fn-oidc-info"] = json.dumps({"loginname":"user"})
-
-    # Prepare the data as a JSON object
+    # Define the headers and data payload
+    headers = {
+        "Content-Type": "application/json",
+        "x-fn-oidc-info": json.dumps({"loginname": "user"})
+    }
     login_data = json.dumps({"request": "trySsoLogin"})
 
-    # Construct the URL with the request query
-    login_url = Utils.get_target_url(config) + '?{"request":"postRequest"}'
-    
-    # Log the request details
-    logger.info(f"Sending POST request to {login_url} with headers: {headers} and data: {login_data}")
+    # URL and Query formatting
+    request_type = {"request": "postRequest"}
+    json_request = json.dumps(request_type)
+    encoded_request = quote(json_request)  # URL-encode the JSON string
 
-    # Create a session object
+    # Full URL with query
+    login_url = f"https://example.com/api/?{encoded_request}"
+
+    # Create a session and send the request
     session = requests.Session()
+    response = session.post(login_url, data=login_data, headers=headers, verify=False)
 
-    # Make the POST request using session object, with headers, data, and TLS options
-    response = session.post(login_url, data=login_data, headers=headers, verify=tls_options["verify"], cert=tls_options.get("cert"))
-
-    # Log and print the response
-    logger.info(f"Login Response: {response.status_code} - {response.text}")
+    # Log the response
+    logger(f"Login Response: {response.status_code} - {response.text}")
 
     if response.status_code != 200:
-        logger.error("Login failed.")
+        logger("Login failed.")
         return None
 
-    response_data = response.json()
-    return response_data
+    return response.json()
 
+# Example usage (assuming 'logger' and other necessary configurations are set)
+config = {
+    'logger': print  # Using print function for logging in this example
+}
+create_login_session(config)
