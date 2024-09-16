@@ -1,61 +1,46 @@
 import requests
 import json
-from utils import Utils, Logger
+from utils import Utils
 
-def get_session(config):
-    # Setup logging
-    logger = Logger.setup_logger()
+def create_login_session(config):
+    logger = Utils.setup_logger()
 
-    # Create headers from the config (directly use tokenname as a JSON object)
-    headers = {
-        "tokenname": json.dumps(config["headers"]["tokenname"]),
-        "Content-Type": config["headers"]["Content-Type"]
-    }
+    # Check if SSO login is enabled
+    sso_config = config.get("ssoLogin", {})
+    if not sso_config.get("enabled", False):
+        logger.error("SSO Login is disabled.")
+        return None
 
-    # Initialize session
-    s = requests.session()
-
-    # Get TLS options (verify and cert handling)
+    # Get TLS options
     tls_options = Utils.get_tls_options(config)
 
-    # Prepare the data payload for the login request, including the login_type
+    # Prepare headers
+    headers = sso_config.get("headers", {})
+    headers["loginname"] = json.dumps(headers.get("loginname", {}))  # Ensure loginname is passed as a JSON string
     login_data = json.dumps({
-        "request": config["login_type"]
+        "request": "trySsoLogin"
     })
 
-    # Build URL with request as a query string
-    session_url = Utils.get_full_url(config, "session", "postRequest") + '?{"request":"postRequest"}'
+    # Build the login URL
+    login_url = Utils.get_target_url(config, "/login")
     
-    logger.info(f"Sending POST request to {session_url} with login_type: {config['login_type']}")
+    # Log the request details
+    logger.info(f"Sending POST request to {login_url} with headers: {headers} and data: {login_data}")
+    print(f"POST Request URL: {login_url}")
+    print(f"POST Request Headers: {headers}")
+    print(f"POST Request Data: {login_data}")
 
-    # Conditional handling of TLS verification and cert
-    if config.get("tls_enabled", True):
-        if "cert" in tls_options:
-            # Pass verify (True or ca_file) and cert (if available)
-            loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=tls_options["verify"], cert=tls_options["cert"])
-        else:
-            # Pass only verify (True or ca_file)
-            loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=tls_options["verify"])
-    else:
-        # TLS is disabled, explicitly pass verify=False
-        loginResponseObject = s.post(session_url, data=login_data, headers=headers, verify=False)
+    # Make the POST request for SSO login
+    response = requests.post(login_url, headers=headers, data=login_data, **tls_options)
 
-    loginResponse = loginResponseObject.text
-    logger.info("Login Response: %s", loginResponse)
+    # Log and print the response
+    logger.info(f"Login Response: {response.status_code} - {response.text}")
+    print(f"Login Response: {response.status_code} - {response.text}")
 
-    # Parse login response and extract tokens
-    loginResponseJson = json.loads(loginResponse)
-    downloadToken = loginResponseJson["downloadToken"]
-    csrfToken = loginResponseJson["csrfToken"]
+    if response.status_code != 200:
+        logger.error("Login failed.")
+        return None
 
-    # Prepare login payload for subsequent requests
-    loginpayload = {
-        'downloadToken': downloadToken,
-        'csrfToken': csrfToken,
-        'tokenname': config["headers"]["tokenname"]  # Directly use the tokenname JSON object here
-    }
+    response_data = response.json()
+    return response_data  # Assuming response contains tokens
 
-    logger.info("Login Payload: %s", loginpayload)
-
-    # Return session and loginpayload
-    return s, loginpayload
