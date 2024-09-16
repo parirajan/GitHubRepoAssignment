@@ -1,38 +1,32 @@
-import json
-from utils import Utils, Logger
-from getSession import get_session
+import requests
+from utils import Utils
+from login_session import create_login_session
 
-# Load configuration and setup logging
-config = Utils.load_config("config.json")
-logger = Logger.setup_logger()
+def get_session(config):
+    logger = Utils.setup_logger()
 
-# Get session and login payload from getSession
-session, loginpayload = get_session(config)
+    # Create the login session and get tokens
+    session_data = create_login_session(config)
+    if not session_data:
+        logger.error("Failed to create login session.")
+        return None
 
-# Build the URL for getInstancesTable with request as a query string
-api_url = Utils.get_full_url(config, "api", "getInstancesTable") + '?{"request":"getInstancesTable"}'
-request_type = Utils.get_request_type(config, "api", "getInstancesTable")
-uid = config["uid"]
+    # Extract tokens from the login response
+    download_token = session_data.get("downloadToken")
+    csrf_token = session_data.get("csrfToken")
+    
+    if not download_token or not csrf_token:
+        logger.error("Download token or CSRF token not found in login response.")
+        return None
 
-logger.info(f"Sending {request_type} request to {api_url} with UID: {uid}")
+    # Prepare the session headers with loginname
+    session_headers = {
+        "downloadToken": download_token,
+        "csrfToken": csrf_token,
+        "loginname": json.dumps(config["ssoLogin"]["headers"]["loginname"])  # Reuse loginname from config
+    }
 
-# Get TLS options (verify and cert handling)
-tls_options = Utils.get_tls_options(config)
-
-# Conditional handling of TLS verification and cert
-if config.get("tls_enabled", True):
-    if "cert" in tls_options:
-        # Pass verify (True or ca_file) and cert (if available)
-        getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=tls_options["verify"], cert=tls_options["cert"])
-    else:
-        # Pass only verify (True or ca_file)
-        getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=tls_options["verify"])
-else:
-    # TLS is disabled, explicitly pass verify=False
-    getClusterStatus = session.get(f"{api_url}&uid={uid}", headers=loginpayload, verify=False)
-
-# Log and print the cluster status
-getClusterStatusJson = json.loads(getClusterStatus)
-cluster_status_pretty = json.dumps(getClusterStatusJson, indent=4, sort_keys=True)
-logger.info("Cluster Status: %s", cluster_status_pretty)
-print(cluster_status_pretty)
+    logger.info(f"Session established with headers: {session_headers}")
+    print(f"Session Headers: {session_headers}")
+    
+    return session_headers
