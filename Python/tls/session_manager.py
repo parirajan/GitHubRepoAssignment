@@ -1,33 +1,27 @@
 import requests
-from utils import load_config, setup_logger, get_tls_options
+from utils import load_config, setup_logger, prepare_url
 
 def create_session():
     config = load_config()
     logger = setup_logger()
+    url = prepare_url(config)
+    
     headers = config['ssoLogin']['headers']
-    headers['x-fn-oidc-info'] = json.dumps(headers['x-fn-oidc-info'])
+    login_data = '{"request":"trySsoLogin"}'  # This can be adapted or extended as needed
 
     session = requests.Session()
-    tls_options = get_tls_options(config)
-    
-    login_url = f"{config['target']['protocol']}://{config['target']['ip']}:{config['target']['api_port']}"
-    login_url += f"?{{'request':'{config['request_type']}'}}"
+    response = session.post(url, data=login_data, headers=headers, verify=False)
 
-    login_response = session.post(login_url, headers=headers, json={'request': 'trySsoLogin'}, **tls_options)
-    
-    if login_response.status_code == 200:
-        logger.info("Successfully logged in")
-        tokens = login_response.json()
-        headers['downloadToken'] = tokens.get('downloadToken')
-        headers['csrfToken'] = tokens.get('csrfToken')
-        return session, headers
+    if response.status_code == 200:
+        logger.info("Login successful.")
+        return response.json()
     else:
-        logger.error("Failed to log in")
-        return None, None
+        logger.error(f"Login failed with status: {response.status_code}")
+        return None
 
 if __name__ == "__main__":
-    session, headers = create_session()
-    if session:
-        print("Session created with headers:", headers)
+    session_info = create_session()
+    if session_info:
+        print("Session info:", session_info)
     else:
-        print("Failed to create session")
+        print("Failed to create session.")
