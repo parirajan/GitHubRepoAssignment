@@ -21,8 +21,11 @@ def create_login_session(config):
         "request": "trySsoLogin"
     })
 
-    # Use "/" as the login URL with ?{"request":"postRequest"} as query string
-    login_url = Utils.get_target_url(config, '/?{"request":"postRequest"}')  # Add the query parameter here
+    # Fetch the request type from config
+    request_type = sso_config.get("request_type", "postRequest")
+    
+    # Construct URL with dynamic request type
+    login_url = Utils.get_target_url(config, f'/?{{"request":"{request_type}"}}')  # URL with dynamic request_type
     
     # Log the request details
     logger.info(f"Sending POST request to {login_url} with headers: {headers} and data: {login_data}")
