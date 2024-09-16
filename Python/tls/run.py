@@ -1,10 +1,10 @@
 import json
-from utils import Utils, Logger
-from get_session import get_session
+from utils import Utils
+from session_manager import get_session  # Import from session_manager
 
 # Load configuration and setup logging
 config = Utils.load_config("config.json")
-logger = Logger.setup_logger()
+logger = Utils.setup_logger()
 
 # Get session and login payload from getSession
 session_headers = get_session(config)
