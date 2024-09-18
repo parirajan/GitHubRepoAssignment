@@ -1,41 +1,30 @@
 import requests
-import json
-from urllib.parse import quote
+from utils import config, logger
 
-def create_login_session(config):
-    # Sample configuration and logger setup
-    logger = config.get('logger', print)
+def getSession(session: requests.Session):
+    try:
+        ssologin = config.ssologin
+        tlsConfig = config.tlsConfig
+        ssoEnabled = ssologin.get("enabled", False)
+        ssoHeaders = ssologin.get("regHeaders", False)
+        if ssoEnabled:
+            ssoHeaders = {
+                key: (json.dumps(value) if isinstance(value, dict) else str(value))
+                for key, value in ssoHeaders.items()
+            }
+        session.headers.update(ssoHeaders)
 
-    # Define the headers and data payload
-    headers = {
-        "Content-Type": "application/json",
-        "x-fn-oidc-info": json.dumps({"loginname": "user"})
-    }
-    login_data = json.dumps({"request": "trySsoLogin"})
+        if tlsConfig.get("enabled", False):
+            session.verify = tlsConfig.get("caCert", None)
+            session.cert = (
+                tlsConfig.get("clientCert", None),
+                tlsConfig.get("clientKey", None)
+            )
+        
+        return session
 
-    # URL and Query formatting
-    request_type = {"request": "postRequest"}
-    json_request = json.dumps(request_type)
-    encoded_request = quote(json_request)  # URL-encode the JSON string
-
-    # Full URL with query
-    login_url = f"https://example.com/api/?{encoded_request}"
-
-    # Create a session and send the request
-    session = requests.Session()
-    response = session.post(login_url, data=login_data, headers=headers, verify=False)
-
-    # Log the response
-    logger(f"Login Response: {response.status_code} - {response.text}")
-
-    if response.status_code != 200:
-        logger("Login failed.")
+    except Exception as e:
+        logger.LoggingHandler.getExecutionLogger(__name__).error(
+            "No session provided!", str(e)
+        )
         return None
-
-    return response.json()
-
-# Example usage (assuming 'logger' and other necessary configurations are set)
-config = {
-    'logger': print  # Using print function for logging in this example
-}
-create_login_session(config)
