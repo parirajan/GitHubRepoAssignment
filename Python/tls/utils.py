@@ -49,3 +49,14 @@ class LoggingHandler:
 
 # Create a logger object by referring to LoggingHandler (which is what you expect to use in getSession.py)
 logger = LoggingHandler
+
+# Utility function to construct URL (without `/api`)
+def construct_url():
+    """Construct URL based on the config values for protocol, ip, and apiPort."""
+    protocol = config.target.get("protocol", "http")
+    ip = config.target.get("ip", "localhost")
+    api_port = config.target.get("apiPort", "80")
+    
+    # Construct the base URL
+    url = f"{protocol}://{ip}:{api_port}/"
+    return url
