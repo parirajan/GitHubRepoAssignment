@@ -1,20 +1,35 @@
 import json
 import logging
 
-def load_config(path='config.json'):
-    with open(path, 'r') as file:
-        return json.load(file)
+class ConfigLoader:
+    def __init__(self, config_path: str):
+        with open(config_path, 'r') as file:
+            self.config = json.load(file)
 
-def setup_logger():
-    logger = logging.getLogger('SaferPaymentsLogger')
-    logger.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    return logger
+    @property
+    def ssologin(self):
+        return self.config.get('ssologin', {})
 
-def prepare_url(config):
-    base_url = f"{config['target']['protocol']}://{config['target']['ip']}:{config['target']['api_port']}"
-    request_type = config.get('request_type', 'postRequest')
-    return f"{base_url}/?{{\"request\":\"{request_type}\"}}"
+    @property
+    def tlsConfig(self):
+        return self.config.get('validateTls', {})
+
+class LoggingHandler:
+    @staticmethod
+    def getExecutionLogger(name):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.ERROR)
+        c_handler = logging.StreamHandler()
+        f_handler = logging.FileHandler('file.log')
+        c_handler.setLevel(logging.ERROR)
+        f_handler.setLevel(logging.ERROR)
+        c_format = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+        f_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        c_handler.setFormatter(c_format)
+        f_handler.setFormatter(f_format)
+        logger.addHandler(c_handler)
+        logger.addHandler(f_handler)
+        return logger
+
+# Instantiate the ConfigLoader with the path to the configuration file
+config = ConfigLoader('path_to_config_file.json')
