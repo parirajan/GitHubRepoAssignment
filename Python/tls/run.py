@@ -1,19 +1,17 @@
-import json
-from utils import Utils
-from session_manager import get_session  # Import from session_manager
+import requests
+from getSession import getSession
 
-# Load configuration and setup logging
-config = Utils.load_config("config.json")
-logger = Utils.setup_logger()
+# Create a new Session object
+session = requests.Session()
 
-# Get session and login payload from getSession
-session_headers = get_session(config)
+# Get the configured session using the getSession function
+configured_session = getSession(session)
 
-# Check if session is successfully created
-if session_headers:
-    logger.info("Session established successfully!")
-    print("Session established successfully!")
-    print(f"Session Headers: {session_headers}")
+# Check if the session was successfully configured
+if configured_session:
+    print("Session Headers:", configured_session.headers)
+    print("Session Verify:", configured_session.verify)
+    if configured_session.cert:
+        print("Session Certificates:", configured_session.cert)
 else:
-    logger.error("Failed to establish session.")
-    print("Failed to establish session.")
+    print("Failed to configure session.")
