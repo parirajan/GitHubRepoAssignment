@@ -3,6 +3,7 @@ import hashlib
 import os
 import datetime
 import requests
+import tempfile  # Added tempfile module to handle temp file creation
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -45,7 +46,7 @@ class Handler(FileSystemEventHandler):
             file_checksum = self.calculate_checksum(file_path)
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # 2. Create a metadata file with the checksum and timestamp
+            # 2. Create a metadata file with the checksum and timestamp in a temporary location
             metadata_file_path = self.create_metadata_file(file_path, file_checksum, timestamp)
 
             # 3. Upload the file and metadata to GitLab Package Registry
@@ -69,15 +70,20 @@ class Handler(FileSystemEventHandler):
 
     def create_metadata_file(self, file_path, checksum, timestamp):
         """
-        Create a file containing the checksum and timestamp.
+        Create a file containing the checksum and timestamp in a temporary directory.
         """
-        metadata_file_path = f"{file_path}.metadata.txt"
+        metadata_file_name = f"{os.path.basename(file_path)}.metadata.txt"
+        
+        # Create a temporary directory for the metadata file
+        temp_dir = tempfile.gettempdir()
+        metadata_file_path = os.path.join(temp_dir, metadata_file_name)
+        
         with open(metadata_file_path, "w") as metadata_file:
             metadata_file.write(f"File: {os.path.basename(file_path)}\n")
             metadata_file.write(f"Checksum (SHA-256): {checksum}\n")
             metadata_file.write(f"Timestamp: {timestamp}\n")
 
-        print(f"Metadata file created: {metadata_file_path}")
+        print(f"Metadata file created at temporary location: {metadata_file_path}")
         return metadata_file_path
 
     def upload_to_package_registry(self, file_path):
@@ -93,7 +99,7 @@ class Handler(FileSystemEventHandler):
                 'file': (file_name, file_data)
             }
 
-            response = requests.put(f"{GITLAB_PACKAGE_REGISTRY_URL}/{file_name}", headers=headers, files=files)
+            response = requests.put(f"{GITLAB_PACKAGE_REGISTRY_URL}/{file_name}", headers=headers, files=files, verify=False)
 
             if response.status_code == 201:
                 print(f"File {file_name} uploaded to GitLab Package Registry.")
