@@ -1,17 +1,16 @@
 package com.example;
 
+import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
+import org.apache.hc.client5.http.async.methods.SimpleHttpRequests;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.core5.ssl.SSLContextBuilder;
 import org.apache.hc.core5.ssl.NoopHostnameVerifier;
 import org.apache.hc.core5.ssl.TrustAllStrategy;
-import org.apache.hc.core5.http.ContentType;
-import org.apache.hc.core5.http.nio.AsyncResponseConsumer;
-import org.apache.hc.core5.http.nio.support.BasicResponseConsumer;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.HttpResponse;
 
 import javax.net.ssl.SSLContext;
-import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Future;
@@ -29,7 +28,7 @@ public class App {
             String fullUrl = url + encodedQuery;
 
             // Create an SSLContext that trusts all certificates
-            SSLContext sslContext = SSLContextBuilder.create()
+            SSLContext sslContext = new SSLContextBuilder()
                 .loadTrustMaterial(new TrustAllStrategy())  // Trust all certificates
                 .build();
 
@@ -43,15 +42,15 @@ public class App {
             httpClient.start();
 
             // Create a GET request using the async API
-            Future<org.apache.hc.core5.http.HttpResponse> futureResponse = httpClient.execute(
-                SimpleHttpRequests.get(fullUrl),
-                BasicResponseConsumer.create(),
-                null
-            );
+            SimpleHttpRequest request = SimpleHttpRequests.get(fullUrl);
 
-            // Get the response asynchronously
+            // Execute the request asynchronously and handle the response
+            Future<HttpResponse> futureResponse = httpClient.execute(request, null);
+
+            // Wait for the response and process it
             HttpResponse response = futureResponse.get();
-            System.out.println("Response Code: " + response.getCode());
+            String responseBody = EntityUtils.toString(response.getEntity());
+            System.out.println("Response: " + responseBody);
 
             // Shutdown the client
             httpClient.close();
