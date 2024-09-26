@@ -3,7 +3,7 @@ import hashlib
 import os
 import datetime
 import requests
-import tempfile  # Added tempfile module to handle temp file creation
+import tempfile
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -54,7 +54,7 @@ class Handler(FileSystemEventHandler):
             self.upload_to_package_registry(metadata_file_path)
 
             # 4. Trigger the GitLab CI pipeline to validate the uploaded file in the package registry
-            self.trigger_gitlab_pipeline(file_path)
+            self.trigger_gitlab_pipeline(file_path, metadata_file_path)
 
     def calculate_checksum(self, file_path):
         """
@@ -106,9 +106,10 @@ class Handler(FileSystemEventHandler):
             else:
                 print(f"Failed to upload {file_name} to Package Registry. Status Code: {response.status_code}, Response: {response.content}")
 
-    def trigger_gitlab_pipeline(self, file_path):
+    def trigger_gitlab_pipeline(self, file_path, metadata_file_path):
         """
         Trigger a GitLab CI/CD pipeline to validate the uploaded artifact in the package registry using the GitLab API.
+        Pass the uploaded file name and metadata file name as variables.
         """
         url = f"{GITLAB_API_URL}/projects/{GITLAB_PROJECT_ID}/trigger/pipeline"
         headers = {
@@ -118,7 +119,8 @@ class Handler(FileSystemEventHandler):
             "token": GITLAB_TRIGGER_TOKEN,
             "ref": GITLAB_REF,
             "variables": {
-                "UPDATED_FILE": os.path.basename(file_path)  # Pass the updated file as a variable
+                "UPLOADED_FILE": os.path.basename(file_path),  # Pass the uploaded file as a variable
+                "METADATA_FILE": os.path.basename(metadata_file_path)  # Pass the metadata file as a variable
             }
         }
 
