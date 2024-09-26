@@ -1,8 +1,34 @@
+stages:
+  - validate
+
 validate_package:
+  stage: validate
   script:
-    - echo "Validating the uploaded file: $UPDATED_FILE"
+    - echo "Fetching uploaded file from GitLab Package Registry..."
     - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
-           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$UPDATED_FILE"
-    - echo "File is present in the package registry."
+      --output downloaded_package.zip \
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/uploaded_file.zip"
+      
+    - echo "Fetching metadata file..."
+    - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+      --output downloaded_metadata.txt \
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/uploaded_file.metadata.txt"
+
+    - echo "Validating the package checksum and timestamp against metadata..."
+    - CHECKSUM=$(sha256sum downloaded_package.zip | awk '{ print $1 }')
+    - METADATA_CHECKSUM=$(grep "Checksum (SHA-256)" downloaded_metadata.txt | awk -F': ' '{ print $2 }')
+    
+    - TIMESTAMP=$(date -r downloaded_package.zip '+%Y-%m-%d %H:%M:%S')
+    - METADATA_TIMESTAMP=$(grep "Timestamp" downloaded_metadata.txt | awk -F': ' '{ print $2 }')
+
+    - echo "Checksum: $CHECKSUM"
+    - echo "Metadata Checksum: $METADATA_CHECKSUM"
+    - echo "Timestamp: $TIMESTAMP"
+    - echo "Metadata Timestamp: $METADATA_TIMESTAMP"
+
+    - if [ "$CHECKSUM" != "$METADATA_CHECKSUM" ]; then echo "Checksum mismatch!"; exit 1; fi
+    - if [ "$TIMESTAMP" != "$METADATA_TIMESTAMP" ]; then echo "Timestamp mismatch!"; exit 1; fi
+
+    - echo "Validation passed!"
   only:
     - main
