@@ -6,16 +6,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-import java.security.cert.X509Certificate;
-
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.ssl.SSLContextBuilder;
 import org.apache.hc.core5.ssl.NoopHostnameVerifier;
 import org.apache.hc.core5.ssl.TrustAllStrategy;
+
+import javax.net.ssl.SSLContext;
 
 @Configuration
 public class RestTemplateConfig {
@@ -24,15 +21,16 @@ public class RestTemplateConfig {
     public RestTemplate restTemplate(RestTemplateBuilder builder) throws Exception {
         // Create an SSLContext that accepts all certificates
         SSLContext sslContext = SSLContextBuilder.create()
-            .loadTrustMaterial(new TrustAllStrategy())
+            .loadTrustMaterial(new TrustAllStrategy())  // Trust all certificates
             .build();
 
-        // Create an HttpClient with the custom SSLContext
+        // Create an HttpClient with the custom SSLContext and NoopHostnameVerifier
         CloseableHttpClient httpClient = HttpClients.custom()
-            .setSSLContext(sslContext)
-            .setSSLHostnameVerifier(NoopHostnameVerifier.INSTANCE)
+            .setSSLContext(sslContext)  // Use the custom SSLContext
+            .setSSLHostnameVerifier(NoopHostnameVerifier.INSTANCE)  // Disable hostname verification
             .build();
 
+        // Create a request factory using HttpClient
         HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
         return builder.requestFactory(() -> factory).build();
     }
