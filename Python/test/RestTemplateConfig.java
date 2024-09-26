@@ -11,36 +11,26 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import java.security.cert.X509Certificate;
 
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.conn.ssl.NoopHostnameVerifier;
-import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
-import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.core5.ssl.SSLContextBuilder;
+import org.apache.hc.core5.ssl.NoopHostnameVerifier;
+import org.apache.hc.core5.ssl.TrustAllStrategy;
 
 @Configuration
 public class RestTemplateConfig {
 
     @Bean
     public RestTemplate restTemplate(RestTemplateBuilder builder) throws Exception {
-        // Trust manager that does not validate certificate chains
-        TrustManager[] trustAllCerts = new TrustManager[] {
-            new X509TrustManager() {
-                public X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[0];
-                }
-                public void checkClientTrusted(X509Certificate[] certs, String authType) {}
-                public void checkServerTrusted(X509Certificate[] certs, String authType) {}
-            }
-        };
+        // Create an SSLContext that accepts all certificates
+        SSLContext sslContext = SSLContextBuilder.create()
+            .loadTrustMaterial(new TrustAllStrategy())
+            .build();
 
-        // Set up an SSLContext with the trust-all TrustManager
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
-
-        // Create HttpClient that uses this SSLContext and disables hostname verification
-        SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext, NoopHostnameVerifier.INSTANCE);
-        CloseableHttpClient httpClient = HttpClientBuilder.create()
-            .setSSLSocketFactory(sslSocketFactory)
+        // Create an HttpClient with the custom SSLContext
+        CloseableHttpClient httpClient = HttpClients.custom()
+            .setSSLContext(sslContext)
+            .setSSLHostnameVerifier(NoopHostnameVerifier.INSTANCE)
             .build();
 
         HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
