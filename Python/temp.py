@@ -51,18 +51,15 @@ class Handler(FileSystemEventHandler):
             return
 
         if event.event_type in ("modified", "created") and not event.is_directory:
-            # 1. Calculate the checksum and timestamp
+            # 1. Create metadata without modifying the original file
             file_checksum = self.calculate_checksum(file_path)
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            # 2. Create a metadata file with the checksum and timestamp in a temporary location
             metadata_file_path = self.create_metadata_file(file_path, file_checksum, timestamp)
 
-            # 3. Upload the file and metadata to GitLab Package Registry
-            self.upload_to_package_registry(file_path)
-            self.upload_to_package_registry(metadata_file_path)
+            # 2. Upload the original file and metadata file once
+            self.upload_to_package_registry(file_path, metadata_file_path)
 
-            # 4. Trigger the GitLab CI pipeline to validate the uploaded file in the package registry
+            # 3. Trigger the GitLab pipeline to validate the uploaded file and metadata
             self.trigger_gitlab_pipeline(file_path, metadata_file_path)
 
     def calculate_checksum(self, file_path):
@@ -79,7 +76,7 @@ class Handler(FileSystemEventHandler):
 
     def create_metadata_file(self, file_path, checksum, timestamp):
         """
-        Create a file containing the checksum and timestamp in a temporary directory.
+        Create a metadata file in a temporary directory without modifying the original file.
         """
         metadata_file_name = f"{os.path.basename(file_path)}.metadata.txt"
         
@@ -95,19 +92,20 @@ class Handler(FileSystemEventHandler):
         print(f"Metadata file created at temporary location: {metadata_file_path}")
         return metadata_file_path
 
-    def upload_to_package_registry(self, file_path):
+    def upload_to_package_registry(self, file_path, metadata_file_path):
         """
-        Upload the file to GitLab Package Registry using the GitLab API.
+        Upload the original file and metadata file to GitLab Package Registry using the GitLab API.
         """
+        headers = {
+            "PRIVATE-TOKEN": GITLAB_PERSONAL_ACCESS_TOKEN
+        }
+
+        # Upload the original file
         with open(file_path, 'rb') as file_data:
             file_name = os.path.basename(file_path)
-            headers = {
-                "PRIVATE-TOKEN": GITLAB_PERSONAL_ACCESS_TOKEN
-            }
             files = {
                 'file': (file_name, file_data)
             }
-
             response = requests.put(f"{GITLAB_PACKAGE_REGISTRY_URL}/{file_name}", headers=headers, files=files, verify=False)
 
             if response.status_code == 201:
@@ -115,9 +113,22 @@ class Handler(FileSystemEventHandler):
             else:
                 print(f"Failed to upload {file_name} to Package Registry. Status Code: {response.status_code}, Response: {response.content}")
 
+        # Upload the metadata file
+        with open(metadata_file_path, 'rb') as metadata_data:
+            metadata_file_name = os.path.basename(metadata_file_path)
+            files = {
+                'file': (metadata_file_name, metadata_data)
+            }
+            response = requests.put(f"{GITLAB_PACKAGE_REGISTRY_URL}/{metadata_file_name}", headers=headers, files=files, verify=False)
+
+            if response.status_code == 201:
+                print(f"Metadata file {metadata_file_name} uploaded to GitLab Package Registry.")
+            else:
+                print(f"Failed to upload {metadata_file_name} to Package Registry. Status Code: {response.status_code}, Response: {response.content}")
+
     def trigger_gitlab_pipeline(self, file_path, metadata_file_path):
         """
-        Trigger a GitLab CI/CD pipeline to validate the uploaded artifact in the package registry using the GitLab API.
+        Trigger a GitLab CI/CD pipeline to validate the uploaded file and metadata using the GitLab API.
         Pass the uploaded file name and metadata file name as variables.
         """
         url = f"{GITLAB_API_URL}/projects/{GITLAB_PROJECT_ID}/trigger/pipeline"
