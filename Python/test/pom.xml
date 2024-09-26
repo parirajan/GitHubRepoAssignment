@@ -3,19 +3,44 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.example</groupId>
+    <groupId>org.company.group</groupId>
     <artifactId>sp-test</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
+    <repositories>
+        <!-- Nexus Repository Configuration -->
+        <repository>
+            <id>nexus-releases</id> <!-- Identifier for the repository -->
+            <url>http://nexus.company.com/repository/maven-public/</url> <!-- Replace with your actual Nexus URL -->
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+
+        <repository>
+            <id>nexus-snapshots</id> <!-- Identifier for the snapshots repository -->
+            <url>http://nexus.company.com/repository/maven-snapshots/</url> <!-- Replace with your actual Nexus URL -->
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
     <dependencies>
-        <!-- Spring Boot Web Starter -->
+        <!-- Spring Boot Web Starter Dependency -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Apache HttpClient for disabling SSL verification -->
+        <!-- Apache HttpClient -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
             <artifactId>httpclient5</artifactId>
