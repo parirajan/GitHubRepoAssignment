@@ -4,11 +4,18 @@ import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequests;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
 import org.apache.hc.core5.ssl.SSLContextBuilder;
 import org.apache.hc.core5.ssl.NoopHostnameVerifier;
 import org.apache.hc.core5.ssl.TrustAllStrategy;
-import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.ssl.SSLConnectionSocketFactory;
+import org.apache.hc.core5.http.nio.support.AsyncRequestBuilder;
+import org.apache.hc.core5.http.nio.AsyncEntityProducer;
+import org.apache.hc.core5.http.nio.support.BasicResponseConsumer;
+import org.apache.hc.core5.http.nio.AsyncResponseConsumer;
+import org.apache.hc.core5.http.nio.entity.StringAsyncEntityConsumer;
 import org.apache.hc.core5.http.HttpResponse;
+import org.apache.hc.core5.http.ContentType;
 
 import javax.net.ssl.SSLContext;
 import java.net.URLEncoder;
@@ -32,10 +39,17 @@ public class App {
                 .loadTrustMaterial(new TrustAllStrategy())  // Trust all certificates
                 .build();
 
-            // Create HttpClient that uses the custom SSLContext and disables hostname verification
+            // Create the SSLConnectionSocketFactory
+            SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext, NoopHostnameVerifier.INSTANCE);
+
+            // Create a connection manager with the SSL factory
+            PoolingAsyncClientConnectionManager connectionManager = PoolingAsyncClientConnectionManager.builder()
+                .setTlsStrategy(sslSocketFactory.getTlsStrategy())
+                .build();
+
+            // Create HttpClient that uses the custom connection manager
             CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom()
-                .setSSLContext(sslContext)
-                .setHostnameVerifier(NoopHostnameVerifier.INSTANCE)  // Disable hostname verification
+                .setConnectionManager(connectionManager)
                 .build();
 
             // Start the HttpClient
@@ -45,12 +59,17 @@ public class App {
             SimpleHttpRequest request = SimpleHttpRequests.get(fullUrl);
 
             // Execute the request asynchronously and handle the response
-            Future<HttpResponse> futureResponse = httpClient.execute(request, null);
+            Future<Void> futureResponse = httpClient.execute(
+                request,
+                new StringAsyncEntityConsumer(),
+                (response, entity) -> {
+                    // Process the response
+                    System.out.println("Response Code: " + response.getCode());
+                    System.out.println("Response Body: " + entity);
+                });
 
-            // Wait for the response and process it
-            HttpResponse response = futureResponse.get();
-            String responseBody = EntityUtils.toString(response.getEntity());
-            System.out.println("Response: " + responseBody);
+            // Wait for the response
+            futureResponse.get();
 
             // Shutdown the client
             httpClient.close();
