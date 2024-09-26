@@ -1,1 +1,22 @@
 
+Why RSocket Connections Might Not Be Equally Distributed:
+Layer 4 Load Balancing: Consul's default behavior for Layer 4 services uses connection-level load balancing. This means that once a connection is established between the client and an upstream service, all traffic will flow through that connection. If connections are long-lived (which is typical in RSocket), the load balancing may appear uneven because some services may handle a disproportionate number of connections over time.
+
+Persistent Connections: RSocket is designed for low-latency, real-time communication using a persistent connection. The traffic is routed per connection, not per request, leading to an unequal distribution of requests if the connections themselves are not evenly spread out.
+
+Round-Robin and Least Connections: In Layer 4 load balancing, algorithms like round-robin or least connections are used. However, if the connections are sticky or not frequently torn down, the load can accumulate unevenly across services.
+
+Potential Solutions:
+Layer 7 Load Balancing: If possible, you can switch to Layer 7 (application layer) load balancing instead of Layer 4. Layer 7 allows Consul to route based on the actual application traffic (requests) rather than at the connection level, which leads to more equal distribution of traffic.
+
+However, Layer 7 requires services that understand higher-level protocols (like HTTP) and might not be directly compatible with RSocket. You’d need to evaluate if this is suitable for your architecture.
+Connection Pooling and Connection Closing: To mitigate the uneven distribution of connections, you can configure your clients to close and reopen connections periodically. This forces the service mesh to reallocate connections, which can result in a more balanced distribution.
+
+Consul Configuration Adjustments: Depending on your specific setup, you can tune Consul’s service mesh configuration. For example:
+
+Adjust connection limits to avoid overloading specific instances.
+Enable retries in case of failures, which can distribute connections more evenly across services.
+Consider using Envoy, Consul's default sidecar proxy, to enable features such as circuit breaking, outlier detection, and retry logic, which can improve the load distribution over time.
+RSocket Load Balancer: If you are using RSocket in a microservice setup, RSocket itself provides client-side load balancing strategies that you can leverage. By using RSocket’s Load Balancer, you can ensure better distribution of requests across upstream services.
+
+RSocket load balancers can use techniques like weighted random routing or round-robin, which can distribute requests more evenly regardless of the underlying transport connection.
