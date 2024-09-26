@@ -7,12 +7,12 @@ validate_package:
     - echo "Fetching uploaded file from GitLab Package Registry..."
     - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
       --output downloaded_package.zip \
-      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/uploaded_file.zip"
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$UPLOADED_FILE"
       
-    - echo "Fetching metadata file..."
+    - echo "Fetching metadata file from GitLab Package Registry..."
     - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
       --output downloaded_metadata.txt \
-      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/uploaded_file.metadata.txt"
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$METADATA_FILE"
 
     - echo "Validating the package checksum and timestamp against metadata..."
     - CHECKSUM=$(sha256sum downloaded_package.zip | awk '{ print $1 }')
