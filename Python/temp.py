@@ -76,12 +76,12 @@ class Handler(FileSystemEventHandler):
 
     def create_metadata_file(self, file_path, checksum, timestamp):
         """
-        Create a metadata file in a temporary directory without modifying the original file.
+        Create a metadata file in a temporary directory outside the watched folder.
         """
         metadata_file_name = f"{os.path.basename(file_path)}.metadata.txt"
         
-        # Create a temporary directory for the metadata file
-        temp_dir = tempfile.gettempdir()
+        # Create a temporary directory for the metadata file outside the watched folder
+        temp_dir = "/tmp"  # You can use any non-watched directory here
         metadata_file_path = os.path.join(temp_dir, metadata_file_name)
         
         with open(metadata_file_path, "w") as metadata_file:
@@ -89,18 +89,19 @@ class Handler(FileSystemEventHandler):
             metadata_file.write(f"Checksum (SHA-256): {checksum}\n")
             metadata_file.write(f"Timestamp: {timestamp}\n")
 
-        print(f"Metadata file created at temporary location: {metadata_file_path}")
+        print(f"Metadata file created at: {metadata_file_path}")
         return metadata_file_path
 
     def upload_to_package_registry(self, file_path, metadata_file_path):
         """
         Upload the original file and metadata file to GitLab Package Registry using the GitLab API.
+        Ensure that the original file is only uploaded once.
         """
         headers = {
             "PRIVATE-TOKEN": GITLAB_PERSONAL_ACCESS_TOKEN
         }
 
-        # Upload the original file
+        # Upload the original file (only once)
         with open(file_path, 'rb') as file_data:
             file_name = os.path.basename(file_path)
             files = {
