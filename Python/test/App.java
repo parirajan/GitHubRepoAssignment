@@ -5,11 +5,10 @@ import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.core5.ssl.SSLContextBuilder;
 import org.apache.hc.core5.ssl.NoopHostnameVerifier;
 import org.apache.hc.core5.ssl.TrustAllStrategy;
-import org.apache.hc.core5.http.nio.support.BasicResponseConsumer;
-import org.apache.hc.core5.http.nio.support.ClassicRequestProducer;
+import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.nio.AsyncResponseConsumer;
+import org.apache.hc.core5.http.nio.support.BasicResponseConsumer;
 import org.apache.hc.core5.http.HttpResponse;
-import org.apache.hc.core5.io.CloseMode;
 
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
@@ -43,19 +42,19 @@ public class App {
             // Start the HttpClient
             httpClient.start();
 
-            // Create a GET request
-            ClassicRequestProducer requestProducer = ClassicRequestProducer.createGet(fullUrl);
-            AsyncResponseConsumer<HttpResponse> responseConsumer = BasicResponseConsumer.create();
+            // Create a GET request using the async API
+            Future<org.apache.hc.core5.http.HttpResponse> futureResponse = httpClient.execute(
+                SimpleHttpRequests.get(fullUrl),
+                BasicResponseConsumer.create(),
+                null
+            );
 
-            // Execute the request asynchronously
-            Future<HttpResponse> futureResponse = httpClient.execute(requestProducer, responseConsumer, null);
-
-            // Get the response
+            // Get the response asynchronously
             HttpResponse response = futureResponse.get();
             System.out.println("Response Code: " + response.getCode());
 
-            // Shut down the client
-            httpClient.close(CloseMode.GRACEFUL);
+            // Shutdown the client
+            httpClient.close();
 
         } catch (Exception e) {
             e.printStackTrace();
