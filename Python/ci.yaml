@@ -1,0 +1,8 @@
+validate_package:
+  script:
+    - echo "Validating the uploaded file: $UPDATED_FILE"
+    - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$UPDATED_FILE"
+    - echo "File is present in the package registry."
+  only:
+    - main
