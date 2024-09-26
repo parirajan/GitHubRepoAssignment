@@ -3,15 +3,27 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 
-public class HttpGetExample {
+public class HttpGetWithJsonExample {
     public static void main(String[] args) {
         try {
-            // URL to connect to
-            String urlString = "https://example.com"; // replace with your URL
-            URL url = new URL(urlString);
+            // Define the URL and port
+            String urlString = "https://example.com:8080"; // Replace with your URL and port
+
+            // JSON data to send as query parameter
+            String jsonParam = "{\"request\": \"ping\"}";
+
+            // URL encode the JSON parameter
+            String encodedParam = URLEncoder.encode(jsonParam, "UTF-8");
+
+            // Complete URL with query parameter
+            String fullUrl = urlString + "/?" + encodedParam;
+
+            // Create URL object
+            URL url = new URL(fullUrl);
 
             // Disable SSL certificate verification
             disableSSLCertificateChecking();
