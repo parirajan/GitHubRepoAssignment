@@ -7,50 +7,59 @@ import java.net.URLEncoder;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 
-public class HttpGetWithJsonExample {
+public class HttpGetWithLoop {
     public static void main(String[] args) {
         try {
-            // Define the URL and port
-            String urlString = "https://example.com:8080"; // Replace with your URL and port
+            // Base URL and port
+            String baseUrl = "https://example"; // The base part of the URL
+            int port = 8080; // Replace with the port number
+            String jsonQuery = "{\"request\": \"ping\"}"; // Raw JSON query string
 
-            // JSON data to send as query parameter
-            String jsonParam = "{\"request\": \"ping\"}";
+            // Loop through example1 to example6
+            for (int i = 1; i <= 6; i++) {
+                // Construct the URL dynamically for each example (example1, example2, ..., example6)
+                String currentUrl = baseUrl + i; // Concatenate to create "example1", "example2", etc.
 
-            // URL encode the JSON parameter
-            String encodedParam = URLEncoder.encode(jsonParam, "UTF-8");
+                // Encode the JSON query parameter
+                String encodedJsonQuery = URLEncoder.encode(jsonQuery, "UTF-8");
 
-            // Complete URL with query parameter
-            String fullUrl = urlString + "/?" + encodedParam;
+                // Full URL with port and encoded JSON query
+                String fullUrl = currentUrl + ":" + port + "/?" + encodedJsonQuery;
 
-            // Create URL object
-            URL url = new URL(fullUrl);
+                // Print the encoded full URL
+                System.out.println("Encoded Full URL: " + fullUrl);
 
-            // Disable SSL certificate verification
-            disableSSLCertificateChecking();
+                // Create URL object
+                URL url = new URL(fullUrl);
 
-            // Open connection
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                // Disable SSL certificate verification
+                disableSSLCertificateChecking();
 
-            // Set request method to GET
-            connection.setRequestMethod("GET");
+                // Open connection
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
-            // Get response code
-            int responseCode = connection.getResponseCode();
-            System.out.println("Response Code: " + responseCode);
+                // Set request method to GET
+                connection.setRequestMethod("GET");
 
-            // Read response
-            BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-            String inputLine;
-            StringBuilder content = new StringBuilder();
-            while ((inputLine = in.readLine()) != null) {
-                content.append(inputLine);
+                // Get response code
+                int responseCode = connection.getResponseCode();
+                System.out.println("Response Code for " + currentUrl + ": " + responseCode);
+
+                // Read response
+                BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                String inputLine;
+                StringBuilder content = new StringBuilder();
+                while ((inputLine = in.readLine()) != null) {
+                    content.append(inputLine);
+                }
+
+                // Close the streams
+                in.close();
+
+                // Print the response content
+                System.out.println("Response for " + currentUrl + ": " + content.toString());
+                System.out.println("------------------------------------");
             }
-
-            // Close the streams
-            in.close();
-
-            // Print the response content
-            System.out.println("Response: " + content.toString());
         } catch (Exception e) {
             e.printStackTrace();
         }
