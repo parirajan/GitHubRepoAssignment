@@ -15,7 +15,9 @@ import org.apache.hc.core5.ssl.NoopHostnameVerifier;
 import org.apache.hc.core5.ssl.TrustAllStrategy;
 import org.apache.hc.core5.util.Timeout;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
-import org.apache.hc.core5.ssl.SSLConnectionSocketFactory;
+import org.apache.hc.client5.http.socket.ConnectionSocketFactory;
+import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
 
 @Configuration
 public class RestTemplateConfig {
@@ -27,18 +29,18 @@ public class RestTemplateConfig {
             .loadTrustMaterial(new TrustAllStrategy())  // Trust all certificates
             .build();
 
-        // Create the SSL connection factory
+        // Create the SSL connection socket factory
         SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(
-            sslContext, NoopHostnameVerifier.INSTANCE);  // Disable hostname verification
+            sslContext, NoopHostnameVerifier.INSTANCE);
 
-        // Create a connection manager with the SSL factory
+        // Create the connection manager and register the SSL socket factory
         PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
-        connectionManager.setDefaultConnectionConfig(
-            org.apache.hc.core5.http.config.ConnectionConfig.custom()
-                .setSocketTimeout(Timeout.ofSeconds(60))  // Adjust timeout as needed
+        connectionManager.setDefaultSocketConfig(
+            org.apache.hc.core5.http.io.SocketConfig.custom()
+                .setSoTimeout(Timeout.ofSeconds(60))  // Set socket timeout
                 .build()
         );
-        connectionManager.setDefaultSocketFactory(sslSocketFactory);
+        connectionManager.setSSLSocketFactory(sslSocketFactory);
 
         // Create HttpClient with the connection manager
         CloseableHttpClient httpClient = HttpClients.custom()
