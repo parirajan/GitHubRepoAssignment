@@ -1,18 +1,25 @@
 package com.example;
 
-import org.apache.hc.client5.http.classic.methods.HttpGet;
-import org.apache.hc.client5.http.classic.HttpClients;
-import org.apache.hc.client5.http.classic.CloseableHttpClient;
-import org.apache.hc.core5.http.io.entity.EntityUtils;
-import org.apache.hc.core5.http.ClassicHttpResponse;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
+import org.apache.hc.core5.ssl.SSLContextBuilder;
+import org.apache.hc.core5.ssl.NoopHostnameVerifier;
+import org.apache.hc.core5.ssl.TrustAllStrategy;
+import org.apache.hc.core5.http.nio.support.BasicResponseConsumer;
+import org.apache.hc.core5.http.nio.support.ClassicRequestProducer;
+import org.apache.hc.core5.http.nio.AsyncResponseConsumer;
+import org.apache.hc.core5.http.HttpResponse;
+import org.apache.hc.core5.io.CloseMode;
+
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.Future;
 
 public class App {
     public static void main(String[] args) {
-        String url = "http://url:port/?";
+        String url = "https://url:port/?";
         String queryParam = "{\"request\": \"ping\"}";
 
         try {
@@ -22,20 +29,35 @@ public class App {
             // Full URL with encoded query
             String fullUrl = url + encodedQuery;
 
-            // Create HttpClient instance
-            CloseableHttpClient httpClient = HttpClients.createDefault();
+            // Create an SSLContext that trusts all certificates
+            SSLContext sslContext = SSLContextBuilder.create()
+                .loadTrustMaterial(new TrustAllStrategy())  // Trust all certificates
+                .build();
 
-            // Create HttpGet request
-            HttpGet request = new HttpGet(fullUrl);
+            // Create HttpClient that uses the custom SSLContext and disables hostname verification
+            CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom()
+                .setSSLContext(sslContext)
+                .setHostnameVerifier(NoopHostnameVerifier.INSTANCE)  // Disable hostname verification
+                .build();
 
-            // Execute the request and get the response
-            try (CloseableHttpResponse response = httpClient.execute(request)) {
-                // Print the response
-                String responseBody = EntityUtils.toString(response.getEntity());
-                System.out.println("Response: " + responseBody);
-            }
+            // Start the HttpClient
+            httpClient.start();
 
-        } catch (IOException e) {
+            // Create a GET request
+            ClassicRequestProducer requestProducer = ClassicRequestProducer.createGet(fullUrl);
+            AsyncResponseConsumer<HttpResponse> responseConsumer = BasicResponseConsumer.create();
+
+            // Execute the request asynchronously
+            Future<HttpResponse> futureResponse = httpClient.execute(requestProducer, responseConsumer, null);
+
+            // Get the response
+            HttpResponse response = futureResponse.get();
+            System.out.println("Response Code: " + response.getCode());
+
+            // Shut down the client
+            httpClient.close(CloseMode.GRACEFUL);
+
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
