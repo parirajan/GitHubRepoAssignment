@@ -9,6 +9,7 @@ from watchdog.events import FileSystemEventHandler
 
 # Define the folder to watch
 FOLDER_TO_WATCH = "/path/to/watch/folder"
+WAIT_TIME_SECONDS = 5  # Wait for 5 seconds to ensure the file is complete
 
 # GitLab project and API details
 GITLAB_API_URL = "https://gitlab.com/api/v4"
@@ -51,16 +52,31 @@ class Handler(FileSystemEventHandler):
             return
 
         if event.event_type in ("modified", "created") and not event.is_directory:
-            # 1. Create metadata without modifying the original file
+            # 1. Ensure the file is stable for more than 5 seconds
+            if not self.is_file_stable(file_path):
+                print(f"File {file_path} is still being modified, skipping.")
+                return
+
+            # 2. Create metadata without modifying the original file
             file_checksum = self.calculate_checksum(file_path)
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             metadata_file_path = self.create_metadata_file(file_path, file_checksum, timestamp)
 
-            # 2. Upload the original file and metadata file once
+            # 3. Upload the original file and metadata file once
             self.upload_to_package_registry(file_path, metadata_file_path)
 
-            # 3. Trigger the GitLab pipeline to validate the uploaded file and metadata
+            # 4. Trigger the GitLab pipeline to validate the uploaded file and metadata
             self.trigger_gitlab_pipeline(file_path, metadata_file_path)
+
+    def is_file_stable(self, file_path):
+        """
+        Check if a file has not been modified for the past WAIT_TIME_SECONDS.
+        """
+        initial_mod_time = os.path.getmtime(file_path)
+        time.sleep(WAIT_TIME_SECONDS)
+        current_mod_time = os.path.getmtime(file_path)
+
+        return initial_mod_time == current_mod_time
 
     def calculate_checksum(self, file_path):
         """
@@ -81,7 +97,7 @@ class Handler(FileSystemEventHandler):
         metadata_file_name = f"{os.path.basename(file_path)}.metadata.txt"
         
         # Create a temporary directory for the metadata file outside the watched folder
-        temp_dir = "/tmp"  # You can use any non-watched directory here
+        temp_dir = tempfile.gettempdir()  # Use any non-watched directory
         metadata_file_path = os.path.join(temp_dir, metadata_file_name)
         
         with open(metadata_file_path, "w") as metadata_file:
@@ -95,19 +111,21 @@ class Handler(FileSystemEventHandler):
     def upload_to_package_registry(self, file_path, metadata_file_path):
         """
         Upload the original file and metadata file to GitLab Package Registry using the GitLab API.
-        Ensure that the original file is only uploaded once.
+        Ensure that the original file is only uploaded once without modifying its contents.
         """
         headers = {
             "PRIVATE-TOKEN": GITLAB_PERSONAL_ACCESS_TOKEN
         }
 
-        # Upload the original file (only once)
+        # Upload the original file (only once, without modifying its contents)
         with open(file_path, 'rb') as file_data:
             file_name = os.path.basename(file_path)
-            files = {
-                'file': (file_name, file_data)
-            }
-            response = requests.put(f"{GITLAB_PACKAGE_REGISTRY_URL}/{file_name}", headers=headers, files=files, verify=False)
+            response = requests.put(
+                f"{GITLAB_PACKAGE_REGISTRY_URL}/{file_name}",
+                headers=headers,
+                data=file_data,  # Upload file as a stream without multipart/form-data
+                verify=False
+            )
 
             if response.status_code == 201:
                 print(f"File {file_name} uploaded to GitLab Package Registry.")
@@ -117,10 +135,12 @@ class Handler(FileSystemEventHandler):
         # Upload the metadata file
         with open(metadata_file_path, 'rb') as metadata_data:
             metadata_file_name = os.path.basename(metadata_file_path)
-            files = {
-                'file': (metadata_file_name, metadata_data)
-            }
-            response = requests.put(f"{GITLAB_PACKAGE_REGISTRY_URL}/{metadata_file_name}", headers=headers, files=files, verify=False)
+            response = requests.put(
+                f"{GITLAB_PACKAGE_REGISTRY_URL}/{metadata_file_name}",
+                headers=headers,
+                data=metadata_data,  # Upload file as a stream without multipart/form-data
+                verify=False
+            )
 
             if response.status_code == 201:
                 print(f"Metadata file {metadata_file_name} uploaded to GitLab Package Registry.")
