@@ -1,79 +1,75 @@
-package com.example;
+import javax.net.ssl.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 
-import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
-import org.apache.hc.client5.http.async.methods.SimpleHttpRequests;
-import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
-import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
-import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
-import org.apache.hc.core5.ssl.SSLContextBuilder;
-import org.apache.hc.core5.ssl.NoopHostnameVerifier;
-import org.apache.hc.core5.ssl.TrustAllStrategy;
-import org.apache.hc.core5.ssl.SSLConnectionSocketFactory;
-import org.apache.hc.core5.http.nio.support.AsyncRequestBuilder;
-import org.apache.hc.core5.http.nio.AsyncEntityProducer;
-import org.apache.hc.core5.http.nio.support.BasicResponseConsumer;
-import org.apache.hc.core5.http.nio.AsyncResponseConsumer;
-import org.apache.hc.core5.http.nio.entity.StringAsyncEntityConsumer;
-import org.apache.hc.core5.http.HttpResponse;
-import org.apache.hc.core5.http.ContentType;
-
-import javax.net.ssl.SSLContext;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.Future;
-
-public class App {
+public class HttpGetExample {
     public static void main(String[] args) {
-        String url = "https://url:port/?";
-        String queryParam = "{\"request\": \"ping\"}";
-
         try {
-            // URL encode the query parameter
-            String encodedQuery = URLEncoder.encode(queryParam, StandardCharsets.UTF_8.toString());
+            // URL to connect to
+            String urlString = "https://example.com"; // replace with your URL
+            URL url = new URL(urlString);
 
-            // Full URL with encoded query
-            String fullUrl = url + encodedQuery;
+            // Disable SSL certificate verification
+            disableSSLCertificateChecking();
 
-            // Create an SSLContext that trusts all certificates
-            SSLContext sslContext = new SSLContextBuilder()
-                .loadTrustMaterial(new TrustAllStrategy())  // Trust all certificates
-                .build();
+            // Open connection
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
-            // Create the SSLConnectionSocketFactory
-            SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext, NoopHostnameVerifier.INSTANCE);
+            // Set request method to GET
+            connection.setRequestMethod("GET");
 
-            // Create a connection manager with the SSL factory
-            PoolingAsyncClientConnectionManager connectionManager = PoolingAsyncClientConnectionManager.builder()
-                .setTlsStrategy(sslSocketFactory.getTlsStrategy())
-                .build();
+            // Get response code
+            int responseCode = connection.getResponseCode();
+            System.out.println("Response Code: " + responseCode);
 
-            // Create HttpClient that uses the custom connection manager
-            CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom()
-                .setConnectionManager(connectionManager)
-                .build();
+            // Read response
+            BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            String inputLine;
+            StringBuilder content = new StringBuilder();
+            while ((inputLine = in.readLine()) != null) {
+                content.append(inputLine);
+            }
 
-            // Start the HttpClient
-            httpClient.start();
+            // Close the streams
+            in.close();
 
-            // Create a GET request using the async API
-            SimpleHttpRequest request = SimpleHttpRequests.get(fullUrl);
+            // Print the response content
+            System.out.println("Response: " + content.toString());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-            // Execute the request asynchronously and handle the response
-            Future<Void> futureResponse = httpClient.execute(
-                request,
-                new StringAsyncEntityConsumer(),
-                (response, entity) -> {
-                    // Process the response
-                    System.out.println("Response Code: " + response.getCode());
-                    System.out.println("Response Body: " + entity);
-                });
+    // Method to disable SSL certificate checking
+    private static void disableSSLCertificateChecking() {
+        try {
+            TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return null;
+                    }
 
-            // Wait for the response
-            futureResponse.get();
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                    }
 
-            // Shutdown the client
-            httpClient.close();
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                    }
+                }
+            };
 
+            SSLContext sc = SSLContext.getInstance("TLS");
+            sc.init(null, trustAllCerts, new SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+
+            // Create all-trusting host name verifier
+            HostnameVerifier allHostsValid = (hostname, session) -> true;
+
+            // Set the default hostname verifier
+            HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
         } catch (Exception e) {
             e.printStackTrace();
         }
