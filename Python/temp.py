@@ -18,6 +18,9 @@ GITLAB_TRIGGER_TOKEN = "your_trigger_token"
 GITLAB_REF = "main"  # Branch to run the job on
 GITLAB_PERSONAL_ACCESS_TOKEN = "your_access_token"  # For file upload
 
+# Define file extensions to ignore (e.g., swap files, temporary files)
+IGNORE_EXTENSIONS = ['.swp', '.tmp', '.part', '.~', '.swx']
+
 class Watcher:
     def __init__(self, folder_to_watch):
         self.folder_to_watch = folder_to_watch
@@ -39,9 +42,15 @@ class Handler(FileSystemEventHandler):
         """
         Process any changes in the directory (file modifications, creation, etc.)
         """
-        if event.event_type in ("modified", "created") and not event.is_directory:
-            file_path = event.src_path
+        file_path = event.src_path
 
+        # Check if the file is a swap/temporary file and ignore it if necessary
+        _, file_extension = os.path.splitext(file_path)
+        if file_extension in IGNORE_EXTENSIONS:
+            print(f"Ignored temporary/swap file: {file_path}")
+            return
+
+        if event.event_type in ("modified", "created") and not event.is_directory:
             # 1. Calculate the checksum and timestamp
             file_checksum = self.calculate_checksum(file_path)
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
