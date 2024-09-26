@@ -124,6 +124,13 @@ class Handler(FileSystemEventHandler):
 
             if response.status_code == 201:
                 print(f"Metadata file {metadata_file_name} uploaded to GitLab Package Registry.")
+
+                # Delete the metadata file after successful upload
+                try:
+                    os.remove(metadata_file_path)
+                    print(f"Metadata file {metadata_file_path} deleted from source.")
+                except OSError as e:
+                    print(f"Error deleting metadata file: {e}")
             else:
                 print(f"Failed to upload {metadata_file_name} to Package Registry. Status Code: {response.status_code}, Response: {response.content}")
 
