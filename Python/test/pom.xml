@@ -9,23 +9,12 @@
     <packaging>jar</packaging>
 
     <repositories>
-        <!-- Nexus Repository Configuration -->
+        <!-- Nexus Maven Proxy Repository Configuration -->
         <repository>
-            <id>nexus-releases</id> <!-- Identifier for the repository -->
-            <url>http://nexus.company.com/repository/maven-public/</url> <!-- Replace with your actual Nexus URL -->
+            <id>nexus-maven-proxy</id> <!-- The ID of the Nexus repository -->
+            <url>http://nexus.company.com/repository/maven-proxy/</url> <!-- Replace with the actual Nexus Maven Proxy URL -->
             <releases>
                 <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-
-        <repository>
-            <id>nexus-snapshots</id> <!-- Identifier for the snapshots repository -->
-            <url>http://nexus.company.com/repository/maven-snapshots/</url> <!-- Replace with your actual Nexus URL -->
-            <releases>
-                <enabled>false</enabled>
             </releases>
             <snapshots>
                 <enabled>true</enabled>
@@ -40,7 +29,7 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Apache HttpClient -->
+        <!-- Apache HttpClient Dependency -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
             <artifactId>httpclient5</artifactId>
