@@ -1,4 +1,4 @@
-package com.example;
+package org.company.group;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
