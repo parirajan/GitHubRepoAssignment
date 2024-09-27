@@ -36,7 +36,8 @@ processing_files = set()
 processing_files_lock = Lock()
 
 # Keep track of files that are currently being uploaded
-currently_uploading = set()
+currently_uploading_files = set()  # Tracks file uploads
+currently_uploading_metadata = set()  # Tracks metadata uploads
 
 # To debounce file events and prevent reprocessing within cooldown period
 file_event_timestamps = {}
@@ -84,10 +85,10 @@ class Handler(FileSystemEventHandler):
 
         # Avoid re-processing the same file if it's already being uploaded
         with processing_files_lock:
-            if file_path in currently_uploading:
+            if file_path in currently_uploading_files:
                 logging.info(f"File {file_path} is already being uploaded, skipping (event: {event_type}).")
                 return
-            currently_uploading.add(file_path)
+            currently_uploading_files.add(file_path)
 
         logging.info(f"Processing file {file_path} due to event: {event_type}")
 
@@ -117,7 +118,7 @@ class Handler(FileSystemEventHandler):
             finally:
                 # Ensure that the file is removed from the currently_uploading set even on error
                 with processing_files_lock:
-                    currently_uploading.remove(file_path)
+                    currently_uploading_files.remove(file_path)
 
     def is_file_stable(self, file_path):
         """
@@ -185,10 +186,18 @@ class Handler(FileSystemEventHandler):
 
         session = self._get_retry_session()
 
+        # Lock file uploads
+        with processing_files_lock:
+            if file_path in currently_uploading_files:
+                logging.info(f"File {file_path} is already being uploaded, skipping.")
+                return
+            currently_uploading_files.add(file_path)
+
         try:
             # Upload the original file (only once, without modifying its contents)
             with open(file_path, 'rb') as file_data:
                 file_name = os.path.basename(file_path)
+                logging.info(f"Uploading file {file_name} to GitLab Package Registry.")
                 response = session.put(
                     f"{GITLAB_PACKAGE_REGISTRY_URL}/{file_name}",
                     headers=headers,
@@ -202,9 +211,23 @@ class Handler(FileSystemEventHandler):
                 else:
                     logging.error(f"Failed to upload {file_name} to Package Registry. Status Code: {response.status_code}, Response: {response.content}")
 
+        finally:
+            # Unlock file upload
+            with processing_files_lock:
+                currently_uploading_files.remove(file_path)
+
+        # Lock metadata uploads
+        with processing_files_lock:
+            if metadata_file_path in currently_uploading_metadata:
+                logging.info(f"Metadata {metadata_file_path} is already being uploaded, skipping.")
+                return
+            currently_uploading_metadata.add(metadata_file_path)
+
+        try:
             # Upload the metadata file
             with open(metadata_file_path, 'rb') as metadata_data:
                 metadata_file_name = os.path.basename(metadata_file_path)
+                logging.info(f"Uploading metadata file {metadata_file_name} to GitLab Package Registry.")
                 response = session.put(
                     f"{GITLAB_PACKAGE_REGISTRY_URL}/{metadata_file_name}",
                     headers=headers,
@@ -225,8 +248,10 @@ class Handler(FileSystemEventHandler):
                 else:
                     logging.error(f"Failed to upload {metadata_file_name} to Package Registry. Status Code: {response.status_code}, Response: {response.content}")
         
-        except Exception as e:
-            logging.error(f"Exception during file upload: {e}")
+        finally:
+            # Unlock metadata upload
+            with processing_files_lock:
+                currently_uploading_metadata.remove(metadata_file_path)
 
     def trigger_gitlab_pipeline(self, file_path, metadata_file_path):
         """
