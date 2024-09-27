@@ -17,6 +17,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Define the folder to watch
 FOLDER_TO_WATCH = "/path/to/watch/folder"
 WAIT_TIME_SECONDS = 5  # Wait for 5 seconds to ensure the file is complete
+COOLDOWN_TIME_SECONDS = 20  # Prevent file reprocessing for 20 seconds after processing
 
 # GitLab project and API details (use environment variables for security)
 GITLAB_API_URL = os.getenv("GITLAB_API_URL", "https://gitlab.com/api/v4")
@@ -26,14 +27,15 @@ GITLAB_TRIGGER_TOKEN = os.getenv("GITLAB_TRIGGER_TOKEN", "your_trigger_token")
 GITLAB_REF = os.getenv("GITLAB_REF", "main")
 GITLAB_PERSONAL_ACCESS_TOKEN = os.getenv("GITLAB_PERSONAL_ACCESS_TOKEN", "your_access_token")
 
-# Define file extensions to ignore (e.g., swap files, temporary files)
+# Define file extensions and hidden files to ignore (including .swp, .tmp, hidden files)
 IGNORE_EXTENSIONS = ['.swp', '.tmp', '.part', '.~', '.swx']
+HIDDEN_FILE_PREFIX = '.'  # Ignore files starting with a dot (e.g., .swp files)
 
 # Keep track of files that are currently being processed (thread-safe)
 processing_files = set()
 processing_files_lock = Lock()
 
-# To debounce file events (avoid reprocessing the same file within a short time)
+# To debounce file events and prevent reprocessing within cooldown period
 file_event_timestamps = {}
 
 class Watcher:
@@ -59,20 +61,20 @@ class Handler(FileSystemEventHandler):
         """
         file_path = event.src_path
 
-        # Check if the file is a swap/temporary file and ignore it if necessary
+        # Ignore hidden files and certain temporary file extensions
         _, file_extension = os.path.splitext(file_path)
-        if file_extension in IGNORE_EXTENSIONS:
-            logging.info(f"Ignored temporary/swap file: {file_path}")
+        if file_extension in IGNORE_EXTENSIONS or os.path.basename(file_path).startswith(HIDDEN_FILE_PREFIX):
+            logging.info(f"Ignored temporary/hidden file: {file_path}")
             return
 
         event_type = event.event_type
 
-        # Avoid re-processing the same file with debounce
+        # Debounce and avoid reprocessing the same file within the cooldown period
         now = time.time()
         if file_path in file_event_timestamps:
             last_event_time = file_event_timestamps[file_path]
-            if now - last_event_time < WAIT_TIME_SECONDS * 2:  # Double the wait time to avoid quick repeated events
-                logging.info(f"Skipping duplicate event for {file_path} (event: {event_type})")
+            if now - last_event_time < COOLDOWN_TIME_SECONDS:  # Cooldown period
+                logging.info(f"Skipping file {file_path} (event: {event_type}) due to cooldown.")
                 return
 
         file_event_timestamps[file_path] = now
