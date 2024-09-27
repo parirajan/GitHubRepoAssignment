@@ -22,6 +22,9 @@ GITLAB_PERSONAL_ACCESS_TOKEN = "your_access_token"  # For file upload
 # Define file extensions to ignore (e.g., swap files, temporary files)
 IGNORE_EXTENSIONS = ['.swp', '.tmp', '.part', '.~', '.swx']
 
+# Keep track of files that are currently being processed
+processing_files = set()
+
 class Watcher:
     def __init__(self, folder_to_watch):
         self.folder_to_watch = folder_to_watch
@@ -51,10 +54,19 @@ class Handler(FileSystemEventHandler):
             print(f"Ignored temporary/swap file: {file_path}")
             return
 
+        # Avoid re-processing the same file
+        if file_path in processing_files:
+            print(f"File {file_path} is already being processed, skipping.")
+            return
+
         if event.event_type in ("modified", "created") and not event.is_directory:
+            # Mark the file as being processed
+            processing_files.add(file_path)
+
             # 1. Ensure the file is stable for more than 5 seconds
             if not self.is_file_stable(file_path):
                 print(f"File {file_path} is still being modified, skipping.")
+                processing_files.remove(file_path)
                 return
 
             # 2. Create metadata without modifying the original file
@@ -67,6 +79,9 @@ class Handler(FileSystemEventHandler):
 
             # 4. Trigger the GitLab pipeline to validate the uploaded file and metadata
             self.trigger_gitlab_pipeline(file_path, metadata_file_path)
+
+            # Once processing is complete, remove the file from the processing set
+            processing_files.remove(file_path)
 
     def is_file_stable(self, file_path):
         """
