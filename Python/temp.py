@@ -33,6 +33,9 @@ IGNORE_EXTENSIONS = ['.swp', '.tmp', '.part', '.~', '.swx']
 processing_files = set()
 processing_files_lock = Lock()
 
+# To debounce file events (avoid reprocessing the same file within a short time)
+file_event_timestamps = {}
+
 class Watcher:
     def __init__(self, folder_to_watch):
         self.folder_to_watch = folder_to_watch
@@ -62,14 +65,28 @@ class Handler(FileSystemEventHandler):
             logging.info(f"Ignored temporary/swap file: {file_path}")
             return
 
-        # Avoid re-processing the same file
+        event_type = event.event_type
+
+        # Avoid re-processing the same file with debounce
+        now = time.time()
+        if file_path in file_event_timestamps:
+            last_event_time = file_event_timestamps[file_path]
+            if now - last_event_time < WAIT_TIME_SECONDS * 2:  # Double the wait time to avoid quick repeated events
+                logging.info(f"Skipping duplicate event for {file_path} (event: {event_type})")
+                return
+
+        file_event_timestamps[file_path] = now
+
+        # Avoid re-processing the same file if it's already in the process
         with processing_files_lock:
             if file_path in processing_files:
-                logging.info(f"File {file_path} is already being processed, skipping.")
+                logging.info(f"File {file_path} is already being processed, skipping (event: {event_type}).")
                 return
             processing_files.add(file_path)
 
-        if event.event_type == "created" or event.event_type == "modified":
+        logging.info(f"Processing file {file_path} due to event: {event_type}")
+
+        if event.event_type in ("created", "modified"):
             try:
                 # 1. Ensure the file is stable for more than 5 seconds
                 if not self.is_file_stable(file_path):
@@ -152,7 +169,8 @@ class Handler(FileSystemEventHandler):
                     f"{GITLAB_PACKAGE_REGISTRY_URL}/{file_name}",
                     headers=headers,
                     data=file_data,
-                    timeout=10
+                    timeout=10,
+                    verify=False  # Suppress TLS verification for now
                 )
 
                 if response.status_code == 201:
@@ -167,7 +185,8 @@ class Handler(FileSystemEventHandler):
                     f"{GITLAB_PACKAGE_REGISTRY_URL}/{metadata_file_name}",
                     headers=headers,
                     data=metadata_data,
-                    timeout=10
+                    timeout=10,
+                    verify=False  # Suppress TLS verification for now
                 )
 
                 if response.status_code == 201:
@@ -206,7 +225,7 @@ class Handler(FileSystemEventHandler):
         session = self._get_retry_session()
 
         try:
-            response = session.post(url, headers=headers, json=payload, timeout=10)
+            response = session.post(url, headers=headers, json=payload, timeout=10, verify=False)  # Suppress TLS verification
 
             if response.status_code == 201:
                 logging.info(f"GitLab pipeline triggered successfully for {file_path}")
