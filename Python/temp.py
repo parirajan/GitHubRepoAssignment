@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Define the folder to watch
 FOLDER_TO_WATCH = "/path/to/watch/folder"
 WAIT_TIME_SECONDS = 5  # Wait for 5 seconds to ensure the file is complete
-COOLDOWN_TIME_SECONDS = 20  # Prevent file reprocessing for 20 seconds after processing
+COOLDOWN_TIME_SECONDS = 60  # Prevent file reprocessing for 60 seconds after processing
 
 # GitLab project and API details (use environment variables for security)
 GITLAB_API_URL = os.getenv("GITLAB_API_URL", "https://gitlab.com/api/v4")
@@ -34,6 +34,9 @@ HIDDEN_FILE_PREFIX = '.'  # Ignore files starting with a dot (e.g., .swp files)
 # Keep track of files that are currently being processed (thread-safe)
 processing_files = set()
 processing_files_lock = Lock()
+
+# Keep track of files that are currently being uploaded
+currently_uploading = set()
 
 # To debounce file events and prevent reprocessing within cooldown period
 file_event_timestamps = {}
@@ -79,18 +82,21 @@ class Handler(FileSystemEventHandler):
 
         file_event_timestamps[file_path] = now
 
-        # Avoid re-processing the same file if it's already in the process
+        # Avoid re-processing the same file if it's already being uploaded
         with processing_files_lock:
-            if file_path in processing_files:
-                logging.info(f"File {file_path} is already being processed, skipping (event: {event_type}).")
+            if file_path in currently_uploading:
+                logging.info(f"File {file_path} is already being uploaded, skipping (event: {event_type}).")
                 return
-            processing_files.add(file_path)
+            currently_uploading.add(file_path)
 
         logging.info(f"Processing file {file_path} due to event: {event_type}")
 
         if event.event_type in ("created", "modified"):
             try:
-                # 1. Ensure the file is stable for more than 5 seconds
+                # Log the event details (modification time, file size)
+                self.log_event_details(event, file_path)
+
+                # 1. Ensure the file is stable for more than WAIT_TIME_SECONDS
                 if not self.is_file_stable(file_path):
                     logging.info(f"File {file_path} is still being modified, skipping.")
                     return
@@ -109,19 +115,35 @@ class Handler(FileSystemEventHandler):
             except Exception as e:
                 logging.error(f"Error processing file {file_path}: {e}")
             finally:
-                # Ensure that the file is removed from processing set even on error
+                # Ensure that the file is removed from the currently_uploading set even on error
                 with processing_files_lock:
-                    processing_files.remove(file_path)
+                    currently_uploading.remove(file_path)
 
     def is_file_stable(self, file_path):
         """
-        Check if a file has not been modified for the past WAIT_TIME_SECONDS.
+        Check if a file has not been modified for the past WAIT_TIME_SECONDS,
+        and if its size remains stable for two consecutive checks.
         """
         initial_mod_time = os.path.getmtime(file_path)
-        time.sleep(WAIT_TIME_SECONDS)
-        current_mod_time = os.path.getmtime(file_path)
+        initial_size = os.path.getsize(file_path)
 
-        return initial_mod_time == current_mod_time
+        # Wait for stability
+        time.sleep(WAIT_TIME_SECONDS)
+
+        current_mod_time = os.path.getmtime(file_path)
+        current_size = os.path.getsize(file_path)
+
+        # File is stable if modification time and size have not changed
+        return (initial_mod_time == current_mod_time) and (initial_size == current_size)
+
+    def log_event_details(self, event, file_path):
+        """
+        Log file event details including event type, file size, and modification time.
+        """
+        mod_time = os.path.getmtime(file_path)
+        file_size = os.path.getsize(file_path)
+        logging.info(f"Event: {event.event_type}, File: {file_path}, "
+                     f"ModTime: {mod_time}, Size: {file_size}, Timestamp: {datetime.datetime.now()}")
 
     def calculate_checksum(self, file_path):
         """
