@@ -69,7 +69,7 @@ class Handler(FileSystemEventHandler):
                 return
             processing_files.add(file_path)
 
-        if event.event_type in ("modified", "created") and not event.is_directory:
+        if event.event_type == "created" or event.event_type == "modified":
             try:
                 # 1. Ensure the file is stable for more than 5 seconds
                 if not self.is_file_stable(file_path):
@@ -86,7 +86,7 @@ class Handler(FileSystemEventHandler):
 
                 # 4. Trigger the GitLab pipeline to validate the uploaded file and metadata
                 self.trigger_gitlab_pipeline(file_path, metadata_file_path)
-            
+
             except Exception as e:
                 logging.error(f"Error processing file {file_path}: {e}")
             finally:
@@ -226,9 +226,11 @@ class Handler(FileSystemEventHandler):
         return session
 
     def on_modified(self, event):
+        # Process only "modified" event once, skip if already processed on "created"
         self.process(event)
 
     def on_created(self, event):
+        # Process only "created" event once, skip if already processed on "modified"
         self.process(event)
 
 if __name__ == "__main__":
