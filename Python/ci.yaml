@@ -8,27 +8,48 @@ validate_uploaded_file:
     
     # Print the input variables passed from the Python script
     - echo "UPLOADED_FILE: $UPLOADED_FILE"
+    - echo "CHECKSUM_FILE: $CHECKSUM_FILE"
     
-    # Define the package registry URL
+    # Define the package registry URLs for the files
     - PACKAGE_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$UPLOADED_FILE"
+    - CHECKSUM_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$CHECKSUM_FILE"
     
-    # Fetch the uploaded file from GitLab Package Registry
+    # Fetch the uploaded .iris file
     - echo "Fetching uploaded file from GitLab Package Registry..."
     - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
       --output downloaded_package.iris \
       "$PACKAGE_URL"
     
-    # Perform checksum validation
-    - echo "Calculating checksum of the downloaded file..."
-    - CHECKSUM=$(sha256sum downloaded_package.iris | awk '{ print $1 }')
-    - echo "Calculated checksum: $CHECKSUM"
+    # Fetch the checksum file (.cksum)
+    - echo "Fetching checksum file from GitLab Package Registry..."
+    - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
+      --output checksum_file.cksum \
+      "$CHECKSUM_URL"
     
-    # Extract expected checksum from metadata (assumed you have metadata or define a mechanism to retrieve it)
-    # Here, we assume there's a known mechanism to verify the file. If you have metadata, you can add metadata fetch and validation steps.
+    # Extract expected checksum and filename from the .cksum file
+    - EXPECTED_CHECKSUM=$(grep "Checksum" checksum_file.cksum | awk -F': ' '{ print $2 }')
+    - EXPECTED_FILENAME=$(grep "File" checksum_file.cksum | awk -F': ' '{ print $2 }')
+    - echo "Expected checksum: $EXPECTED_CHECKSUM"
+    - echo "Expected filename: $EXPECTED_FILENAME"
     
-    # Compare the calculated checksum with the expected checksum (if applicable)
-    # For simplicity, we are just printing the calculated checksum for now
-    - echo "Validation complete for $UPLOADED_FILE"
+    # Validate the filename
+    - |
+      if [ "$EXPECTED_FILENAME" != "$UPLOADED_FILE" ]; then
+        echo "Filename mismatch! Expected: $EXPECTED_FILENAME, Found: $UPLOADED_FILE"
+        exit 1
+      fi
     
+    # Perform checksum validation on the downloaded .iris file
+    - CALCULATED_CHECKSUM=$(sha256sum downloaded_package.iris | awk '{ print $1 }')
+    - echo "Calculated checksum: $CALCULATED_CHECKSUM"
+    
+    # Compare the calculated checksum with the expected checksum
+    - |
+      if [ "$CALCULATED_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
+        echo "Checksum mismatch! Expected: $EXPECTED_CHECKSUM, Found: $CALCULATED_CHECKSUM"
+        exit 1
+      fi
+    
+    - echo "Validation complete: File checksum and filename match."
   only:
     - main
