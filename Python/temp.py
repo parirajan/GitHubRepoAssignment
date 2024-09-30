@@ -50,15 +50,19 @@ class IrisFileHandler(FileSystemEventHandler):
             logging.info(f"File {file_path} is still being modified.")
             return
 
+        # Create a checksum file
+        checksum_file_path = self.create_checksum_file(file_path)
+
         # Create a folder in the GitLab package registry with the current date
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         package_folder = f"{GITLAB_PACKAGE_REGISTRY_URL}/{current_date}"
 
-        # Upload the file to GitLab
+        # Upload both the .iris file and the checksum file to GitLab
         self.upload_to_gitlab(file_path, package_folder)
+        self.upload_to_gitlab(checksum_file_path, package_folder)
 
-        # Trigger GitLab pipeline to validate the file
-        self.trigger_gitlab_pipeline(file_path)
+        # Trigger GitLab pipeline to validate the file and checksum
+        self.trigger_gitlab_pipeline(file_path, checksum_file_path)
 
     def wait_for_temp_file_to_clear(self, file_path):
         while os.path.exists(file_path):
@@ -72,6 +76,37 @@ class IrisFileHandler(FileSystemEventHandler):
         current_size = os.path.getsize(file_path)
 
         return previous_size == current_size
+
+    def create_checksum_file(self, file_path):
+        """
+        Create a .cksum file containing the checksum, timestamp, and filename.
+        """
+        file_checksum = self.calculate_checksum(file_path)
+        file_timestamp = datetime.datetime.fromtimestamp(os.path.getmtime(file_path)).strftime('%Y-%m-%d %H:%M:%S')
+        file_name = os.path.basename(file_path)
+
+        # Create the .cksum file path (same location as .iris file but with .cksum extension)
+        checksum_file_path = f"{file_path}.cksum"
+        
+        with open(checksum_file_path, "w") as f:
+            f.write(f"File: {file_name}\n")
+            f.write(f"Checksum: {file_checksum}\n")
+            f.write(f"Timestamp: {file_timestamp}\n")
+
+        logging.info(f"Checksum file created at: {checksum_file_path}")
+        return checksum_file_path
+
+    def calculate_checksum(self, file_path):
+        """
+        Calculate the SHA-256 checksum of the file.
+        """
+        sha256_hash = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        checksum = sha256_hash.hexdigest()
+        logging.info(f"Checksum for {file_path}: {checksum}")
+        return checksum
 
     def upload_to_gitlab(self, file_path, package_folder):
         headers = {
@@ -88,9 +123,10 @@ class IrisFileHandler(FileSystemEventHandler):
         else:
             logging.error(f"Failed to upload {file_name}. Response: {response.content}")
 
-    def trigger_gitlab_pipeline(self, file_path):
+    def trigger_gitlab_pipeline(self, file_path, checksum_file_path):
         url = f"{GITLAB_API_URL}/projects/{GITLAB_PROJECT_ID}/trigger/pipeline"
         file_name = os.path.basename(file_path)
+        checksum_file_name = os.path.basename(checksum_file_path)
         headers = {
             "Content-Type": "application/json"
         }
@@ -98,7 +134,8 @@ class IrisFileHandler(FileSystemEventHandler):
             "token": GITLAB_TRIGGER_TOKEN,
             "ref": GITLAB_REF,
             "variables": {
-                "UPLOADED_FILE": file_name
+                "UPLOADED_FILE": file_name,
+                "CHECKSUM_FILE": checksum_file_name
             }
         }
 
