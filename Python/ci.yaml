@@ -1,55 +1,57 @@
 stages:
   - validate
 
-validate_uploaded_file:
+validate_package:
   stage: validate
   script:
-    - echo "### Starting validation job ###"
+    - echo "### Starting validation of uploaded package ###"
     
-    # Print the input variables passed from the Python script
-    - echo "UPLOADED_FILE: $UPLOADED_FILE"
-    - echo "CHECKSUM_FILE: $CHECKSUM_FILE"
-    
-    # Define the package registry URLs for the files
-    - PACKAGE_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$UPLOADED_FILE"
-    - CHECKSUM_URL="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$CHECKSUM_FILE"
-    
-    # Fetch the uploaded .iris file
+    # Fetch the uploaded .iris file from the GitLab Package Registry
     - echo "Fetching uploaded file from GitLab Package Registry..."
     - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
       --output downloaded_package.iris \
-      "$PACKAGE_URL"
-    
-    # Fetch the checksum file (.cksum)
-    - echo "Fetching checksum file from GitLab Package Registry..."
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$UPLOADED_FILE"
+      
+    # Fetch the checksum metadata file (.cksum) from the GitLab Package Registry
+    - echo "Fetching checksum metadata file from GitLab Package Registry..."
     - curl --header "PRIVATE-TOKEN: $CI_JOB_TOKEN" \
-      --output checksum_file.cksum \
-      "$CHECKSUM_URL"
+      --output downloaded_metadata.cksum \
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/package_name/version/$CHECKSUM_FILE"
+
+    # Validate the checksum and timestamp in the metadata against the uploaded file
+    - echo "Validating the package checksum and timestamp against metadata..."
     
-    # Extract expected checksum and filename from the .cksum file
-    - EXPECTED_CHECKSUM=$(grep "Checksum" checksum_file.cksum | awk -F': ' '{ print $2 }')
-    - EXPECTED_FILENAME=$(grep "File" checksum_file.cksum | awk -F': ' '{ print $2 }')
-    - echo "Expected checksum: $EXPECTED_CHECKSUM"
-    - echo "Expected filename: $EXPECTED_FILENAME"
+    # Calculate checksum of the downloaded .iris file
+    - CHECKSUM=$(sha256sum downloaded_package.iris | awk '{ print $1 }')
     
-    # Validate the filename
+    # Extract checksum and timestamp from the downloaded metadata file
+    - METADATA_CHECKSUM=$(grep "Checksum" downloaded_metadata.cksum | awk -F': ' '{ print $2 }')
+    - METADATA_TIMESTAMP=$(grep "Timestamp" downloaded_metadata.cksum | awk -F': ' '{ print $2 }')
+
+    # Extract the timestamp of the uploaded file
+    - TIMESTAMP=$(date -r downloaded_package.iris '+%Y-%m-%d %H:%M:%S')
+
+    # Log checksum and timestamp information
+    - echo "Checksum: $CHECKSUM"
+    - echo "Metadata Checksum: $METADATA_CHECKSUM"
+    - echo "Timestamp: $TIMESTAMP"
+    - echo "Metadata Timestamp: $METADATA_TIMESTAMP"
+
+    # Compare checksums
     - |
-      if [ "$EXPECTED_FILENAME" != "$UPLOADED_FILE" ]; then
-        echo "Filename mismatch! Expected: $EXPECTED_FILENAME, Found: $UPLOADED_FILE"
+      if [ "$CHECKSUM" != "$METADATA_CHECKSUM" ]; then
+        echo "Checksum mismatch! Expected: $METADATA_CHECKSUM, Found: $CHECKSUM"
         exit 1
       fi
-    
-    # Perform checksum validation on the downloaded .iris file
-    - CALCULATED_CHECKSUM=$(sha256sum downloaded_package.iris | awk '{ print $1 }')
-    - echo "Calculated checksum: $CALCULATED_CHECKSUM"
-    
-    # Compare the calculated checksum with the expected checksum
+
+    # Compare timestamps
     - |
-      if [ "$CALCULATED_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
-        echo "Checksum mismatch! Expected: $EXPECTED_CHECKSUM, Found: $CALCULATED_CHECKSUM"
+      if [ "$TIMESTAMP" != "$METADATA_TIMESTAMP" ]; then
+        echo "Timestamp mismatch! Expected: $METADATA_TIMESTAMP, Found: $TIMESTAMP"
         exit 1
       fi
+
+    - echo "Validation passed successfully!"
     
-    - echo "Validation complete: File checksum and filename match."
   only:
     - main
