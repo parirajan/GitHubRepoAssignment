@@ -20,7 +20,8 @@ TEMP_EXTENSIONS = ['.swp', '.swx', '.part', '.~']  # Temporary file extensions
 # GitLab project and API details (use environment variables for security)
 GITLAB_API_URL = os.getenv("GITLAB_API_URL", "https://gitlab.com/api/v4")
 GITLAB_PROJECT_ID = os.getenv("GITLAB_PROJECT_ID", "your_project_id")
-GITLAB_PACKAGE_REGISTRY_URL = f"{GITLAB_API_URL}/projects/{GITLAB_PROJECT_ID}/packages/generic/package_name/version"
+# Use "ccm/{current_date}" as the package name and use timestamp as the version
+GITLAB_PACKAGE_REGISTRY_URL = f"{GITLAB_API_URL}/projects/{GITLAB_PROJECT_ID}/packages/generic/ccm"
 GITLAB_TRIGGER_TOKEN = os.getenv("GITLAB_TRIGGER_TOKEN", "your_trigger_token")
 GITLAB_REF = os.getenv("GITLAB_REF", "main")
 GITLAB_PERSONAL_ACCESS_TOKEN = os.getenv("GITLAB_PERSONAL_ACCESS_TOKEN", "your_access_token")
@@ -86,18 +87,20 @@ class IrisFileHandler(FileSystemEventHandler):
         # Create a checksum file
         checksum_file_path = self.create_checksum_file(file_path)
 
-        # Create a folder in the GitLab package registry with the current date
+        # Create the version as the timestamp of the change (format YYYY-MM-DD_HH-MM-SS)
+        version = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        # Create the folder path for the current day (e.g., packages/generic/ccm/YYYY-MM-DD)
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         package_folder = f"{GITLAB_PACKAGE_REGISTRY_URL}/{current_date}"
 
         # Upload the .iris file and .cksum file to GitLab package registry
-        self.upload_to_gitlab(file_path, package_folder)
-        self.upload_to_gitlab(checksum_file_path, package_folder)  # Upload the checksum file
+        self.upload_to_gitlab(file_path, package_folder, version)
+        self.upload_to_gitlab(checksum_file_path, package_folder, version)  # Upload the checksum file
 
-        logging.info(f"Uploaded both {file_path} and {checksum_file_path} to GitLab package registry.")
+        logging.info(f"Uploaded both {file_path} and {checksum_file_path} to {package_folder} with version {version} in GitLab package registry.")
 
-        # Trigger GitLab pipeline to validate the file and checksum
-        self.trigger_gitlab_pipeline(file_path, checksum_file_path)
+        # Trigger GitLab pipeline to validate the file and checksum, passing the version and date
+        self.trigger_gitlab_pipeline(file_path, checksum_file_path, version, current_date)
 
     def is_file_stable(self, file_path):
         """
@@ -140,7 +143,7 @@ class IrisFileHandler(FileSystemEventHandler):
         logging.info(f"Checksum for {file_path}: {checksum}")
         return checksum
 
-    def upload_to_gitlab(self, file_path, package_folder):
+    def upload_to_gitlab(self, file_path, package_folder, version):
         """
         Upload the file to GitLab Package Registry.
         """
@@ -148,7 +151,7 @@ class IrisFileHandler(FileSystemEventHandler):
             "PRIVATE-TOKEN": GITLAB_PERSONAL_ACCESS_TOKEN
         }
         file_name = os.path.basename(file_path)
-        upload_url = f"{package_folder}/{file_name}"
+        upload_url = f"{package_folder}/{version}/{file_name}"
 
         with open(file_path, 'rb') as file_data:
             response = requests.put(upload_url, headers=headers, data=file_data)
@@ -158,9 +161,9 @@ class IrisFileHandler(FileSystemEventHandler):
         else:
             logging.error(f"Failed to upload {file_name}. Response: {response.content}")
 
-    def trigger_gitlab_pipeline(self, file_path, checksum_file_path):
+    def trigger_gitlab_pipeline(self, file_path, checksum_file_path, version, current_date):
         """
-        Trigger a GitLab pipeline to validate the uploaded file and checksum.
+        Trigger a GitLab pipeline to validate the uploaded file and checksum, passing the version.
         """
         url = f"{GITLAB_API_URL}/projects/{GITLAB_PROJECT_ID}/trigger/pipeline"
         file_name = os.path.basename(file_path)
@@ -173,7 +176,9 @@ class IrisFileHandler(FileSystemEventHandler):
             "ref": GITLAB_REF,
             "variables": {
                 "UPLOADED_FILE": file_name,
-                "CHECKSUM_FILE": checksum_file_name
+                "CHECKSUM_FILE": checksum_file_name,
+                "VERSION": version,  # Pass version (timestamp)
+                "DATE": current_date  # Pass date (folder)
             }
         }
 
