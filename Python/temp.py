@@ -50,16 +50,18 @@ class IrisFileHandler(FileSystemEventHandler):
             logging.info(f"File {file_path} is still being modified.")
             return
 
-        # Create a checksum file
+        # Create a checksum file (but don't upload it to the package registry)
         checksum_file_path = self.create_checksum_file(file_path)
 
         # Create a folder in the GitLab package registry with the current date
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         package_folder = f"{GITLAB_PACKAGE_REGISTRY_URL}/{current_date}"
 
-        # Upload both the .iris file and the checksum file to GitLab
+        # Upload only the .iris file to GitLab package registry
         self.upload_to_gitlab(file_path, package_folder)
-        self.upload_to_gitlab(checksum_file_path, package_folder)
+
+        # Store the checksum file locally (as a GitLab artifact)
+        logging.info(f"Checksum file stored at: {checksum_file_path}")
 
         # Trigger GitLab pipeline to validate the file and checksum
         self.trigger_gitlab_pipeline(file_path, checksum_file_path)
