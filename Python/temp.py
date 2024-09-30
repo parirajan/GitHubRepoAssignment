@@ -6,7 +6,7 @@ import requests
 import logging
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from threading import Lock
+from threading import Lock, Timer
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Define the folder to watch
 FOLDER_TO_WATCH = "/path/to/watch/folder"
 WAIT_TIME_SECONDS = 5  # Wait for 5 seconds to ensure the file is complete
+COOLDOWN_TIME_SECONDS = 10  # Debounce period to avoid multiple uploads
 TEMP_EXTENSIONS = ['.swp', '.swx', '.part', '.~']  # Temporary file extensions
 
 # GitLab project and API details (use environment variables for security)
@@ -24,27 +25,59 @@ GITLAB_TRIGGER_TOKEN = os.getenv("GITLAB_TRIGGER_TOKEN", "your_trigger_token")
 GITLAB_REF = os.getenv("GITLAB_REF", "main")
 GITLAB_PERSONAL_ACCESS_TOKEN = os.getenv("GITLAB_PERSONAL_ACCESS_TOKEN", "your_access_token")
 
-# Keep track of files being processed to avoid duplicate processing
-processing_files = set()
+# Keep track of files that have already been uploaded to avoid duplicate uploads
+uploaded_files = set()
 processing_files_lock = Lock()
+
+# To debounce file events and prevent reprocessing within the cooldown period
+file_event_timestamps = {}
 
 class IrisFileHandler(FileSystemEventHandler):
     def process(self, event):
         file_path = event.src_path
         file_name, file_extension = os.path.splitext(file_path)
 
-        # Check if it's a .iris file event
-        if file_extension == '.iris':
-            logging.info(f"Detected file event for {file_path}: {event.event_type}")
-            if event.event_type in ["created", "modified", "moved"]:
-                self.handle_iris_file(file_path)
-        
-        # Check for temporary file events
-        elif any(file_extension.endswith(ext) for ext in TEMP_EXTENSIONS):
-            logging.info(f"Detected temp file {file_path}. Waiting for it to clear.")
-            self.wait_for_temp_file_to_clear(file_path)
+        # Ignore temporary files
+        if any(file_extension.endswith(ext) for ext in TEMP_EXTENSIONS):
+            logging.info(f"Ignored temporary file: {file_path}")
+            return
+
+        # Log all events
+        logging.info(f"Detected event '{event.event_type}' for {file_path}")
+
+        # Only process the file if it's a .iris file and if the event is 'modified'
+        if file_extension == '.iris' and event.event_type == 'modified':
+            self.schedule_upload(file_path)
+
+    def schedule_upload(self, file_path):
+        """
+        Schedule the file upload with a cooldown period to debounce multiple events.
+        """
+        now = time.time()
+
+        # Debounce logic: wait for COOLDOWN_TIME_SECONDS before processing the file again
+        if file_path in file_event_timestamps:
+            last_event_time = file_event_timestamps[file_path]
+            if now - last_event_time < COOLDOWN_TIME_SECONDS:
+                logging.info(f"Skipping file {file_path} due to cooldown period.")
+                return
+
+        file_event_timestamps[file_path] = now
+
+        # Wait for the file to stabilize and then process it
+        Timer(WAIT_TIME_SECONDS, self.handle_iris_file, [file_path]).start()
 
     def handle_iris_file(self, file_path):
+        # Lock to avoid race conditions on processing files
+        with processing_files_lock:
+            # Ensure the file is uploaded only once
+            if file_path in uploaded_files:
+                logging.info(f"File {file_path} has already been uploaded. Skipping.")
+                return
+            else:
+                logging.info(f"Processing file {file_path} for upload.")
+                uploaded_files.add(file_path)
+
         # Ensure the file is stable (wait for size to stabilize)
         if not self.is_file_stable(file_path):
             logging.info(f"File {file_path} is still being modified.")
@@ -57,7 +90,7 @@ class IrisFileHandler(FileSystemEventHandler):
         current_date = datetime.datetime.now().strftime("%Y-%m-%d")
         package_folder = f"{GITLAB_PACKAGE_REGISTRY_URL}/{current_date}"
 
-        # Upload only the .iris file to GitLab package registry
+        # Upload only the .iris file to GitLab package registry (no metadata files)
         self.upload_to_gitlab(file_path, package_folder)
 
         # Store the checksum file locally (as a GitLab artifact)
@@ -66,13 +99,10 @@ class IrisFileHandler(FileSystemEventHandler):
         # Trigger GitLab pipeline to validate the file and checksum
         self.trigger_gitlab_pipeline(file_path, checksum_file_path)
 
-    def wait_for_temp_file_to_clear(self, file_path):
-        while os.path.exists(file_path):
-            logging.info(f"Waiting for temp file {file_path} to clear.")
-            time.sleep(WAIT_TIME_SECONDS)
-
     def is_file_stable(self, file_path):
-        # Check if file size is stable over a period of WAIT_TIME_SECONDS
+        """
+        Check if the file size has remained stable for WAIT_TIME_SECONDS.
+        """
         previous_size = os.path.getsize(file_path)
         time.sleep(WAIT_TIME_SECONDS)
         current_size = os.path.getsize(file_path)
@@ -111,6 +141,9 @@ class IrisFileHandler(FileSystemEventHandler):
         return checksum
 
     def upload_to_gitlab(self, file_path, package_folder):
+        """
+        Upload the file to GitLab Package Registry.
+        """
         headers = {
             "PRIVATE-TOKEN": GITLAB_PERSONAL_ACCESS_TOKEN
         }
@@ -126,6 +159,9 @@ class IrisFileHandler(FileSystemEventHandler):
             logging.error(f"Failed to upload {file_name}. Response: {response.content}")
 
     def trigger_gitlab_pipeline(self, file_path, checksum_file_path):
+        """
+        Trigger a GitLab pipeline to validate the uploaded file and checksum.
+        """
         url = f"{GITLAB_API_URL}/projects/{GITLAB_PROJECT_ID}/trigger/pipeline"
         file_name = os.path.basename(file_path)
         checksum_file_name = os.path.basename(checksum_file_path)
