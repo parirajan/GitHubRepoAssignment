@@ -1,1 +1,34 @@
+@startuml
+title Cross-Account S3 and KMS Access with Policies (Updated)
 
+actor EC2_Writer_AccountA as "EC2 Writer (Account A)"
+actor EC2_Writer_AccountD as "EC2 Writer (Account D)"
+actor EC2_Reader_AccountC as "EC2 Reader (Account C)"
+entity S3_Bucket as "S3 Bucket (Account B)"
+entity KMS_Key as "KMS Key (Account B)"
+
+EC2_Writer_AccountA --> S3_Bucket : Write (PutObject, Encrypt)
+EC2_Writer_AccountD --> S3_Bucket : Write (PutObject, Encrypt)
+EC2_Reader_AccountC --> S3_Bucket : Read (GetObject, Decrypt)
+
+S3_Bucket --> KMS_Key : Uses for Encryption/Decryption
+
+note right of S3_Bucket
+S3 Bucket Policy (Account B):
+- Allows PutObject for:
+    * IAM Role in Account A
+    * IAM Role in Account D
+- Allows GetObject for:
+    * IAM Role in Account C
+end note
+
+note right of KMS_Key
+KMS Key Policy (Account B):
+- Encrypt allowed for:
+    * IAM Role in Account A
+    * IAM Role in Account D
+- Decrypt allowed for:
+    * IAM Role in Account C
+end note
+
+@enduml
