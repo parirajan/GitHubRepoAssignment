@@ -1,92 +1,28 @@
+Issue Summary:
+A potential conflict arises between two critical processes – the truncation timer job and the rehydration job – which both rely on mTLS user certificates temporarily staged in the /tmp directory. This conflict can cause issues during certain operations, leading to a need for manual intervention.
 
+Truncation Timer Job:
 
-# Cross-Account S3 and KMS Access Setup (Updated with Policies)
+Initially configured a year ago, set to run between 6 AM and 6 PM using a randomized timer (12-hour window).
+This job renders and stages the mTLS user certificate in the /tmp directory during its operation.
+Rehydration Job:
 
-## Summary
-This setup enables secure, cross-account access management to an S3 bucket using instance roles, encryption via AWS KMS, and restrictive access policies. The setup supports multiple AWS accounts writing to the S3 bucket with KMS encryption restrictions based on specific IAM roles, as well as read-only access from another AWS account.
+This job triggers the node quiescing process and an assessment memory dump.
+It also uses the mTLS user certificate, which is temporarily staged in the same /tmp directory.
+Problem Description:
+During the rehydration process (while node quiescing and assessment memory dump are in progress), if the truncation timer job concurrently runs and renders a new certificate, it may attempt to delete the previous temporary certificates from the /tmp directory.
 
-### Key Components:
-1. **S3 Bucket in a Common AWS Account (Account B)**:
-   - Stores journal data.
-   - Uses a KMS key to encrypt objects.
-   - Bucket policy restricts write and read access based on instance roles from other AWS accounts.
+Due to ongoing use of these certificates by the rehydration job, this removal process may fail, leaving the node in a compromised state that requires manual recovery.
 
-2. **KMS Key in Account B**:
-   - Encrypts and decrypts objects stored in the S3 bucket.
-   - KMS key policy restricts encryption (write) for specific IAM roles from **two different AWS accounts** (Account A and Account D).
-   - KMS key policy restricts decryption (read) to instances in **Account C**.
+Proposed Solutions:
+Timer Adjustment:
 
-### S3 Bucket Policy (Account B)
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": [
-          "arn:aws:iam::AccountA:role/EC2RoleForJournalWrites",
-          "arn:aws:iam::AccountD:role/EC2RoleForJournalWrites"
-        ]
-      },
-      "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::safer-payments-journal/*"
-    },
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::AccountC:role/EC2RoleForJournalReads"
-      },
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::safer-payments-journal/*"
-    }
-  ]
-}
-```
+Reschedule the truncation timer job to run during the night (starting at 2 AM), reducing overlap with critical processes triggered by the rehydration job.
+Separation of Temporary Certificate Locations:
 
-### KMS Key Policy (Account B)
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": [
-          "arn:aws:iam::AccountA:role/EC2RoleForJournalWrites",
-          "arn:aws:iam::AccountD:role/EC2RoleForJournalWrites"
-        ]
-      },
-      "Action": [
-        "kms:Encrypt",
-        "kms:ReEncrypt*",
-        "kms:GenerateDataKey*"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::AccountC:role/EC2RoleForJournalReads"
-      },
-      "Action": [
-        "kms:Decrypt",
-        "kms:ReEncrypt*",
-        "kms:GenerateDataKey*"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+Update the pipeline configuration to stage certificates in separate temporary locations, ensuring that the truncation timer job and rehydration job do not overwrite each other’s certificates in the /tmp directory.
+Workaround:
+In case this issue occurs in production, the following steps can be used to recover:
 
-### Flow:
-- **Writers (Account A & Account D)**: 
-   - EC2 instances with designated IAM roles from **two different AWS accounts** (Account A and Account D) upload encrypted objects to the S3 bucket using the KMS key.
-   - The KMS key policy only allows encryption (write access) for these specific roles, ensuring restricted access even if other roles exist in these accounts.
-   
-- **Readers (Account C)**: 
-   - EC2 instances with a specific IAM role from **Account C** can read and decrypt objects from the S3 bucket.
-
-### Diagram:
-![Cross-Account S3 and KMS Access with Policies](s3_cross_account_access_policies.puml)
+Remove Temporary Certificates: Manually delete the leftover certificate files from the /tmp directory.
+Reset Consul KV Store: Perform a reset of the Consul KV store for Aerospike ASG refresh and assessment updates.
