@@ -1,1 +1,37 @@
+@startuml
 
+title Fraud Detection Process
+
+' Main Process Flow (Left to Right)
+rectangle "Working Model (CHAMPION)" as WorkingModel
+rectangle "New Model (CHALLENGER)" as NewModel
+rectangle "Model Optimization" as ModelOpt
+rectangle "Model Rebuild" as ModelRebuild
+rectangle "Model Validation" as ModelValidation
+rectangle "Model Simulation" as ModelSimulation
+rectangle "New Model Setup" as NewModelSetup
+rectangle "Previous Model Retirement" as ModelRetirement
+rectangle "Journal Export to S3" as ExportS3
+
+' Below Rebuild and Validation
+rectangle "Training Set" as TrainingSet
+rectangle "Validation Set" as ValidationSet
+
+' Layout and Connections (Left to Right)
+WorkingModel --> NewModel : Copy of Existing Model\nor New Model from Scratch
+NewModel --> ModelRebuild : Model Rebuild
+ModelRebuild --> ModelValidation : Model Validation
+ModelValidation --> ModelSimulation : Model Simulation
+ModelSimulation --> NewModelSetup : GO-LIVE
+NewModelSetup --> ModelRetirement : Retire Previous Model
+NewModelSetup --> ExportS3 : Trigger Journal Export to S3
+
+' Model Optimization placed above Rebuild with separate arrows
+ModelOpt -down-> ModelRebuild : Model Optimization
+ModelRebuild -up-> ModelOpt : Feedback Loop
+
+' Training and Validation sets below respective processes
+TrainingSet -up-> ModelRebuild : TRAINING SET
+ValidationSet -up-> ModelValidation : VALIDATION SET
+
+@enduml
