@@ -1,13 +1,1 @@
-        echo "Checking for existing instance refresh for ASG: ${ASG_NAME} in region: ${REGION}"
 
-        # Check for an existing instance refresh
-        STATUS=$(aws autoscaling describe-instance-refreshes \
-            --region ${REGION} \
-            --auto-scaling-group-name ${ASG_NAME} \
-            --query "InstanceRefreshes[?Status=='InProgress'].Status" \
-            --output text)
-
-        if [ "$STATUS" == "InProgress" ]; then
-            echo "An instance refresh is already in progress for ASG: ${ASG_NAME}. Exiting."
-            exit 0  # Exit successfully without starting a new refresh
-        fi
