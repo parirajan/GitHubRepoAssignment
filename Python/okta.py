@@ -1,5 +1,6 @@
 import requests
 import json
+import urllib.parse  # For URL encoding
 
 # Okta API base URL and token
 OKTA_BASE_URL = "https://<your_okta_domain>.okta.com"  # Replace with your Okta domain
@@ -30,7 +31,8 @@ def get_okta_users():
         # Check for the 'next' link for pagination in the Link header
         next_url = response.links.get('next', {}).get('url')
         if next_url:
-            users_url = next_url  # Set the next page URL
+            # Ensure the next_url is properly URL-encoded
+            users_url = urllib.parse.quote(next_url, safe=":/?=&")
         else:
             break  # No more pages
 
