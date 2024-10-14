@@ -14,11 +14,18 @@ def get_okta_users():
     users_url = f"{OKTA_BASE_URL}/api/v1/users"
     users = []
     params = {"limit": 200}  # Adjust limit as needed
+
     while users_url:
+        print(f"Fetching data from: {users_url}")  # Print the URL for debugging
         response = requests.get(users_url, headers=HEADERS, params=params)
-        response.raise_for_status()
+        
+        # Debugging: Check for errors and print the response details
+        if response.status_code != 200:
+            print(f"Error: {response.status_code} - {response.text}")
+            response.raise_for_status()
+        
         users.extend(response.json())
-        users_url = response.links.get('next', {}).get('url')
+        users_url = response.links.get('next', {}).get('url')  # Pagination support
     return users
 
 def get_user_groups(user_id):
