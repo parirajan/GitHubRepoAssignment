@@ -2,107 +2,133 @@
 
 ## 1. Overview
 
-This document provides a detailed design of the journal upload process across the **Dev** and **Prod Modelling Clusters**. The process enables uploading the **tech head mandator** and **business head mandator** changes to a centralized **S3 bucket** in the **Appcore AWS account**, following access control rules and versioning requirements. The process is tightly integrated with **ServiceNow** for documentation and approval tracking.
+This document describes the journal upload process for **IBM Safer Payments**, deployed across four environments: **Dev**, **QA**, **Staging**, and **Prod**. Each environment is hosted in a separate AWS account, with dedicated clusters for modeling and execution. Only the **Dev** and **Prod Modelling Clusters** have permission to export journal files and upload them to an **S3 bucket** in the **Appcore AWS account**. This design focuses on the upload process, from ServiceNow documentation to version control, following strict access and role-based rules.
 
 ## 2. Architecture Components
 
-- **ServiceNow**: Used to document and track the approval of changes.
-- **UI**: User interface to apply changes on Modelling Clusters.
-- **Modelling Clusters**: Clusters responsible for exporting journal files (Dev and Prod).
-- **Local Disk**: Temporary storage on the Modelling Clusters where journal files are saved before being uploaded to S3.
-- **Watch Script**: Monitors the local disk for journal file changes and triggers the upload to S3.
-- **S3 Bucket (Appcore)**: Centralized storage in the Appcore AWS account where journal files are uploaded.
-- **Version Endpoint**: Endpoint in the UI used to track the latest version of the journal after a successful upload.
+- **ServiceNow**: Used to document and approve the changes before applying them.
+- **Modelling Cluster (Dev)**: Allows exporting journal files for **tech head mandator** changes.
+- **Modelling Cluster (Prod)**: Allows exporting journal files for both **tech head** and **business head mandator** changes.
+- **Execution Cluster (All)**: Has no write permission but can read from the S3 bucket.
+- **S3 Bucket (Appcore)**: Centralized storage for journals, with restricted write permissions.
+- **Local Disk**: Temporary storage on Modelling Clusters where the journal file is written.
+- **Watch Script**: Detects updates to the local disk and triggers uploads to the S3 bucket.
+- **Version Endpoint**: Tracks journal version metadata (version, timestamp, filename) in the UI.
 
-## 3. Process Flow
+## 3. Environments
 
-### 3.1. ServiceNow Documentation and Approval
+### 3.1. Dev Environment
+- **AWS Account**: Dev
+- **Modelling Cluster**: Exports journals for **tech head mandator** updates.
+- **Execution Cluster**: Has **read-only** access to the S3 bucket.
+  
+### 3.2. QA Environment
+- **AWS Account**: QA
+- **Modelling Cluster**: **Read-only** access to the S3 bucket.
+- **Execution Cluster**: **Read-only** access to the S3 bucket.
 
-1. **Documenting the Changes**:
-   - The **user** first documents the planned changes (either **tech head mandator** for Dev or both **tech head mandator** and **business head mandator** for Prod) in **ServiceNow**. 
-   - The changes include the details of the mandators being updated and the justification for the update.
+### 3.3. Staging Environment (DIT)
+- **AWS Account**: Staging
+- **Modelling Cluster**: **Read-only** access to the S3 bucket.
+- **Execution Cluster**: **Read-only** access to the S3 bucket.
 
-2. **Approval Workflow**:
-   - The changes must be approved by the designated approvers in **ServiceNow** before they can be applied.
-   - Once approved, the **user** can proceed to log into the relevant Modelling Cluster (Dev or Prod) via the UI.
+### 3.4. Prod Environment
+- **AWS Account**: Prod
+- **Modelling Cluster**: Exports journals for both **tech head** and **business head mandator** updates.
+- **Execution Cluster**: Has **read-only** access to the S3 bucket.
 
-### 3.2. Logging into the UI and Applying Changes
+### 3.5. Appcore AWS Account
+- **S3 Bucket**: Centralized storage for all journal files. Write access is restricted to the **Dev** and **Prod Modelling Clusters**. All other clusters have **read-only** access.
 
-1. **Login to UI**:
-   - The **user** logs into the **UI** associated with the **Dev** or **Prod Modelling Cluster**.
+## 4. Process Flow
+
+### 4.1. Documenting Changes in ServiceNow
+
+1. **User Initiates Changes**:
+   - The **user** documents the proposed changes in **ServiceNow**. 
+     - **Dev Modelling Cluster**: Documents **tech head mandator** changes.
+     - **Prod Modelling Cluster**: Documents both **tech head** and **business head mandator** changes.
+   
+2. **ServiceNow Approval Workflow**:
+   - Once the changes are documented, they go through an approval workflow in **ServiceNow**.
+   - Only after receiving approval can the changes be applied through the UI.
+
+### 4.2. Applying Changes via UI
+
+1. **User Logs into UI**:
+   - After receiving approval, the **user** logs into the respective **Modelling Cluster** via the **UI**.
    
 2. **Applying Changes**:
-   - The **user** applies the approved changes through the UI, either for:
-     - **Dev Modelling Cluster**: Applying **tech head mandator** changes.
-     - **Prod Modelling Cluster**: Applying both **tech head** and **business head mandator** changes.
+   - The **user** applies the approved changes:
+     - **Dev Modelling Cluster**: Updates the **tech head mandator**.
+     - **Prod Modelling Cluster**: Updates both the **tech head** and **business head mandator**.
 
 3. **Journal Export**:
-   - Once the changes are applied, the **Modelling Cluster** (either **Dev** or **Prod**) exports the journal file containing the updated changes to the local disk.
+   - Once the changes are applied, the **Modelling Cluster** exports the journal file to the **local disk**.
+   - The journal file includes the updated data, a **checksum** for validation, a **timestamp**, and a **version number** (based on date, time, and source cluster).
 
-### 3.3. Watch Script and S3 Upload Process
+### 4.3. Watch Script and S3 Upload Process
 
-1. **Watch Script Detection**:
-   - The **watch script** monitors the **local disk** on the **Modelling Cluster** for any updates to the journal files.
-   - Upon detecting an updated journal file, the **watch script** triggers the upload process.
+1. **Watch Script Detects Changes**:
+   - A **watch script** running on the **Modelling Cluster** continuously monitors the **local disk** for new or updated journal files.
 
-2. **S3 Upload**:
-   - The updated journal file is uploaded to the **S3 Bucket** located in the **Appcore AWS account**.
-   - The **Dev** and **Prod Modelling Clusters** have **write access** to this **S3 bucket**, allowing them to upload journal files.
+2. **Triggering the Upload**:
+   - When the watch script detects a new or modified journal file, it initiates the upload process to the **S3 bucket** in the **Appcore AWS account**.
 
-3. **Upload Confirmation**:
-   - Once the upload is successful, the **S3 bucket** sends a confirmation to the **Modelling Cluster**.
+3. **S3 Upload**:
+   - The journal file is uploaded to the **S3 bucket**. 
+   - Only the **Dev Modelling Cluster** and **Prod Modelling Cluster** have **write access** to the bucket, ensuring secure control over journal uploads.
 
-### 3.4. Version Update in UI
+4. **Upload Confirmation**:
+   - After a successful upload, the watch script logs the upload status and confirms that the journal is stored in S3.
 
-1. **Updating the Version Endpoint**:
-   - After the journal file is successfully uploaded to the S3 bucket, the **Modelling Cluster** updates the **Version Endpoint** in the UI.
-   - The **Version Endpoint** stores the metadata of the journal file, such as:
-     - Journal version.
-     - Timestamp of the upload.
-     - Source cluster (Dev or Prod).
+### 4.4. Version Update in the UI
 
+1. **Version Metadata Update**:
+   - After the journal is uploaded to S3, the **Modelling Cluster** updates the **Version Endpoint** in the UI with the following metadata:
+     - **Version**: The journal version (e.g., based on timestamp and source cluster).
+     - **Timestamp**: The exact time the journal was created and exported.
+     - **File Name**: The name of the exported journal file.
+   
 2. **User Notification**:
-   - The **user** can view the updated version and metadata of the journal file via the **Version Endpoint** in the UI.
+   - The **user** can view the updated journal metadata in the UI via the **/journal_version** endpoint.
 
-## 4. Design Rules
+## 5. Design Rules
 
-### 4.1. ServiceNow Integration
-- All journal changes must be documented and approved in **ServiceNow** before they can be applied.
-- Changes are applied only after receiving approval, ensuring that no unapproved updates are uploaded to the S3 bucket.
-
-### 4.2. Cluster Access Control
+### 5.1. Access Control
 - **Dev Modelling Cluster** and **Prod Modelling Cluster** have **write** access to the **S3 bucket** in the **Appcore AWS account**.
-- Other clusters (QA, DIT, Prod Execution) have **read-only** access and cannot upload journal files.
+- **QA, Staging, and Execution Clusters** in all environments only have **read-only** access to the S3 bucket.
 
-### 4.3. Mandator Changes
-- **Dev Modelling Cluster**: Only the **tech head mandator** changes are applied and exported as journal files.
-- **Prod Modelling Cluster**: Both **tech head mandator** and **business head mandator** changes are applied and exported as journal files.
+### 5.2. Journal Export Rules
+- **Dev Modelling Cluster**: Only **tech head mandator** changes are exported to the S3 bucket.
+- **Prod Modelling Cluster**: Both **tech head** and **business head mandator** changes are exported.
 
-### 4.4. Versioning and Metadata
-- After a successful upload, the version of the journal file is updated in the **Version Endpoint**.
-- The **Version Endpoint** stores critical metadata including:
-  - Version number (based on date and source cluster).
-  - Timestamp of the export.
-  - File name of the journal.
+### 5.3. Versioning
+- Each journal file uploaded to the S3 bucket is tagged with a **version** number that reflects:
+  - The source cluster (Dev or Prod).
+  - The **timestamp** of the journal creation.
+  
+### 5.4. Metadata and UI Updates
+- The **Version Endpoint** in the UI is updated with the journal metadata after a successful upload:
+  - **Version**, **timestamp**, and **file name**.
+  
+## 6. Exception Handling
 
-## 5. Exception Handling
+### 6.1. Approval Failure
+- If the changes are not approved in **ServiceNow**, the user is unable to apply the changes through the UI.
+- The process remains blocked until approval is granted, ensuring that no unapproved journal changes are uploaded to the S3 bucket.
 
-### 5.1. Approval Failure
-- If the changes are not approved in **ServiceNow**, the user is blocked from applying the changes through the UI.
-- The user is notified of the pending approval status, and the process remains in a waiting state until approval is granted.
+### 6.2. Upload Failure
+- If the upload to the **S3 bucket** fails, the **watch script** retries the upload a set number of times.
+- After exhausting the retries, the process logs the failure, and the journal remains on the **local disk** for manual intervention.
 
-### 5.2. Upload Failure
-- If the upload to the **S3 bucket** fails, the **watch script** will retry the upload.
-- If the retries are exhausted, the failure is logged, and the user is notified via the UI.
-- The journal file remains in the local disk until the issue is resolved.
+### 6.3. Version Update Failure
+- If the **Version Endpoint** fails to update after the journal upload, the issue is logged and the user is notified.
+- Manual intervention may be required to ensure the version metadata is correctly updated in the UI.
 
-### 5.3. Version Update Failure
-- If the **Version Endpoint** fails to update after a successful upload, the system will log the issue.
-- The user will be notified, and corrective actions will be taken to manually update the version endpoint if needed.
+## 7. Sequence Diagram
 
-## 6. Sequence Diagram
-
-The following is a sequence diagram for the **Journal Upload Process**:
+Below is a UML sequence diagram for the **Journal Upload Process**:
 
 ```puml
 @startuml
@@ -117,7 +143,7 @@ participant "Watch Script" as WatchScript
 participant "S3 Bucket (Appcore)" as S3Bucket
 participant "Version Endpoint" as VersionEndpoint
 
-' Step 1: User documents changes in ServiceNow for Dev
+' Step 1: Document changes in ServiceNow for Dev
 User -> ServiceNow: Document Tech Head Mandator Changes (Dev)
 ServiceNow -> User: Approval Granted
 
@@ -125,18 +151,18 @@ ServiceNow -> User: Approval Granted
 User -> UI: Login to Dev Modelling Cluster
 UI -> DevModelling: Apply Tech Head Mandator Changes (Dev)
 
-' Step 3: Dev Modelling Cluster exports the journal file
-DevModelling -> DevLocalDisk: Export Journal to Local Disk (Dev)
+' Step 3: Export journal file to local disk
+DevModelling -> DevLocalDisk: Export Journal File
 
-' Step 4: Watch Script detects update and uploads to S3
-DevLocalDisk -> WatchScript: Journal Updated (Dev)
-WatchScript -> S3Bucket: Upload Journal (Dev)
+' Step 4: Watch Script detects file and uploads to S3
+DevLocalDisk -> WatchScript: Journal File Updated
+WatchScript -> S3Bucket: Upload Journal File
 
 ' Step 5: S3 confirms journal upload
-S3Bucket -> DevModelling: Journal Uploaded (Dev)
+S3Bucket -> DevModelling: Journal Uploaded
 
-' Step 6: Version update for Dev in UI
-DevModelling -> VersionEndpoint: Update Version Endpoint (Dev)
+' Step 6: Update version endpoint
+DevModelling -> VersionEndpoint: Update Version Metadata
 
 ' Repeat for Prod Modelling Cluster
 @enduml
