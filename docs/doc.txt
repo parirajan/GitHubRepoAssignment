@@ -1,1 +1,53 @@
+# Design Document: Journal Upload Process for IBM Safer Payments
 
+## Overview:
+The **Journal Upload Process** is used to manage changes applied to mandators in IBM Safer Payments. This process handles both technical and business-related updates, capturing them in journal files and promoting them across environments using a controlled mechanism that includes local storage, S3 uploads, and an import utility for environment promotion.
+
+### Key Types of Mandators:
+1. **Technical Head Mandator**:  
+   This is the root mandator containing technical aspects such as message structures, data mapping, indexes, and data models. These changes are typically made by the engineering team and are captured in journal uploads.
+   
+2. **Modelling and Application Mandators**:
+   - **Technical Business Mandator**: Handles changes to indexes, technical profiles, and common components.
+   - **Org Application Mandator**: Handles changes to profiles, PMML models, UDFs, and queries. These changes are typically applied by data scientists or data modelers, often with live data to enhance model accuracy.
+
+## Process Workflow:
+
+1. **User Interaction via UI**:
+   Changes are applied through the UI to the respective mandators (technical and business-related). This includes updates to message structures, models, indexes, profiles, and more.
+
+2. **Journal File Capture**:
+   The changes applied via the UI are captured as journal files that are stored on the local disk.
+
+3. **Watch Process**:
+   A control process monitors the local disk for changes to journal files. When changes are detected, the **Watch Process** triggers a script to upload the journal files to an S3 bucket.
+
+4. **Upload to S3**:
+   The **Watch Process** ensures that the journal files are uploaded to an S3 bucket, which acts as centralized storage for all changes.
+
+5. **Promotion to Environments**:
+   Once the journal files are in S3, the promotion process begins. Journal files are downloaded from the S3 bucket and the **import utility** is run to apply these changes to different environments such as **Dev**, **QA**, **DIT**, and **Prod**.
+
+## High-Level Flow Diagram:
+
+```puml
+@startuml
+actor "User" as User
+
+User -> "Settings Update via UI" : Apply changes to Mandators (Tech & Business)
+
+group Journal Export
+    "Settings Update via UI" -> "Journal File Capture" : Changes saved as journal files
+    "Journal File Capture" -> "Local Disk" : Store journal files locally
+    
+    create control "Watch Process"
+    "Local Disk" -> "Watch Process" : Monitor changes in local disk path
+    "Watch Process" -> "S3 Bucket" : Trigger S3 upload script
+end group
+
+group Promotion to Environments
+    "S3 Bucket" -> "Environment" : Download journal from S3
+    "Environment" -> "Import Utility" : Run import utility to apply changes
+    note right of "Import Utility" : Import changes with correct version
+end group
+@enduml
