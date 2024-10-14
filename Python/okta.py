@@ -1,5 +1,6 @@
 import requests
 import json
+import urllib.parse
 
 # Okta API base URL and token
 OKTA_BASE_URL = "https://<your_okta_domain>.okta.com"  # Replace with your Okta domain
@@ -17,9 +18,8 @@ def get_okta_users():
     after_token = None  # Initialize after_token as None
 
     while True:
-        # If we have an after token, add it to the params
         if after_token:
-            params['after'] = after_token
+            params['after'] = after_token  # Use the after token for pagination
 
         print(f"Fetching data from: {users_url} with params {params}")
         response = requests.get(users_url, headers=HEADERS, params=params)
@@ -28,7 +28,7 @@ def get_okta_users():
             print(f"Error: {response.status_code} - {response.text}")
             response.raise_for_status()
 
-        users.extend(response.json())
+        users.extend(response.json())  # Add the fetched users to the list
 
         # Check for 'next' link in the pagination headers
         next_link = response.links.get('next', {}).get('url')
@@ -39,12 +39,45 @@ def get_okta_users():
 
     return users
 
+def get_user_groups(user_id):
+    """Fetch the groups for a specific user."""
+    groups_url = f"{OKTA_BASE_URL}/api/v1/users/{user_id}/groups"
+    response = requests.get(groups_url, headers=HEADERS)
+    
+    if response.status_code != 200:
+        print(f"Error fetching groups for user {user_id}: {response.status_code} - {response.text}")
+        response.raise_for_status()
+
+    return response.json()  # Return the list of groups the user belongs to
+
+def map_users_to_groups(users):
+    """Map each user to their respective groups."""
+    user_group_mapping = {}
+
+    for user in users:
+        user_id = user['id']
+        user_name = user['profile']['login']
+        print(f"Fetching groups for user: {user_name} (ID: {user_id})")
+        
+        groups = get_user_groups(user_id)  # Fetch the groups for this user
+        group_names = [group['profile']['name'] for group in groups]  # Extract group names
+        user_group_mapping[user_name] = group_names  # Map the user to their groups
+
+    return user_group_mapping
+
 def save_to_json(data, filename='user_group_mapping.json'):
-    """Save the mapping to a JSON file."""
+    """Save the user-group mapping to a JSON file."""
     with open(filename, 'w') as f:
         json.dump(data, f, indent=4)
 
 if __name__ == "__main__":
-    users = get_okta_users()
-    save_to_json(users)
-    print("User data has been saved to user_group_mapping.json")
+    print("Fetching users from Okta...")
+    users = get_okta_users()  # Fetch all users
+
+    print("Mapping users to their groups...")
+    user_group_mapping = map_users_to_groups(users)  # Map users to their groups
+
+    print("Saving user-group mapping to JSON file...")
+    save_to_json(user_group_mapping)  # Save the mapping to a JSON file
+
+    print("User-group mapping has been saved to 'user_group_mapping.json'.")
