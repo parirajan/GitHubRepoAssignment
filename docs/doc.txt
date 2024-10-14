@@ -1,86 +1,142 @@
-
-# Journal Download and Import Process Design Document
+# Journal Upload Process Design Document
 
 ## 1. Overview
 
-This document describes the design of the journal download and import process across the **Dev**, **QA**, **DIT (Staging)**, and **Prod** environments in the AWS setup. The process ensures that the correct versions of journals are downloaded from the centralized S3 bucket and imported into the appropriate clusters based on predefined rules for importing **tech head** and **business head** mandator changes.
+This document provides a detailed design of the journal upload process across the **Dev** and **Prod Modelling Clusters**. The process enables uploading the **tech head mandator** and **business head mandator** changes to a centralized **S3 bucket** in the **Appcore AWS account**, following access control rules and versioning requirements. The process is tightly integrated with **ServiceNow** for documentation and approval tracking.
 
 ## 2. Architecture Components
 
-- **S3 Bucket (Appcore)**: Centralized storage for journal files.
-- **Consul KV Store**: Used to store and update the version of the journal that needs to be applied.
-- **Modelling and Execution Clusters**: Present in **Dev**, **QA**, **DIT (Staging)**, and **Prod** environments.
-- **Consul Seeder**: Used by the deployment team to seed the Consul KV store with the desired journal version.
-- **Consul Watch Process**: Triggers the download and import processes when the Consul KV store is updated.
-- **Watch Script**: Detects journal file changes and handles the download from S3 and the import into the appropriate clusters.
-- **Log System**: Logs the results of the journal import process (success or failure).
+- **ServiceNow**: Used to document and track the approval of changes.
+- **UI**: User interface to apply changes on Modelling Clusters.
+- **Modelling Clusters**: Clusters responsible for exporting journal files (Dev and Prod).
+- **Local Disk**: Temporary storage on the Modelling Clusters where journal files are saved before being uploaded to S3.
+- **Watch Script**: Monitors the local disk for journal file changes and triggers the upload to S3.
+- **S3 Bucket (Appcore)**: Centralized storage in the Appcore AWS account where journal files are uploaded.
+- **Version Endpoint**: Endpoint in the UI used to track the latest version of the journal after a successful upload.
 
 ## 3. Process Flow
 
-### 3.1. Version Update in Consul KV Store
+### 3.1. ServiceNow Documentation and Approval
 
-1. **Deployment Team**: 
-   - The deployment team initiates the process by updating the journal version to be downloaded and applied in the clusters.
-   - This is done using the **Consul Seeder** which updates the **Consul KV store** with the version number.
+1. **Documenting the Changes**:
+   - The **user** first documents the planned changes (either **tech head mandator** for Dev or both **tech head mandator** and **business head mandator** for Prod) in **ServiceNow**. 
+   - The changes include the details of the mandators being updated and the justification for the update.
+
+2. **Approval Workflow**:
+   - The changes must be approved by the designated approvers in **ServiceNow** before they can be applied.
+   - Once approved, the **user** can proceed to log into the relevant Modelling Cluster (Dev or Prod) via the UI.
+
+### 3.2. Logging into the UI and Applying Changes
+
+1. **Login to UI**:
+   - The **user** logs into the **UI** associated with the **Dev** or **Prod Modelling Cluster**.
    
-2. **Consul KV Store**:
-   - Once the KV store is updated, the watch scripts in each cluster are triggered to start the download and import process.
+2. **Applying Changes**:
+   - The **user** applies the approved changes through the UI, either for:
+     - **Dev Modelling Cluster**: Applying **tech head mandator** changes.
+     - **Prod Modelling Cluster**: Applying both **tech head** and **business head mandator** changes.
 
-### 3.2. Journal Download Process
+3. **Journal Export**:
+   - Once the changes are applied, the **Modelling Cluster** (either **Dev** or **Prod**) exports the journal file containing the updated changes to the local disk.
 
-1. **Consul Watch Script**:
-   - Each environment (Dev, QA, DIT, Prod) has a **Consul watch script** that listens for changes in the **Consul KV store**. 
-   - Upon detecting a new version, the script initiates the download of the journal file from the **S3 Bucket (Appcore)**.
+### 3.3. Watch Script and S3 Upload Process
 
-2. **S3 Bucket Access**:
-   - The journal files are stored in a centralized **S3 bucket** in the **Appcore AWS account**.
-   - The Modelling and Execution Clusters across environments download the journal file using the version number provided in the Consul KV store.
+1. **Watch Script Detection**:
+   - The **watch script** monitors the **local disk** on the **Modelling Cluster** for any updates to the journal files.
+   - Upon detecting an updated journal file, the **watch script** triggers the upload process.
 
-### 3.3. Journal Import Process
+2. **S3 Upload**:
+   - The updated journal file is uploaded to the **S3 Bucket** located in the **Appcore AWS account**.
+   - The **Dev** and **Prod Modelling Clusters** have **write access** to this **S3 bucket**, allowing them to upload journal files.
 
-#### 3.3.1. **Dev Environment**:
-   - **Tech Head Mandator**: Only the **tech head mandator** changes are imported into both the **Dev Modelling Cluster** and the **Dev Execution Cluster**.
-   - **Business Head Mandator**: Business head mandator changes are not imported in the **Dev** environment.
+3. **Upload Confirmation**:
+   - Once the upload is successful, the **S3 bucket** sends a confirmation to the **Modelling Cluster**.
 
-#### 3.3.2. **QA and DIT (Staging) Environments**:
-   - **Tech Head Mandator**: Both **tech head** and **business head mandator** changes are imported into the **QA Modelling Cluster**, **QA Execution Cluster**, **DIT Modelling Cluster**, and **DIT Execution Cluster**.
+### 3.4. Version Update in UI
 
-#### 3.3.3. **Prod Environment**:
-   - **Tech Head Mandator**: Only the **tech head mandator** changes are imported into both the **Prod Modelling Cluster** and the **Prod Execution Cluster**.
-   - **Business Head Mandator**: Business head mandator changes are **not imported** in the **Prod** environment.
+1. **Updating the Version Endpoint**:
+   - After the journal file is successfully uploaded to the S3 bucket, the **Modelling Cluster** updates the **Version Endpoint** in the UI.
+   - The **Version Endpoint** stores the metadata of the journal file, such as:
+     - Journal version.
+     - Timestamp of the upload.
+     - Source cluster (Dev or Prod).
 
-### 3.4. Logging
-
-1. **Log System**:
-   - After the journal import process is complete, the results (either success or failure) are logged into the **Log System** for auditing purposes.
+2. **User Notification**:
+   - The **user** can view the updated version and metadata of the journal file via the **Version Endpoint** in the UI.
 
 ## 4. Design Rules
 
-### 4.1. Journal Version Control
-- The version of the journal to be downloaded and applied is controlled via the **Consul KV store**.
-- The deployment team manually sets the journal version using the **Consul Seeder**.
+### 4.1. ServiceNow Integration
+- All journal changes must be documented and approved in **ServiceNow** before they can be applied.
+- Changes are applied only after receiving approval, ensuring that no unapproved updates are uploaded to the S3 bucket.
 
-### 4.2. Access Control
-- **Dev** and **Prod Modelling Clusters**: Have **write** access to the **S3 bucket** in the **Appcore** AWS account.
-- **QA, DIT, and Prod Clusters**: Have **read-only** access to download the journal files from the S3 bucket.
+### 4.2. Cluster Access Control
+- **Dev Modelling Cluster** and **Prod Modelling Cluster** have **write** access to the **S3 bucket** in the **Appcore AWS account**.
+- Other clusters (QA, DIT, Prod Execution) have **read-only** access and cannot upload journal files.
 
-### 4.3. Import Rules
-- **Dev Environment**: Only the **tech head mandator** changes are imported.
-- **QA, DIT (Staging)**: Both **tech head** and **business head mandator** changes are imported.
-- **Prod Environment**: Only the **tech head mandator** changes are imported. **Business head mandator** changes are skipped.
+### 4.3. Mandator Changes
+- **Dev Modelling Cluster**: Only the **tech head mandator** changes are applied and exported as journal files.
+- **Prod Modelling Cluster**: Both **tech head mandator** and **business head mandator** changes are applied and exported as journal files.
+
+### 4.4. Versioning and Metadata
+- After a successful upload, the version of the journal file is updated in the **Version Endpoint**.
+- The **Version Endpoint** stores critical metadata including:
+  - Version number (based on date and source cluster).
+  - Timestamp of the export.
+  - File name of the journal.
 
 ## 5. Exception Handling
 
-### 5.1. Download Failure
-- If the download from the **S3 bucket** fails, the watch script retries the process based on predefined retry logic.
-- If the retries are exhausted, the process is logged as a failure in the **Log System**.
+### 5.1. Approval Failure
+- If the changes are not approved in **ServiceNow**, the user is blocked from applying the changes through the UI.
+- The user is notified of the pending approval status, and the process remains in a waiting state until approval is granted.
 
-### 5.2. Import Failure
-- If the import of the journal file fails (either due to incorrect data or conflicts), the process will:
-  1. Move the failed journal file to a **failed folder**.
-  2. Log the failure in the **Log System**.
-  3. Notify the respective teams for troubleshooting.
+### 5.2. Upload Failure
+- If the upload to the **S3 bucket** fails, the **watch script** will retry the upload.
+- If the retries are exhausted, the failure is logged, and the user is notified via the UI.
+- The journal file remains in the local disk until the issue is resolved.
 
-## 6. Conclusion
+### 5.3. Version Update Failure
+- If the **Version Endpoint** fails to update after a successful upload, the system will log the issue.
+- The user will be notified, and corrective actions will be taken to manually update the version endpoint if needed.
 
-The journal download and import process ensures that all clusters across environments receive the correct version of the journal based on predefined filtering rules. This process is tightly controlled through the **Consul KV store**, and access is managed via the centralized **S3 bucket** in the **Appcore AWS account**. The rules around importing the **tech head mandator** and **business head mandator** changes ensure that the appropriate changes are applied in each environment.
+## 6. Sequence Diagram
+
+The following is a sequence diagram for the **Journal Upload Process**:
+
+```puml
+@startuml
+actor User
+participant "ServiceNow" as ServiceNow
+participant "Dev Modelling Cluster" as DevModelling
+participant "Prod Modelling Cluster" as ProdModelling
+participant "UI" as UI
+participant "Local Disk (Dev)" as DevLocalDisk
+participant "Local Disk (Prod)" as ProdLocalDisk
+participant "Watch Script" as WatchScript
+participant "S3 Bucket (Appcore)" as S3Bucket
+participant "Version Endpoint" as VersionEndpoint
+
+' Step 1: User documents changes in ServiceNow for Dev
+User -> ServiceNow: Document Tech Head Mandator Changes (Dev)
+ServiceNow -> User: Approval Granted
+
+' Step 2: User logs into UI to apply changes for Dev
+User -> UI: Login to Dev Modelling Cluster
+UI -> DevModelling: Apply Tech Head Mandator Changes (Dev)
+
+' Step 3: Dev Modelling Cluster exports the journal file
+DevModelling -> DevLocalDisk: Export Journal to Local Disk (Dev)
+
+' Step 4: Watch Script detects update and uploads to S3
+DevLocalDisk -> WatchScript: Journal Updated (Dev)
+WatchScript -> S3Bucket: Upload Journal (Dev)
+
+' Step 5: S3 confirms journal upload
+S3Bucket -> DevModelling: Journal Uploaded (Dev)
+
+' Step 6: Version update for Dev in UI
+DevModelling -> VersionEndpoint: Update Version Endpoint (Dev)
+
+' Repeat for Prod Modelling Cluster
+@enduml
