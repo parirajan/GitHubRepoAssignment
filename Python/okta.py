@@ -71,8 +71,15 @@ if __name__ == "__main__":
         print(f"Fetching users assigned to the application '{app_name}'...")
         users = list_users_in_app(app_id)
         
-        # Prepare the list of users for saving
-        user_list = [{"id": user['id'], "email": user['profile']['email'], "fullName": f"{user['profile']['firstName']} {user['profile']['lastName']}"} for user in users]
+        # Prepare the list of users for saving, safely handling missing profile fields
+        user_list = [
+            {
+                "id": user['id'],
+                "email": user['profile']['email'],
+                "fullName": f"{user['profile'].get('firstName', '')} {user['profile'].get('lastName', '')}".strip()
+            }
+            for user in users
+        ]
         
         # Save to JSON file
         save_to_json(user_list, filename=f"app_{app_name}_users.json")
