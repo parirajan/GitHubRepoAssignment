@@ -1,1 +1,46 @@
+---
+- name: Verify checksum and conditionally install RPM
+  hosts: localhost
+  tasks:
+    - name: Download release notes page
+      ansible.builtin.command:
+        cmd: "curl -s https://www.ibm.com/docs/en/safer-payments/6.7?topic=6rn-download-instructions"
+      register: release_notes
 
+    - name: Extract checksum from release notes
+      ansible.builtin.shell: |
+        echo "{{ release_notes.stdout }}" | grep -oP '([a-f0-9]{64})'
+      register: extracted_checksum
+
+    - name: Unzip the file into a specific folder
+      ansible.builtin.unarchive:
+        src: /path/to/yourfile.zip
+        dest: /path/to/destination/
+        remote_src: yes
+
+    - name: Find the RPM file in the extracted folder
+      ansible.builtin.find:
+        paths: /path/to/destination/
+        patterns: "*.rpm"
+        register: rpm_file
+
+    - name: Calculate checksum of the RPM
+      ansible.builtin.command:
+        cmd: "sha256sum {{ item.path }}"
+      loop: "{{ rpm_file.files }}"
+      register: rpm_checksum
+
+    - name: Validate checksum matches
+      ansible.builtin.assert:
+        that:
+          - "{{ extracted_checksum.stdout }} == '{{ rpm_checksum.stdout.split()[0] }}'"
+        fail_msg: "Checksum validation failed"
+      register: checksum_valid
+
+    - name: Install RPM without signature verification if checksum is valid
+      ansible.builtin.yum:
+        name: "{{ item.path }}"
+        state: present
+        disable_gpg_check: yes
+      loop: "{{ rpm_file.files }}"
+      when: checksum_valid is succeeded
