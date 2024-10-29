@@ -1,1 +1,117 @@
+@startuml
+skinparam ComponentStyle rectangle
+skinparam backgroundColor LightGrey
 
+
+
+rectangle "IBM Safer Payments Cluster - AWS GovCloud" {
+
+    ' Define East Region with a unique background color and separate AZs
+    rectangle "AWS VPC - East" as EastRegion #SkyBlue {
+        rectangle "AZ-1" as AZ1_East #PowderBlue {
+            rectangle "Node1 (ASG)" as Node1
+        }
+        rectangle "AZ-2" as AZ2_East #Turquoise {
+            rectangle "Node2 (ASG)" as Node2
+        }
+        rectangle "AZ-3" as AZ3_East #LightSteelBlue {
+            rectangle "Node3 (ASG)" as Node3
+        }
+    }
+
+    ' Define West Region with a unique background color and separate AZs
+    rectangle "AWS VPC - West" as WestRegion #HotPink {
+        rectangle "AZ-1" as AZ1_West #LightPink {
+            rectangle "Node4 (ASG)" as Node4
+        }
+        rectangle "AZ-2" as AZ2_West #MistyRose {
+            rectangle "Node5 (ASG)" as Node5
+        }
+        rectangle "AZ-3" as AZ3_West #PaleVioletRed {
+            rectangle "Node6 (ASG)" as Node6
+        }
+    }
+}
+
+' SCI Connections (Dashed)
+Node1 -[#red,dashed]-> Node2
+Node1 -[#red,dashed]-> Node3
+Node1 -[#red,dashed]-> Node4
+Node1 -[#red,dashed]-> Node5
+Node1 -[#red,dashed]-> Node6
+
+Node2 -[#blue,dashed]-> Node1
+Node2 -[#blue,dashed]-> Node3
+Node2 -[#blue,dashed]-> Node4
+Node2 -[#blue,dashed]-> Node5
+Node2 -[#blue,dashed]-> Node6
+
+Node3 -[#green,dashed]-> Node1
+Node3 -[#green,dashed]-> Node2
+Node3 -[#green,dashed]-> Node4
+Node3 -[#green,dashed]-> Node5
+Node3 -[#green,dashed]-> Node6
+
+Node4 -[#orange,dashed]-> Node1
+Node4 -[#orange,dashed]-> Node2
+Node4 -[#orange,dashed]-> Node3
+Node4 -[#orange,dashed]-> Node5
+Node4 -[#orange,dashed]-> Node6
+
+Node5 -[#violet,dashed]-> Node1
+Node5 -[#violet,dashed]-> Node2
+Node5 -[#violet,dashed]-> Node3
+Node5 -[#violet,dashed]-> Node4
+Node5 -[#violet,dashed]-> Node6
+
+Node6 -[#brown,dashed]-> Node1
+Node6 -[#brown,dashed]-> Node2
+Node6 -[#brown,dashed]-> Node3
+Node6 -[#brown,dashed]-> Node4
+Node6 -[#brown,dashed]-> Node5
+
+' FLI Connections (Solid)
+Node1 -[#red]-> Node2
+Node1 -[#red]-> Node3
+Node1 -[#red]-> Node4
+Node1 -[#red]-> Node5
+Node1 -[#red]-> Node6
+
+Node2 -[#blue]-> Node1
+Node2 -[#blue]-> Node3
+Node2 -[#blue]-> Node4
+Node2 -[#blue]-> Node5
+Node2 -[#blue]-> Node6
+
+Node3 -[#green]-> Node1
+Node3 -[#green]-> Node2
+Node3 -[#green]-> Node4
+Node3 -[#green]-> Node5
+Node3 -[#green]-> Node6
+
+Node4 -[#orange]-> Node1
+Node4 -[#orange]-> Node2
+Node4 -[#orange]-> Node3
+Node4 -[#orange]-> Node5
+Node4 -[#orange]-> Node6
+
+Node5 -[#violet]-> Node1
+Node5 -[#violet]-> Node2
+Node5 -[#violet]-> Node3
+Node5 -[#violet]-> Node4
+Node5 -[#GreenYellow]-> Node6
+
+Node6 -[#brown]-> Node1
+Node6 -[#brown]-> Node2
+Node6 -[#brown]-> Node3
+Node6 -[#brown]-> Node4
+Node6 -[#brown]-> Node5
+
+' Add a legend to describe SCI and FLI connections and region colors
+legend top right
+  |= Element | Description |
+  | **Dashed Line** | SCI (Status Control Interface) Connection |
+  | **Solid Line** | FLI (Fast Link Interface) Connection |
+endlegend
+
+@enduml
