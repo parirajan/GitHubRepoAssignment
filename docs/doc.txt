@@ -1,1 +1,45 @@
+# IBM Safer Payments Cluster in AWS GovCloud - Architectural Design
 
+## Overview
+The **IBM Safer Payments Cluster** in **AWS GovCloud** is designed to ensure continuous availability, fault tolerance, and data integrity for critical payment fraud prevention and post-settlement batch processing. This deployment spans multiple regions, incorporating a resilient architecture that leverages **Auto Scaling Groups (ASG)** for automated node recovery, ensuring operational continuity across **East** and **West** regions.
+
+## 1. Region and Availability Zone (AZ) Layout
+- **Regions**:
+  - The deployment spans two AWS regions, **East** and **West**, providing regional redundancy to protect against region-wide failures.
+  - Each region operates within its own Virtual Private Cloud (VPC), maintaining network isolation and independence.
+- **Availability Zones (AZs)**:
+  - Within each region, nodes are distributed across three Availability Zones (AZ-1, AZ-2, AZ-3).
+  - This setup prevents a single AZ failure from impacting the entire region, allowing for fault-tolerant operations.
+- **Purpose**:
+  - By distributing nodes across multiple AZs, the design ensures high availability and localized fault tolerance, maintaining uninterrupted operations even if an AZ goes offline.
+
+## 2. Auto Scaling Groups (ASGs) and Node Deployment
+- **Auto Scaling Groups (ASGs)**:
+  - Each node within an AZ is part of an **Auto Scaling Group (ASG)**, which ensures resilient node recovery in the event of failures.
+  - ASGs automatically detect node health, replacing failed nodes to maintain consistent operational capacity across the cluster without requiring manual intervention.
+- **Node Deployment**:
+  - There are three ASG-managed nodes in each region, with each node deployed in a separate AZ.
+  - This distribution allows for balanced processing within each region, mitigating the impact of any single-node or AZ-level outage.
+- **Resilience Benefits**:
+  - ASGs enable self-healing capabilities, allowing for automated failover and recovery. This ensures that each region maintains its operational readiness, even during node or AZ outages, and provides a continuously available service.
+
+## 3. Communication Interfaces
+- **Status Control Interface (SCI)**:
+  - **Purpose**: The SCI handles status monitoring and control message exchange, ensuring all nodes within and across regions maintain synchronized statuses.
+- **Fast Link Interface (FLI)**:
+  - **Purpose**: FLI is used to enable efficient and timely data synchronization across nodes, crucial for post-settlement fraud detection and maintaining data integrity.
+
+## 4. Fault Tolerance and High Availability
+- **Multi-Region and Multi-AZ Design**:
+  - The design leverages a multi-region setup with nodes spread across multiple AZs, providing resilience against localized AZ or even region-level failures.
+  - The use of two independent regions (East and West) further enhances the system’s ability to withstand catastrophic events, ensuring service continuity.
+- **ASG-Enabled Resilience**:
+  - ASGs provide automated node recovery, launching replacement nodes as needed to maintain the intended cluster capacity and health.
+  - This feature supports a self-healing infrastructure that ensures minimal downtime and maximizes the system’s fault tolerance.
+- **Robust Inter-Node Communication**:
+  - The combination of SCI and FLI interfaces supports robust inter-node communication for status synchronization and data consistency, keeping the distributed cluster fully cohesive.
+
+---
+
+### Summary
+The **IBM Safer Payments Cluster** in AWS GovCloud is architected to prioritize resilience, fault tolerance, and high availability. The use of a multi-region, multi-AZ deployment, combined with ASG-based automated recovery, provides a highly resilient infrastructure. The inclusion of SCI and FLI communication interfaces ensures that nodes remain synchronized and data consistency is maintained, supporting critical fraud prevention and data integrity across a distributed environment. This setup enables IBM Safer Payments to deliver a reliable, continuously available service in the face of localized outages or infrastructure failures.
