@@ -5,8 +5,12 @@ import org.springframework.stereotype.Controller;
 import reactor.core.publisher.Mono;
 
 @Controller
-class PongController {
+public class PongController {
 
+    /**
+     * Handles incoming "Ping" messages and responds with "Pong".
+     * The @MessageMapping annotation binds this method to the "ping" route.
+     */
     @MessageMapping("ping")
     public Mono<String> respondToPing(String message) {
         System.out.println("Received: " + message);
