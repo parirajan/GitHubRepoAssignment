@@ -1,0 +1,4 @@
+spring:
+  rsocket:
+    client:
+      transport: tcp
