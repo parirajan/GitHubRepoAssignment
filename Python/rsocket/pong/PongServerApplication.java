@@ -6,9 +6,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import reactor.core.publisher.Mono;
 import io.rsocket.Payload;
-import io.rsocket.RSocket;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
+import io.rsocket.core.RSocketConnector;
+import io.rsocket.util.DefaultPayload;
+import io.rsocket.RSocket;
 
 @SpringBootApplication
 public class PongServerApplication {
@@ -19,10 +21,13 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            RSocketServer.create((setup, sendingSocket) -> Mono.just(new PongResponder()))
-                         .bindNow(TcpServerTransport.create(7000));
+            // Create an RSocket server that listens on port 7000
+            RSocketServer.create((setupPayload, sendingSocket) ->
+                Mono.just(new PongResponder()))
+                .bind(TcpServerTransport.create(7000))
+                .block();
+
             System.out.println("RSocket server is running on port 7000...");
-            Thread.currentThread().join(); // Keep the server running
         };
     }
 
@@ -32,7 +37,7 @@ public class PongServerApplication {
         public Mono<Payload> requestResponse(Payload payload) {
             String receivedMessage = payload.getDataUtf8();
             System.out.println("Received: " + receivedMessage);
-            return Mono.just(io.rsocket.util.DefaultPayload.create("Pong"));
+            return Mono.just(DefaultPayload.create("Pong"));
         }
     }
 }
