@@ -34,6 +34,24 @@
         </dependency>
     </dependencies>
 
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-rsocket</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.rsocket</groupId>
+        <artifactId>rsocket-core</artifactId>
+        <version>1.1.1</version>
+    </dependency>
+    <dependency>
+        <groupId>io.rsocket</groupId>
+        <artifactId>rsocket-transport-netty</artifactId>
+        <version>1.1.1</version>
+    </dependency>
+</dependencies>
+
+
     <build>
         <plugins>
             <plugin>
