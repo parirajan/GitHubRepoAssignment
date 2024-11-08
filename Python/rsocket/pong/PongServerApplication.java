@@ -1,5 +1,6 @@
 package com.mycompany.pongservice;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -14,6 +15,10 @@ import io.rsocket.util.DefaultPayload;
 @SpringBootApplication
 public class PongServerApplication {
 
+    // Inject the port value from application.yml
+    @Value("${pong.server.port}")
+    private int port;
+
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
     }
@@ -27,9 +32,9 @@ public class PongServerApplication {
                 System.out.println("Received: " + receivedMessage);
                 return Mono.just(DefaultPayload.create("Pong"));
             }))
-            .bindNow(TcpServerTransport.create(7000));
+            .bindNow(TcpServerTransport.create(port)); // Use port from application.yml
 
-            System.out.println("RSocket server is running on port 7000...");
+            System.out.println("RSocket server is running on port " + port + "...");
             Thread.currentThread().join(); // Keep the server running
         };
     }
