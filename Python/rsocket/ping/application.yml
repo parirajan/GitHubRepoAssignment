@@ -1,4 +1,8 @@
 spring:
-  rsocket:
-    client:
-      transport: tcp
+  application:
+    name: pingclient
+
+ping:
+  server:
+    host: localhost
+    port: 7000
