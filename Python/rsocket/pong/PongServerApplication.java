@@ -15,9 +15,8 @@ import io.rsocket.util.DefaultPayload;
 @SpringBootApplication
 public class PongServerApplication {
 
-    // Load the port value from application.yml
     @Value("${pong.server.port}")
-    private int port;
+    private int rSocketPort;
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
@@ -26,37 +25,32 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            // Create the RSocket server using SocketAcceptor and the port from application.yml
             RSocketServer.create(SocketAcceptor.forRequestResponse(this::handleRequest))
-                         .bindNow(TcpServerTransport.create(port));
+                    .bindNow(TcpServerTransport.create(rSocketPort));
 
-            System.out.println("RSocket server is running on port " + port + "...");
+            System.out.println("RSocket server is running on port " + rSocketPort + "...");
             Thread.currentThread().join(); // Keep the server running
         };
     }
 
-    /**
-     * Method to handle request-response interactions.
-     */
     private Mono<Payload> handleRequest(Payload payload) {
-        try {
-            String receivedMessage = payload.getDataUtf8();
+        return Mono.just(payload)
+                .map(p -> {
+                    String receivedMessage = p.getDataUtf8();
+                    System.out.println("Received: " + receivedMessage);
 
-            // Check if the message is "Ping"
-            if ("Ping".equalsIgnoreCase(receivedMessage)) {
-                System.out.println("Received valid Ping request");
-                return Mono.just(DefaultPayload.create("Pong"));
-            } else {
-                // Handle unrecognized requests gracefully
-                System.out.println("Received unknown message: " + receivedMessage);
-                return Mono.just(DefaultPayload.create("Error: Unrecognized request"));
-            }
-        } catch (Exception e) {
-            // Log any errors that occur during request processing
-            System.err.println("Error while handling request: " + e.getMessage());
-
-            // Respond with a generic error message to the client
-            return Mono.just(DefaultPayload.create("Error: Internal server error"));
-        }
+                    // Respond with "pong" followed by the rest of the message after "ping"
+                    if (receivedMessage.toLowerCase().startsWith("ping")) {
+                        String responseMessage = "pong" + receivedMessage.substring(4);
+                        System.out.println("Responding with: " + responseMessage);
+                        return DefaultPayload.create(responseMessage);
+                    } else {
+                        return DefaultPayload.create("Error: Unrecognized request");
+                    }
+                })
+                .onErrorResume(e -> {
+                    System.err.println("Error occurred: " + e.getMessage());
+                    return Mono.just(DefaultPayload.create("Error: Internal server error"));
+                });
     }
 }
