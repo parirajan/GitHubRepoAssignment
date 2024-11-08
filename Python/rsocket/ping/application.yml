@@ -6,3 +6,5 @@ ping:
   server:
     host: localhost
     port: 7000
+  client:
+    node-id: node1
