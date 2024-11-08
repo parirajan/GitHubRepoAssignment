@@ -26,13 +26,13 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            // Create the RSocket server using a SocketAcceptor
+            // Create the RSocket server using the injected port value
             RSocketServer.create(SocketAcceptor.forRequestResponse(payload -> {
                 String receivedMessage = payload.getDataUtf8();
                 System.out.println("Received: " + receivedMessage);
                 return Mono.just(DefaultPayload.create("Pong"));
             }))
-            .bindNow(TcpServerTransport.create(port)); // Use port from application.yml
+            .bindNow(TcpServerTransport.create(port));
 
             System.out.println("RSocket server is running on port " + port + "...");
             Thread.currentThread().join(); // Keep the server running
