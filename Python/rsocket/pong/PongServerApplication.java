@@ -40,11 +40,13 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        // Respond with the exact same message received
-        return Flux.just(receivedMessage)
-                   .map(response -> {
-                       System.out.println("Responding with: " + response);
-                       return DefaultPayload.create(response);
-                   });
+        // Append the server ID to the received message
+        String responseMessage = receivedMessage + "-server-" + serverNodeId;
+
+        System.out.println("Responding with: " + responseMessage);
+
+        // Respond with the modified message
+        return Flux.just(responseMessage)
+                   .map(response -> DefaultPayload.create(response));
     }
 }
