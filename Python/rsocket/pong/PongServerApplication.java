@@ -42,17 +42,15 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        // Extract the thread ID from the incoming message
         String[] parts = receivedMessage.split("-");
         String threadId = parts.length >= 4 ? parts[3] : "unknown";
 
-        // Respond with "pong-node-thread" for each request
-        return Flux.interval(Duration.ofMillis(10)) // Respond every 10 milliseconds
+        // Generate a stream of responses
+        return Flux.interval(Duration.ofMillis(500)) // Stream a response every 500ms
                    .map(i -> {
-                       String responseMessage = "pong-" + nodeId + "-thread-" + threadId;
+                       String responseMessage = "pong-" + nodeId + "-thread-" + threadId + "-count-" + i;
                        System.out.println("Responding with: " + responseMessage);
                        return DefaultPayload.create(responseMessage);
-                   })
-                   .take(1); // Send only one response per request
+                   });
     }
 }
