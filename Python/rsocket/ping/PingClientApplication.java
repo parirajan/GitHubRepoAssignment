@@ -40,7 +40,7 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.pings-per-second:10}")
     private int pingsPerSecond;
 
-    @Value("${ping.client.payload-template:ping-node-$$\\{nodeId}-thread-$$\\{threadId}-count-$$\\{count}}")
+    @Value("${ping.client.payload-template:ping-node-{nodeId}-thread-{threadId}-count-{count}}")
     private String payloadTemplate;
 
     @Value("${ping.client.padding-size:150}")
@@ -59,11 +59,13 @@ class PingClient implements CommandLineRunner {
         AtomicInteger threadIdCounter = new AtomicInteger(1);
         long intervalMillis = 1000L / pingsPerSecond;
 
+        // Launch multiple threads to send streaming requests
         for (int i = 0; i < numThreads; i++) {
             int threadId = threadIdCounter.getAndIncrement();
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
+        // Keep the application running
         try {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
@@ -78,12 +80,12 @@ class PingClient implements CommandLineRunner {
             .flatMap(i -> {
                 String message = formatPayload(nodeId, threadId, count.getAndIncrement());
 
-                // Add variable-sized padding with a '-' after the count
+                // Add padding to the message
                 String paddedMessage = addExtraBytes(message + "-", paddingSize);
 
                 System.out.println("Sending message: " + paddedMessage);
 
-                // Send the message and expect the same message back
+                // Send the message and wait for the response
                 return requester.route("ping")
                         .data(paddedMessage)
                         .retrieveFlux(String.class)
@@ -93,19 +95,25 @@ class PingClient implements CommandLineRunner {
             .subscribe();
     }
 
+    /**
+     * Format the payload using the template and replace placeholders.
+     */
     private String formatPayload(String nodeId, int threadId, int count) {
         return payloadTemplate
-                .replace("$$\\{nodeId}", nodeId)
-                .replace("$$\\{threadId}", String.valueOf(threadId))
-                .replace("$$\\{count}", String.valueOf(count));
+                .replace("{nodeId}", nodeId)
+                .replace("{threadId}", String.valueOf(threadId))
+                .replace("{count}", String.valueOf(count));
     }
 
+    /**
+     * Add extra padding to the message with random characters.
+     */
     private String addExtraBytes(String message, int extraBytes) {
         StringBuilder builder = new StringBuilder(message);
         Random random = new Random();
 
         for (int i = 0; i < extraBytes; i++) {
-            // Add random ASCII characters to the message
+            // Append random lowercase letters to the message
             char randomChar = (char) (random.nextInt(26) + 'a');
             builder.append(randomChar);
         }
