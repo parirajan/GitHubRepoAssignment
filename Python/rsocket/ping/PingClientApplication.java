@@ -75,8 +75,8 @@ class PingClient implements CommandLineRunner {
             .flatMap(i -> {
                 String message = formatPayload(nodeId, threadId, count.getAndIncrement());
 
-                // Add extra 150 bytes of dummy data
-                String paddedMessage = addExtraBytes(message, 150);
+                // Add extra 150 bytes of dummy data with a '-' after the count
+                String paddedMessage = addExtraBytes(message + "-", 150);
 
                 System.out.println("Sending message: " + paddedMessage);
 
