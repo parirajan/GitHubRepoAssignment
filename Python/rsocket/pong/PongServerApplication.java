@@ -34,7 +34,7 @@ public class PongServerApplication {
                          .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server is running on port " + rSocketPort);
-            Thread.currentThread().join();
+            Thread.currentThread().join(); // Keep the server running
         };
     }
 
@@ -44,9 +44,12 @@ public class PongServerApplication {
 
         // Parse the incoming message: ping-nodeID-threadID-count
         String[] parts = receivedMessage.split("-");
-        String clientNodeId = parts.length >= 4 ? parts[1] : "unknown";
-        String threadId = parts.length >= 4 ? parts[2] : "unknown";
-        String count = parts.length >= 5 ? parts[4] : "0";
+        
+        String clientNodeId = parts.length > 1 ? parts[1] : "unknown";
+        String threadId = parts.length > 3 ? parts[2] : "unknown";
+        String count = parts.length > 4 ? parts[3] : "unknown";
+
+        System.out.println("Parsed - Node ID: " + clientNodeId + ", Thread ID: " + threadId + ", Count: " + count);
 
         // Respond with: pong-serverNodeID-clientNodeID-threadID-count
         return Flux.interval(Duration.ofMillis(100))
