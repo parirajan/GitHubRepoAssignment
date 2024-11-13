@@ -9,7 +9,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Mono;
 
-import java.util.Scanner;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
 public class PingClientApplication {
@@ -32,39 +35,42 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.node-id}")
     private String nodeId;
 
+    @Value("${ping.client.threads:5}") // Default to 5 threads if not set
+    private int numThreads;
+
     public PingClient(RSocketRequester.Builder requesterBuilder) {
         this.requesterBuilder = requesterBuilder;
     }
 
     @Override
     public void run(String... args) {
-        try (Scanner scanner = new Scanner(System.in)) {
-            RSocketRequester requester = requesterBuilder
-                    .dataMimeType(MimeTypeUtils.TEXT_PLAIN)
-                    .tcp(host, port);
+        RSocketRequester requester = requesterBuilder
+                .dataMimeType(MimeTypeUtils.TEXT_PLAIN)
+                .tcp(host, port);
 
-            while (true) {
-                // Automatically send a message using the node ID
-                String message = "ping-" + nodeId;
-                sendPing(requester, message);
-                Thread.sleep(2000);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        // Create a scheduled thread pool to send 100 pings per second
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(numThreads);
+
+        AtomicInteger threadIdCounter = new AtomicInteger(1);
+
+        for (int i = 0; i < numThreads; i++) {
+            int threadId = threadIdCounter.getAndIncrement();
+            scheduler.scheduleAtFixedRate(() -> sendPing(requester, threadId), 0, 10, TimeUnit.MILLISECONDS);
         }
     }
 
-    private void sendPing(RSocketRequester requester, String message) {
-        Mono<String> response = requester
-                .route("ping")
+    private void sendPing(RSocketRequester requester, int threadId) {
+        String message = "ping-" + nodeId + "-thread-" + threadId;
+        System.out.println("Sending message: " + message);
+
+        Mono<String> response = requester.route("ping")
                 .data(message)
                 .retrieveMono(String.class);
 
         response
                 .doOnError(e -> System.err.println("Client error: " + e.getMessage()))
-                .subscribe(
-                        responseMessage -> System.out.println("Received: " + responseMessage),
-                        error -> System.err.println("Subscription error: " + error.getMessage())
+                .subscribe(responseMessage ->
+                        System.out.println("Received response: " + responseMessage)
                 );
     }
 }
