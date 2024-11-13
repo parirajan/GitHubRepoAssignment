@@ -8,7 +8,6 @@ import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,7 +36,7 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.threads:5}")
     private int numThreads;
 
-    @Value("${ping.client.pings-per-second:10000}")
+    @Value("${ping.client.pings-per-second:10}")
     private int pingsPerSecond;
 
     public PingClient(RSocketRequester.Builder requesterBuilder) {
@@ -50,21 +49,12 @@ class PingClient implements CommandLineRunner {
                 .dataMimeType(MimeTypeUtils.TEXT_PLAIN)
                 .tcp(host, port);
 
-        // Calculate the interval between pings in nanoseconds
-        long intervalNanos = 1_000_000_000L / pingsPerSecond;
-
-        System.out.println("Sending " + pingsPerSecond + " pings per second across " + numThreads + " threads...");
-
         AtomicInteger threadIdCounter = new AtomicInteger(1);
 
-        // Create multiple threads based on the configured number of threads
+        // Create multiple threads to send streaming requests
         for (int i = 0; i < numThreads; i++) {
             int threadId = threadIdCounter.getAndIncrement();
-
-            // Use Flux to send pings at the specified rate
-            Flux.interval(Duration.ofNanos(intervalNanos))
-                    .flatMap(i1 -> sendPing(requester, threadId))
-                    .subscribe();
+            sendStreamingRequest(requester, threadId);
         }
 
         // Keep the application running
@@ -75,15 +65,17 @@ class PingClient implements CommandLineRunner {
         }
     }
 
-    private Mono<Void> sendPing(RSocketRequester requester, int threadId) {
+    private void sendStreamingRequest(RSocketRequester requester, int threadId) {
         String message = "ping-" + nodeId + "-thread-" + threadId;
-        System.out.println("Sending message: " + message);
+        System.out.println("Sending streaming request: " + message);
 
-        return requester.route("ping")
-                .data(message)
-                .retrieveMono(String.class)
+        Flux<String> responseStream = requester.route("ping")
+                                               .data(message)
+                                               .retrieveFlux(String.class);
+
+        responseStream
                 .doOnNext(response -> System.out.println("Received response: " + response))
                 .doOnError(e -> System.err.println("Client error: " + e.getMessage()))
-                .then();
+                .subscribe();
     }
 }
