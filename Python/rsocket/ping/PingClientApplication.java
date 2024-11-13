@@ -39,7 +39,8 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.pings-per-second:10}")
     private int pingsPerSecond;
 
-    @Value("${ping.client.payload-template:ping-${nodeId}-thread-${threadId}-count-${count}}")
+    // Payload template with placeholders, defined in application.yml
+    @Value("${ping.client.payload-template:ping-$$\\{nodeId}-thread-$$\\{threadId}-count-$$\\{count}}")
     private String payloadTemplate;
 
     public PingClient(RSocketRequester.Builder requesterBuilder) {
@@ -55,11 +56,13 @@ class PingClient implements CommandLineRunner {
         AtomicInteger threadIdCounter = new AtomicInteger(1);
         long intervalMillis = 1000L / pingsPerSecond;
 
+        // Start multiple threads to send streaming requests
         for (int i = 0; i < numThreads; i++) {
             int threadId = threadIdCounter.getAndIncrement();
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
+        // Keep the application running
         try {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
@@ -67,6 +70,9 @@ class PingClient implements CommandLineRunner {
         }
     }
 
+    /**
+     * Sends a streaming request at the configured rate.
+     */
     private void sendStreamingRequest(RSocketRequester requester, int threadId, long intervalMillis) {
         AtomicInteger count = new AtomicInteger(1);
 
@@ -83,10 +89,13 @@ class PingClient implements CommandLineRunner {
             .subscribe();
     }
 
+    /**
+     * Formats the payload using the template defined in application.yml.
+     */
     private String formatPayload(String nodeId, int threadId, int count) {
         return payloadTemplate
-                .replace("${nodeId}", nodeId)
-                .replace("${threadId}", String.valueOf(threadId))
-                .replace("${count}", String.valueOf(count));
+                .replace("$$\\{nodeId}", nodeId)
+                .replace("$$\\{threadId}", String.valueOf(threadId))
+                .replace("$$\\{count}", String.valueOf(count));
     }
 }
