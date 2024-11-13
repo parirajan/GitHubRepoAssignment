@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
@@ -35,6 +36,9 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.threads:5}")
     private int numThreads;
 
+    @Value("${ping.client.pings-per-second:10}")
+    private int pingsPerSecond;
+
     public PingClient(RSocketRequester.Builder requesterBuilder) {
         this.requesterBuilder = requesterBuilder;
     }
@@ -47,10 +51,15 @@ class PingClient implements CommandLineRunner {
 
         AtomicInteger threadIdCounter = new AtomicInteger(1);
 
+        // Calculate the interval between pings
+        long intervalMillis = 1000L / pingsPerSecond;
+
+        System.out.println("Sending " + pingsPerSecond + " pings per second per thread with " + numThreads + " threads...");
+
         // Create multiple threads to send streaming requests
         for (int i = 0; i < numThreads; i++) {
             int threadId = threadIdCounter.getAndIncrement();
-            sendStreamingRequest(requester, threadId);
+            sendPingsAtFixedRate(requester, threadId, intervalMillis);
         }
 
         // Keep the application running
@@ -61,17 +70,20 @@ class PingClient implements CommandLineRunner {
         }
     }
 
-    private void sendStreamingRequest(RSocketRequester requester, int threadId) {
-        String message = "ping-" + nodeId + "-thread-" + threadId;
-        System.out.println("Sending streaming request: " + message);
-
-        Flux<String> responseStream = requester.route("ping")
-                                               .data(message)
-                                               .retrieveFlux(String.class);
-
-        responseStream
-                .doOnNext(response -> System.out.println("Received response: " + response))
-                .doOnError(e -> System.err.println("Client error: " + e.getMessage()))
+    private void sendPingsAtFixedRate(RSocketRequester requester, int threadId, long intervalMillis) {
+        Flux.interval(Duration.ofMillis(intervalMillis))
+                .flatMap(i -> sendPing(requester, threadId))
                 .subscribe();
+    }
+
+    private Flux<String> sendPing(RSocketRequester requester, int threadId) {
+        String message = "ping-" + nodeId + "-thread-" + threadId;
+        System.out.println("Sending message: " + message);
+
+        return requester.route("ping")
+                .data(message)
+                .retrieveFlux(String.class)
+                .doOnNext(response -> System.out.println("Received response: " + response))
+                .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
     }
 }
