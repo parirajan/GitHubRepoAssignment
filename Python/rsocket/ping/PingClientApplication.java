@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
-import reactor.core.publisher.Mono;
+import reactor.core.publisher.Flux;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -35,7 +35,7 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.node-id}")
     private String nodeId;
 
-    @Value("${ping.client.threads:5}") // Default to 5 threads if not set
+    @Value("${ping.client.threads:5}")
     private int numThreads;
 
     public PingClient(RSocketRequester.Builder requesterBuilder) {
@@ -48,7 +48,6 @@ class PingClient implements CommandLineRunner {
                 .dataMimeType(MimeTypeUtils.TEXT_PLAIN)
                 .tcp(host, port);
 
-        // Create a scheduled thread pool to send 100 pings per second
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(numThreads);
 
         AtomicInteger threadIdCounter = new AtomicInteger(1);
@@ -63,11 +62,11 @@ class PingClient implements CommandLineRunner {
         String message = "ping-" + nodeId + "-thread-" + threadId;
         System.out.println("Sending message: " + message);
 
-        Mono<String> response = requester.route("ping")
+        Flux<String> responseStream = requester.route("ping")
                 .data(message)
-                .retrieveMono(String.class);
+                .retrieveFlux(String.class);
 
-        response
+        responseStream
                 .doOnError(e -> System.err.println("Client error: " + e.getMessage()))
                 .subscribe(responseMessage ->
                         System.out.println("Received response: " + responseMessage)
