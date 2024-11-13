@@ -66,6 +66,13 @@ class PingClient implements CommandLineRunner {
                     .flatMap(i1 -> sendPing(requester, threadId))
                     .subscribe();
         }
+
+        // Keep the application running
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private Mono<Void> sendPing(RSocketRequester requester, int threadId) {
