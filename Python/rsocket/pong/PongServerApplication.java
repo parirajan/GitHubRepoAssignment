@@ -5,18 +5,23 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import reactor.core.publisher.Mono;
+import reactor.core.publisher.Flux;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 
+import java.time.Duration;
+
 @SpringBootApplication
 public class PongServerApplication {
 
     @Value("${pong.server.port}")
     private int rSocketPort;
+
+    @Value("${pong.server.node-id}")
+    private String nodeId;
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
@@ -25,32 +30,29 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            RSocketServer.create(SocketAcceptor.forRequestResponse(this::handleRequest))
-                    .bindNow(TcpServerTransport.create(rSocketPort));
+            RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
+                         .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server is running on port " + rSocketPort + "...");
             Thread.currentThread().join(); // Keep the server running
         };
     }
 
-    private Mono<Payload> handleRequest(Payload payload) {
-        return Mono.just(payload)
-                .map(p -> {
-                    String receivedMessage = p.getDataUtf8();
-                    System.out.println("Received: " + receivedMessage);
+    private Flux<Payload> handleRequestStream(Payload payload) {
+        String receivedMessage = payload.getDataUtf8();
+        System.out.println("Received: " + receivedMessage);
 
-                    // Respond with "pong" followed by the rest of the message after "ping"
-                    if (receivedMessage.toLowerCase().startsWith("ping")) {
-                        String responseMessage = "pong" + receivedMessage.substring(4);
-                        System.out.println("Responding with: " + responseMessage);
-                        return DefaultPayload.create(responseMessage);
-                    } else {
-                        return DefaultPayload.create("Error: Unrecognized request");
-                    }
-                })
-                .onErrorResume(e -> {
-                    System.err.println("Error occurred: " + e.getMessage());
-                    return Mono.just(DefaultPayload.create("Error: Internal server error"));
-                });
+        // Extract the thread ID from the incoming message
+        String[] parts = receivedMessage.split("-");
+        String threadId = parts.length >= 4 ? parts[3] : "unknown";
+
+        // Respond with "pong-node-thread" for each request
+        return Flux.interval(Duration.ofMillis(10)) // Respond every 10 milliseconds
+                   .map(i -> {
+                       String responseMessage = "pong-" + nodeId + "-thread-" + threadId;
+                       System.out.println("Responding with: " + responseMessage);
+                       return DefaultPayload.create(responseMessage);
+                   })
+                   .take(1); // Send only one response per request
     }
 }
