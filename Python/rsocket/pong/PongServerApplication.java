@@ -42,12 +42,19 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        // Generate a continuous stream of responses
-        return Flux.interval(Duration.ofMillis(100)) // Send a response every 100ms
+        // Parse the incoming message: ping-nodeID-threadID-count
+        String[] parts = receivedMessage.split("-");
+        String clientNodeId = parts.length >= 4 ? parts[1] : "unknown";
+        String threadId = parts.length >= 4 ? parts[2] : "unknown";
+        String count = parts.length >= 4 ? parts[3] : "0";
+
+        // Respond with: pong-serverNodeID-clientNodeID-threadID-count
+        return Flux.interval(Duration.ofMillis(100))
                    .map(i -> {
-                       String responseMessage = "pong-" + nodeId + "-count-" + i;
+                       String responseMessage = "pong-" + nodeId + "-" + clientNodeId + "-" + threadId + "-" + count;
                        System.out.println("Responding with: " + responseMessage);
                        return DefaultPayload.create(responseMessage);
-                   });
+                   })
+                   .take(1);
     }
 }
