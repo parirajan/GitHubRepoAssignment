@@ -30,6 +30,7 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
+            // Set up the RSocket server with requestStream handler
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                          .bindNow(TcpServerTransport.create(rSocketPort));
 
@@ -42,13 +43,10 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        String[] parts = receivedMessage.split("-");
-        String threadId = parts.length >= 4 ? parts[3] : "unknown";
-
-        // Generate a stream of responses
-        return Flux.interval(Duration.ofMillis(500)) // Stream a response every 500ms
+        // Generate a stream of responses for each incoming request
+        return Flux.interval(Duration.ofMillis(100)) // Respond every 100 ms
                    .map(i -> {
-                       String responseMessage = "pong-" + nodeId + "-thread-" + threadId + "-count-" + i;
+                       String responseMessage = "pong-" + nodeId + "-count-" + i;
                        System.out.println("Responding with: " + responseMessage);
                        return DefaultPayload.create(responseMessage);
                    });
