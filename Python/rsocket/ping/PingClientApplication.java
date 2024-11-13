@@ -8,7 +8,6 @@ import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -40,6 +39,9 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.pings-per-second:10}")
     private int pingsPerSecond;
 
+    @Value("${ping.client.payload-template:ping-${nodeId}-thread-${threadId}-count-${count}}")
+    private String payloadTemplate;
+
     public PingClient(RSocketRequester.Builder requesterBuilder) {
         this.requesterBuilder = requesterBuilder;
     }
@@ -70,7 +72,7 @@ class PingClient implements CommandLineRunner {
 
         Flux.interval(Duration.ofMillis(intervalMillis))
             .flatMap(i -> {
-                String message = "ping-" + nodeId + "-" + threadId + "-" + count.getAndIncrement();
+                String message = formatPayload(nodeId, threadId, count.getAndIncrement());
                 System.out.println("Sending message: " + message);
                 return requester.route("ping")
                         .data(message)
@@ -79,5 +81,12 @@ class PingClient implements CommandLineRunner {
                         .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
             })
             .subscribe();
+    }
+
+    private String formatPayload(String nodeId, int threadId, int count) {
+        return payloadTemplate
+                .replace("${nodeId}", nodeId)
+                .replace("${threadId}", String.valueOf(threadId))
+                .replace("${count}", String.valueOf(count));
     }
 }
