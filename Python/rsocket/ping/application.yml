@@ -9,3 +9,4 @@ ping:
   client:
     node-id: node1
     threads: 5
+    pings-per-second: 10000
