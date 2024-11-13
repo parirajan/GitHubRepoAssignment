@@ -8,3 +8,4 @@ ping:
     port: 7000
   client:
     node-id: node1
+    threads: 5
