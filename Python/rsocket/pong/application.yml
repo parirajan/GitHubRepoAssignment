@@ -5,3 +5,8 @@ spring:
 pong:
   server:
     port: 7000
+    node-id: server1
+
+server:
+  reactive:
+    max-threads: 200
