@@ -8,6 +8,7 @@ import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -51,10 +52,15 @@ class PingClient implements CommandLineRunner {
 
         AtomicInteger threadIdCounter = new AtomicInteger(1);
 
-        // Create multiple threads to send streaming requests
+        // Calculate the interval between pings per thread
+        long intervalMillis = 1000L / pingsPerSecond;
+
+        System.out.println("Sending " + pingsPerSecond + " pings per second per thread across " + numThreads + " threads...");
+
+        // Create multiple threads to send pings
         for (int i = 0; i < numThreads; i++) {
             int threadId = threadIdCounter.getAndIncrement();
-            sendStreamingRequest(requester, threadId);
+            sendPingsAtFixedRate(requester, threadId, intervalMillis);
         }
 
         // Keep the application running
@@ -65,17 +71,21 @@ class PingClient implements CommandLineRunner {
         }
     }
 
-    private void sendStreamingRequest(RSocketRequester requester, int threadId) {
+    private void sendPingsAtFixedRate(RSocketRequester requester, int threadId, long intervalMillis) {
+        Flux.interval(Duration.ofMillis(intervalMillis))
+                .flatMap(i -> sendPing(requester, threadId))
+                .subscribe();
+    }
+
+    private Mono<Void> sendPing(RSocketRequester requester, int threadId) {
         String message = "ping-" + nodeId + "-thread-" + threadId;
-        System.out.println("Sending streaming request: " + message);
+        System.out.println("Sending message: " + message);
 
-        Flux<String> responseStream = requester.route("ping")
-                                               .data(message)
-                                               .retrieveFlux(String.class);
-
-        responseStream
+        return requester.route("ping")
+                .data(message)
+                .retrieveMono(String.class)
                 .doOnNext(response -> System.out.println("Received response: " + response))
                 .doOnError(e -> System.err.println("Client error: " + e.getMessage()))
-                .subscribe();
+                .then();
     }
 }
