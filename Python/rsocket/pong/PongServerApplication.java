@@ -12,8 +12,6 @@ import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 
-import java.time.Duration;
-
 @SpringBootApplication
 public class PongServerApplication {
 
@@ -21,7 +19,7 @@ public class PongServerApplication {
     private int rSocketPort;
 
     @Value("${pong.server.node-id}")
-    private String nodeId;
+    private String serverNodeId;
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
@@ -42,22 +40,11 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        // Parse the incoming message: ping-nodeID-threadID-count
-        String[] parts = receivedMessage.split("-");
-        
-        String clientNodeId = parts.length > 1 ? parts[1] : "unknown";
-        String threadId = parts.length > 3 ? parts[2] : "unknown";
-        String count = parts.length > 4 ? parts[3] : "unknown";
-
-        System.out.println("Parsed - Node ID: " + clientNodeId + ", Thread ID: " + threadId + ", Count: " + count);
-
-        // Respond with: pong-serverNodeID-clientNodeID-threadID-count
-        return Flux.interval(Duration.ofMillis(100))
-                   .map(i -> {
-                       String responseMessage = "pong-" + nodeId + "-" + clientNodeId + "-" + threadId + "-" + count;
-                       System.out.println("Responding with: " + responseMessage);
-                       return DefaultPayload.create(responseMessage);
-                   })
-                   .take(1);
+        // Respond with the exact same message received
+        return Flux.just(receivedMessage)
+                   .map(response -> {
+                       System.out.println("Responding with: " + response);
+                       return DefaultPayload.create(response);
+                   });
     }
 }
