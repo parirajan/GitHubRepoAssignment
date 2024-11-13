@@ -8,10 +8,9 @@ import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
@@ -38,6 +37,9 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.threads:5}")
     private int numThreads;
 
+    @Value("${ping.client.pings-per-second:10000}")
+    private int pingsPerSecond;
+
     public PingClient(RSocketRequester.Builder requesterBuilder) {
         this.requesterBuilder = requesterBuilder;
     }
@@ -48,28 +50,33 @@ class PingClient implements CommandLineRunner {
                 .dataMimeType(MimeTypeUtils.TEXT_PLAIN)
                 .tcp(host, port);
 
-        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(numThreads);
+        // Calculate the interval between pings in nanoseconds
+        long intervalNanos = 1_000_000_000L / pingsPerSecond;
+
+        System.out.println("Sending " + pingsPerSecond + " pings per second across " + numThreads + " threads...");
 
         AtomicInteger threadIdCounter = new AtomicInteger(1);
 
+        // Create multiple threads based on the configured number of threads
         for (int i = 0; i < numThreads; i++) {
             int threadId = threadIdCounter.getAndIncrement();
-            scheduler.scheduleAtFixedRate(() -> sendPing(requester, threadId), 0, 10, TimeUnit.MILLISECONDS);
+
+            // Use Flux to send pings at the specified rate
+            Flux.interval(Duration.ofNanos(intervalNanos))
+                    .flatMap(i1 -> sendPing(requester, threadId))
+                    .subscribe();
         }
     }
 
-    private void sendPing(RSocketRequester requester, int threadId) {
+    private Mono<Void> sendPing(RSocketRequester requester, int threadId) {
         String message = "ping-" + nodeId + "-thread-" + threadId;
         System.out.println("Sending message: " + message);
 
-        Flux<String> responseStream = requester.route("ping")
+        return requester.route("ping")
                 .data(message)
-                .retrieveFlux(String.class);
-
-        responseStream
+                .retrieveMono(String.class)
+                .doOnNext(response -> System.out.println("Received response: " + response))
                 .doOnError(e -> System.err.println("Client error: " + e.getMessage()))
-                .subscribe(responseMessage ->
-                        System.out.println("Received response: " + responseMessage)
-                );
+                .then();
     }
 }
