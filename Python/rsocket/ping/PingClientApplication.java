@@ -11,6 +11,7 @@ import reactor.core.publisher.Flux;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Random;
 
 @SpringBootApplication
 public class PingClientApplication {
@@ -39,8 +40,7 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.pings-per-second:10}")
     private int pingsPerSecond;
 
-    // Payload template with placeholders, defined in application.yml
-    @Value("${ping.client.payload-template:ping-$$\\{nodeId}-thread-$$\\{threadId}-count-$$\\{count}}")
+    @Value("${ping.client.payload-template:ping-node-$$\\{nodeId}-thread-$$\\{threadId}-count-$$\\{count}}")
     private String payloadTemplate;
 
     public PingClient(RSocketRequester.Builder requesterBuilder) {
@@ -56,13 +56,11 @@ class PingClient implements CommandLineRunner {
         AtomicInteger threadIdCounter = new AtomicInteger(1);
         long intervalMillis = 1000L / pingsPerSecond;
 
-        // Start multiple threads to send streaming requests
         for (int i = 0; i < numThreads; i++) {
             int threadId = threadIdCounter.getAndIncrement();
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
-        // Keep the application running
         try {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
@@ -70,18 +68,21 @@ class PingClient implements CommandLineRunner {
         }
     }
 
-    /**
-     * Sends a streaming request at the configured rate.
-     */
     private void sendStreamingRequest(RSocketRequester requester, int threadId, long intervalMillis) {
         AtomicInteger count = new AtomicInteger(1);
 
         Flux.interval(Duration.ofMillis(intervalMillis))
             .flatMap(i -> {
                 String message = formatPayload(nodeId, threadId, count.getAndIncrement());
-                System.out.println("Sending message: " + message);
+
+                // Add extra 150 bytes of dummy data
+                String paddedMessage = addExtraBytes(message, 150);
+
+                System.out.println("Sending message: " + paddedMessage);
+
+                // Send the message and expect the same message back
                 return requester.route("ping")
-                        .data(message)
+                        .data(paddedMessage)
                         .retrieveFlux(String.class)
                         .doOnNext(response -> System.out.println("Received response: " + response))
                         .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
@@ -89,13 +90,23 @@ class PingClient implements CommandLineRunner {
             .subscribe();
     }
 
-    /**
-     * Formats the payload using the template defined in application.yml.
-     */
     private String formatPayload(String nodeId, int threadId, int count) {
         return payloadTemplate
                 .replace("$$\\{nodeId}", nodeId)
                 .replace("$$\\{threadId}", String.valueOf(threadId))
                 .replace("$$\\{count}", String.valueOf(count));
+    }
+
+    private String addExtraBytes(String message, int extraBytes) {
+        StringBuilder builder = new StringBuilder(message);
+        Random random = new Random();
+
+        for (int i = 0; i < extraBytes; i++) {
+            // Add random ASCII characters to the message
+            char randomChar = (char) (random.nextInt(26) + 'a');
+            builder.append(randomChar);
+        }
+
+        return builder.toString();
     }
 }
