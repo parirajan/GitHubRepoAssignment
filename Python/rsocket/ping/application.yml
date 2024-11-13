@@ -10,4 +10,4 @@ ping:
     node-id: node1
     threads: 5
     pings-per-second: 10
-    payload-template: ping-${nodeId}-thread-${threadId}-count-${count}
+    payload-template: ping-$$\{nodeId}-thread-$$\{threadId}-count-$$\{count}
