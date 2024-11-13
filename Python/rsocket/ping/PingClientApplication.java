@@ -43,6 +43,9 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.payload-template:ping-node-$$\\{nodeId}-thread-$$\\{threadId}-count-$$\\{count}}")
     private String payloadTemplate;
 
+    @Value("${ping.client.padding-size:150}")
+    private int paddingSize;
+
     public PingClient(RSocketRequester.Builder requesterBuilder) {
         this.requesterBuilder = requesterBuilder;
     }
@@ -75,8 +78,8 @@ class PingClient implements CommandLineRunner {
             .flatMap(i -> {
                 String message = formatPayload(nodeId, threadId, count.getAndIncrement());
 
-                // Add extra 150 bytes of dummy data with a '-' after the count
-                String paddedMessage = addExtraBytes(message + "-", 150);
+                // Add variable-sized padding with a '-' after the count
+                String paddedMessage = addExtraBytes(message + "-", paddingSize);
 
                 System.out.println("Sending message: " + paddedMessage);
 
