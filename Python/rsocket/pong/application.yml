@@ -9,4 +9,7 @@ pong:
 
 server:
   reactive:
-    max-threads: 200
+    max-threads: 200  # Controls the maximum number of Netty worker threads
+    netty:
+      boss-threads: 4     # Controls the number of threads for accepting connections
+      worker-threads: 200 # Controls the number of threads for handling requests
