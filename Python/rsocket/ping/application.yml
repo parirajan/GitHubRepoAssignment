@@ -7,7 +7,8 @@ ping:
     host: localhost
     port: 7000
   client:
-    node-id: node1
+    node-id: 1
     threads: 5
     pings-per-second: 10
-    payload-template: ping-$$\{nodeId}-thread-$$\{threadId}-count-$$\{count}
+    payload-template: ping-node-$$\\{nodeId}-thread-$$\\{threadId}-count-$$\\{count}
+    padding-size: 150  # Variable padding size
