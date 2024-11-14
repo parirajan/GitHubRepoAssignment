@@ -12,6 +12,8 @@ import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 
+import java.util.zip.CRC32;
+
 @SpringBootApplication
 public class PongServerApplication {
 
@@ -32,7 +34,7 @@ public class PongServerApplication {
                          .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server is running on port " + rSocketPort);
-            Thread.currentThread().join(); // Keep the server running
+            Thread.currentThread().join();
         };
     }
 
@@ -40,13 +42,21 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        // Append the server ID to the received message
-        String responseMessage = receivedMessage + "-server-" + serverNodeId;
+        String[] parts = receivedMessage.split("-");
+        String paddingData = parts[parts.length - 2];
+        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+
+        // Calculate checksum on the server side
+        long serverChecksum = calculateChecksum(paddingData);
+        String responseMessage = receivedMessage.replace("ping", "pong") + "-server-" + serverNodeId + "-" + serverChecksum;
 
         System.out.println("Responding with: " + responseMessage);
+        return Flux.just(responseMessage).map(DefaultPayload::create);
+    }
 
-        // Respond with the modified message
-        return Flux.just(responseMessage)
-                   .map(response -> DefaultPayload.create(response));
+    private long calculateChecksum(String data) {
+        CRC32 crc = new CRC32();
+        crc.update(data.getBytes());
+        return crc.getValue();
     }
 }
