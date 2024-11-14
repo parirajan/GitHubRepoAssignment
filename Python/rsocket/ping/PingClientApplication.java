@@ -66,8 +66,8 @@ class PingClient implements CommandLineRunner {
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
-        // Keep the application running
         try {
+            // Keep the main thread running
             Thread.currentThread().join();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -100,15 +100,7 @@ class PingClient implements CommandLineRunner {
 
                             // Extract server response and checksum
                             String[] parts = response.split("-");
-                            StringBuilder serverResponse = new StringBuilder();
-
-                            // Reconstruct the server response without the checksum part
-                            for (int j = 0; j < parts.length - 1; j++) {
-                                serverResponse.append(parts[j]);
-                                if (j < parts.length - 2) {
-                                    serverResponse.append("-");
-                                }
-                            }
+                            String serverResponse = reconstructResponse(parts);
 
                             long serverChecksum = Long.parseLong(parts[parts.length - 1]);
 
@@ -116,7 +108,7 @@ class PingClient implements CommandLineRunner {
                             boolean isChecksumValid = (clientChecksum == serverChecksum);
 
                             // Log RTT and validation
-                            System.out.println(serverResponse.toString());
+                            System.out.println(serverResponse);
                             System.out.println("RTT: " + rtt + "ms, Validation: " + isChecksumValid +
                                     ", Thread: " + threadId + ", Count: " + count.get() +
                                     ", Src Cksum: " + clientChecksum + ", Target Cksum: " + serverChecksum);
@@ -146,5 +138,17 @@ class PingClient implements CommandLineRunner {
         CRC32 crc = new CRC32();
         crc.update(data.getBytes());
         return crc.getValue();
+    }
+
+    private String reconstructResponse(String[] parts) {
+        // Reconstruct the response excluding the last part (checksum)
+        StringBuilder responseBuilder = new StringBuilder();
+        for (int j = 0; j < parts.length - 1; j++) {
+            responseBuilder.append(parts[j]);
+            if (j < parts.length - 2) {
+                responseBuilder.append("-");
+            }
+        }
+        return responseBuilder.toString();
     }
 }
