@@ -10,7 +10,9 @@ import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.CRC32;
 import java.util.Random;
 
 @SpringBootApplication
@@ -59,13 +61,11 @@ class PingClient implements CommandLineRunner {
         AtomicInteger threadIdCounter = new AtomicInteger(1);
         long intervalMillis = 1000L / pingsPerSecond;
 
-        // Launch multiple threads to send streaming requests
         for (int i = 0; i < numThreads; i++) {
             int threadId = threadIdCounter.getAndIncrement();
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
-        // Keep the application running
         try {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
@@ -80,24 +80,36 @@ class PingClient implements CommandLineRunner {
             .flatMap(i -> {
                 String message = formatPayload(nodeId, threadId, count.getAndIncrement());
 
-                // Add padding to the message
-                String paddedMessage = addExtraBytes(message + "-", paddingSize);
+                // Add padding and calculate checksum
+                String paddingData = generatePadding(paddingSize);
+                long checksumClient = calculateChecksum(paddingData);
+                String paddedMessage = message + "-" + paddingData;
+
+                // Capture start time for RTT
+                Instant startTime = Instant.now();
 
                 System.out.println("Sending message: " + paddedMessage);
 
-                // Send the message and wait for the response
                 return requester.route("ping")
-                        .data(paddedMessage)
+                        .data(paddedMessage + "-" + checksumClient)
                         .retrieveFlux(String.class)
-                        .doOnNext(response -> System.out.println("Received response: " + response))
+                        .doOnNext(response -> {
+                            // Calculate RTT
+                            long rtt = Duration.between(startTime, Instant.now()).toMillis();
+
+                            // Extract server checksum from response
+                            String[] parts = response.split("-");
+                            long checksumServer = Long.parseLong(parts[parts.length - 1]);
+
+                            // Validate checksum
+                            boolean isChecksumValid = (checksumClient == checksumServer);
+                            System.out.println("RTT: " + rtt + " ms, Checksum Valid: " + isChecksumValid);
+                        })
                         .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
             })
             .subscribe();
     }
 
-    /**
-     * Format the payload using the template and replace placeholders.
-     */
     private String formatPayload(String nodeId, int threadId, int count) {
         return payloadTemplate
                 .replace("{nodeId}", nodeId)
@@ -105,19 +117,18 @@ class PingClient implements CommandLineRunner {
                 .replace("{count}", String.valueOf(count));
     }
 
-    /**
-     * Add extra padding to the message with random characters.
-     */
-    private String addExtraBytes(String message, int extraBytes) {
-        StringBuilder builder = new StringBuilder(message);
+    private String generatePadding(int size) {
+        StringBuilder builder = new StringBuilder();
         Random random = new Random();
-
-        for (int i = 0; i < extraBytes; i++) {
-            // Append random lowercase letters to the message
-            char randomChar = (char) (random.nextInt(26) + 'a');
-            builder.append(randomChar);
+        for (int i = 0; i < size; i++) {
+            builder.append((char) (random.nextInt(26) + 'a'));
         }
-
         return builder.toString();
+    }
+
+    private long calculateChecksum(String data) {
+        CRC32 crc = new CRC32();
+        crc.update(data.getBytes());
+        return crc.getValue();
     }
 }
