@@ -66,6 +66,7 @@ class PingClient implements CommandLineRunner {
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
+        // Keep the application running
         try {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
@@ -99,14 +100,23 @@ class PingClient implements CommandLineRunner {
 
                             // Extract server response and checksum
                             String[] parts = response.split("-");
-                            String serverResponse = String.join("-", parts, 0, parts.length - 1);
+                            StringBuilder serverResponse = new StringBuilder();
+
+                            // Reconstruct the server response without the checksum part
+                            for (int j = 0; j < parts.length - 1; j++) {
+                                serverResponse.append(parts[j]);
+                                if (j < parts.length - 2) {
+                                    serverResponse.append("-");
+                                }
+                            }
+
                             long serverChecksum = Long.parseLong(parts[parts.length - 1]);
 
                             // Validate checksum
                             boolean isChecksumValid = (clientChecksum == serverChecksum);
 
                             // Log RTT and validation
-                            System.out.println(serverResponse);
+                            System.out.println(serverResponse.toString());
                             System.out.println("RTT: " + rtt + "ms, Validation: " + isChecksumValid +
                                     ", Thread: " + threadId + ", Count: " + count.get() +
                                     ", Src Cksum: " + clientChecksum + ", Target Cksum: " + serverChecksum);
