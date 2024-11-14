@@ -82,8 +82,8 @@ class PingClient implements CommandLineRunner {
 
                 // Add padding and calculate checksum
                 String paddingData = generatePadding(paddingSize);
-                long checksumClient = calculateChecksum(paddingData);
-                String paddedMessage = message + "-" + paddingData;
+                long clientChecksum = calculateChecksum(paddingData);
+                String paddedMessage = message + "-" + paddingData + "-" + clientChecksum;
 
                 // Capture start time for RTT
                 Instant startTime = Instant.now();
@@ -91,19 +91,25 @@ class PingClient implements CommandLineRunner {
                 System.out.println("Sending message: " + paddedMessage);
 
                 return requester.route("ping")
-                        .data(paddedMessage + "-" + checksumClient)
+                        .data(paddedMessage)
                         .retrieveFlux(String.class)
                         .doOnNext(response -> {
                             // Calculate RTT
                             long rtt = Duration.between(startTime, Instant.now()).toMillis();
 
-                            // Extract server checksum from response
+                            // Extract server response and checksum
                             String[] parts = response.split("-");
-                            long checksumServer = Long.parseLong(parts[parts.length - 1]);
+                            String serverResponse = String.join("-", parts, 0, parts.length - 1);
+                            long serverChecksum = Long.parseLong(parts[parts.length - 1]);
 
                             // Validate checksum
-                            boolean isChecksumValid = (checksumClient == checksumServer);
-                            System.out.println("RTT: " + rtt + " ms, Checksum Valid: " + isChecksumValid);
+                            boolean isChecksumValid = (clientChecksum == serverChecksum);
+
+                            // Log RTT and validation
+                            System.out.println(serverResponse);
+                            System.out.println("RTT: " + rtt + "ms, Validation: " + isChecksumValid +
+                                    ", Thread: " + threadId + ", Count: " + count.get() +
+                                    ", Src Cksum: " + clientChecksum + ", Target Cksum: " + serverChecksum);
                         })
                         .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
             })
