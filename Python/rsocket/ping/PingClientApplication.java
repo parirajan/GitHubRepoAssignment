@@ -103,7 +103,7 @@ private void sendStreamingRequest(RSocketRequester requester, int threadId, long
                         String serverResponse = reconstructResponse(parts);
 
                         // Extract the server node ID from the response
-                        String serverNodeId = parts[parts.length - 3]; // Assuming server node ID is third from the end
+                        String serverNodeId = extractNodeId(parts);
                         long serverChecksum = Long.parseLong(parts[parts.length - 1]);
 
                         // Validate checksum
@@ -119,6 +119,16 @@ private void sendStreamingRequest(RSocketRequester requester, int threadId, long
                     .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
         })
         .subscribe();
+}
+
+// Method to extract the Node ID from the response
+private String extractNodeId(String[] parts) {
+    for (String part : parts) {
+        if (part.startsWith("nodeId:")) {
+            return part.substring("nodeId:".length());
+        }
+    }
+    return "unknown";
 }
 
     private String formatPayload(String nodeId, int threadId, int count) {
