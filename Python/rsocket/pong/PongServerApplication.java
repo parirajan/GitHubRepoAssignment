@@ -38,25 +38,29 @@ public class PongServerApplication {
         };
     }
 
-    private Flux<Payload> handleRequestStream(Payload payload) {
-        String receivedMessage = payload.getDataUtf8();
-        System.out.println("Received: " + receivedMessage);
+private Flux<Payload> handleRequestStream(Payload payload) {
+    String receivedMessage = payload.getDataUtf8();
+    System.out.println("Received: " + receivedMessage);
 
-        String[] parts = receivedMessage.split("-");
-        String paddingData = parts[parts.length - 2];
-        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+    String[] parts = receivedMessage.split("-");
+    String paddingData = parts[parts.length - 2];
+    long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
-        // Calculate checksum on the server side
-        long serverChecksum = calculateChecksum(paddingData);
-        String responseMessage = receivedMessage.replace("ping", "pong") + "-server-" + serverNodeId + "-" + serverChecksum;
+    // Calculate checksum on the server side
+    long serverChecksum = calculateChecksum(paddingData);
 
-        System.out.println("Responding with: " + responseMessage);
-        return Flux.just(responseMessage).map(DefaultPayload::create);
-    }
+    // Construct the response message with explicit Node ID
+    String responseMessage = receivedMessage.replace("ping", "pong") +
+                             "-nodeId:" + serverNodeId + "-server-" + serverChecksum;
 
-    private long calculateChecksum(String data) {
-        CRC32 crc = new CRC32();
-        crc.update(data.getBytes());
-        return crc.getValue();
-    }
+    System.out.println("Responding with: " + responseMessage);
+    return Flux.just(responseMessage).map(DefaultPayload::create);
+}
+
+private long calculateChecksum(String data) {
+    CRC32 crc = new CRC32();
+    crc.update(data.getBytes());
+    return crc.getValue();
+}
+
 }
