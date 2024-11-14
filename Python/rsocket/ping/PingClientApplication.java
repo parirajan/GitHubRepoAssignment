@@ -74,49 +74,52 @@ class PingClient implements CommandLineRunner {
         }
     }
 
-    private void sendStreamingRequest(RSocketRequester requester, int threadId, long intervalMillis) {
-        AtomicInteger count = new AtomicInteger(1);
+private void sendStreamingRequest(RSocketRequester requester, int threadId, long intervalMillis) {
+    AtomicInteger count = new AtomicInteger(1);
 
-        Flux.interval(Duration.ofMillis(intervalMillis))
-            .flatMap(i -> {
-                String message = formatPayload(nodeId, threadId, count.getAndIncrement());
+    Flux.interval(Duration.ofMillis(intervalMillis))
+        .flatMap(i -> {
+            String message = formatPayload(nodeId, threadId, count.getAndIncrement());
 
-                // Add padding and calculate checksum
-                String paddingData = generatePadding(paddingSize);
-                long clientChecksum = calculateChecksum(paddingData);
-                String paddedMessage = message + "-" + paddingData + "-" + clientChecksum;
+            // Add padding and calculate checksum
+            String paddingData = generatePadding(paddingSize);
+            long clientChecksum = calculateChecksum(paddingData);
+            String paddedMessage = message + "-" + paddingData + "-" + clientChecksum;
 
-                // Capture start time for RTT
-                Instant startTime = Instant.now();
+            // Capture start time for RTT
+            Instant startTime = Instant.now();
 
-                System.out.println("Sending message: " + paddedMessage);
+            System.out.println("Sending message: " + paddedMessage);
 
-                return requester.route("ping")
-                        .data(paddedMessage)
-                        .retrieveFlux(String.class)
-                        .doOnNext(response -> {
-                            // Calculate RTT
-                            long rtt = Duration.between(startTime, Instant.now()).toMillis();
+            return requester.route("ping")
+                    .data(paddedMessage)
+                    .retrieveFlux(String.class)
+                    .doOnNext(response -> {
+                        // Calculate RTT
+                        long rtt = Duration.between(startTime, Instant.now()).toMillis();
 
-                            // Extract server response and checksum
-                            String[] parts = response.split("-");
-                            String serverResponse = reconstructResponse(parts);
+                        // Extract server response and checksum
+                        String[] parts = response.split("-");
+                        String serverResponse = reconstructResponse(parts);
 
-                            long serverChecksum = Long.parseLong(parts[parts.length - 1]);
+                        // Extract the server node ID from the response
+                        String serverNodeId = parts[parts.length - 3]; // Assuming server node ID is third from the end
+                        long serverChecksum = Long.parseLong(parts[parts.length - 1]);
 
-                            // Validate checksum
-                            boolean isChecksumValid = (clientChecksum == serverChecksum);
+                        // Validate checksum
+                        boolean isChecksumValid = (clientChecksum == serverChecksum);
 
-                            // Log RTT and validation
-                            System.out.println(serverResponse);
-                            System.out.println("RTT: " + rtt + "ms, Validation: " + isChecksumValid +
-                                    ", Thread: " + threadId + ", Count: " + count.get() +
-                                    ", Src Cksum: " + clientChecksum + ", Target Cksum: " + serverChecksum);
-                        })
-                        .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
-            })
-            .subscribe();
-    }
+                        // Log RTT and validation along with Node ID
+                        System.out.println(serverResponse);
+                        System.out.println("RTT: " + rtt + "ms, Validation: " + isChecksumValid +
+                                ", Node ID: " + serverNodeId + ", Thread: " + threadId +
+                                ", Count: " + count.get() + ", Src Cksum: " + clientChecksum +
+                                ", Target Cksum: " + serverChecksum);
+                    })
+                    .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
+        })
+        .subscribe();
+}
 
     private String formatPayload(String nodeId, int threadId, int count) {
         return payloadTemplate
