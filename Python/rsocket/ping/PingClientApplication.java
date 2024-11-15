@@ -108,6 +108,17 @@ public class PingClientApplication {
         }
     }
 
+    private int getRecentCount(List<Instant> timestamps) {
+        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
+        lock.lock();
+        try {
+            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
+            return timestamps.size();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     @RestController
     class ClientSummaryController {
         @GetMapping("/summary")
