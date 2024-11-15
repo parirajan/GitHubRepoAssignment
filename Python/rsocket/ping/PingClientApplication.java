@@ -4,7 +4,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.boot.web.context.WebServerApplicationContext;
+import org.springframework.boot.web.server.WebServer;
+import org.springframework.boot.actuate.autoconfigure.web.server.ManagementPortType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
@@ -78,7 +82,7 @@ public class PingClientApplication {
         long checksum = calculateChecksum(padding);
         String message = "ping-node-" + clientNodeId + "-thread-" + Thread.currentThread().getId() + "-count-" +
                 System.currentTimeMillis() + "-" + padding + "-" + checksum;
-        
+
         addTimestamp(pingsTimestamps);
         return rSocket.requestStream(DefaultPayload.create(message))
                 .doOnNext(response -> {
@@ -121,6 +125,15 @@ public class PingClientApplication {
         } finally {
             lock.unlock();
         }
+    }
+
+    @Bean
+    public CommandLineRunner verifyManagementPort(ApplicationContext context) {
+        return args -> {
+            WebServerApplicationContext webServerAppContext = (WebServerApplicationContext) context;
+            WebServer managementWebServer = webServerAppContext.getWebServer();
+            System.out.println("Ping Client - Management server is running on port: " + managementWebServer.getPort());
+        };
     }
 
     @RestController
