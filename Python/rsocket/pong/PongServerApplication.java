@@ -48,11 +48,12 @@ public class PongServerApplication {
                     .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server is running on port " + rSocketPort);
-            startSummaryLogging();
+            startSummaryLogging(); // Call the method to log summaries
             Thread.currentThread().join();
         };
     }
 
+    // Method to handle incoming RSocket streams
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
@@ -72,6 +73,20 @@ public class PongServerApplication {
                     addTimestamp(pongsTimestamps);
                     return DefaultPayload.create(responseMessage);
                 });
+    }
+
+    // Method to periodically log the summary
+    private void startSummaryLogging() {
+        Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
+                .doOnNext(i -> {
+                    int pingsReceived = getRecentCount(pingsTimestamps);
+                    int pongsSent = getRecentCount(pongsTimestamps);
+                    System.out.println("Summary (Last " + summaryIntervalSeconds + "s) - " +
+                            "Server Node ID: " + serverNodeId +
+                            " | Pings Received: " + pingsReceived +
+                            ", Pongs Sent: " + pongsSent);
+                })
+                .subscribe();
     }
 
     private long calculateChecksum(String data) {
