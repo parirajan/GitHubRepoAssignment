@@ -2,15 +2,31 @@ spring:
   application:
     name: pongserver
 
+# RSocket server configuration
 pong:
   server:
-    port: 7000
+    port: 7000            # RSocket server port
     node-id: 1
-  summary-interval-seconds: 60
+  summary-interval-seconds: 60  # Summary logging interval
 
+# Reactive and Netty configuration to handle high concurrency
+server:
+  reactive:
+    max-threads: 500      # Maximum threads for the reactive server
+    netty:
+      boss-threads: 4     # Threads responsible for accepting new connections
+      worker-threads: 400 # Threads responsible for processing requests
+
+# Reactive Scheduler tuning
+spring:
+  reactor:
+    task:
+      thread-cap: 500     # Maximum number of threads for the boundedElastic scheduler
+
+# Management and health endpoints configuration
 management:
   server:
-    port: 8000
+    port: 8000            # Separate port for health and summary endpoints
   endpoints:
     web:
       exposure:
@@ -19,3 +35,10 @@ management:
 health:
   server:
     node-id: 1
+
+# Logging configuration (optional)
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+    reactor: DEBUG
