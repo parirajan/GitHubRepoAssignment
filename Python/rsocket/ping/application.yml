@@ -2,9 +2,17 @@ spring:
   application:
     name: pingclient
 
+server:
+  port: 8082            # Main application port
+  reactive:
+    max-threads: 500      # Maximum threads for the reactive server
+    netty:
+      boss-threads: 4     # Threads responsible for accepting new connections
+      worker-threads: 400 # Threads responsible for processing requests
+
 ping:
   server:
-    host: localhost   # Update this to your server IP if needed
+    host: localhost
     port: 7000
   client:
     node-id: 1
@@ -13,15 +21,10 @@ ping:
   summary-interval-seconds: 60
 
 management:
-  server:
-    port: 8082            # Separate port for client summary endpoint
   endpoints:
     web:
       exposure:
         include: summary
-
 logging:
   level:
     root: INFO
-    org.springframework.web: DEBUG
-    reactor: DEBUG
