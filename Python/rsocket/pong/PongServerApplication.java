@@ -19,7 +19,7 @@ import java.util.zip.CRC32;
 @SpringBootApplication
 public class PongServerApplication {
 
-    @Value("${pong.server.port}")
+    @Value("${server.port}")
     private int rSocketPort;
 
     @Value("${pong.server.node-id}")
@@ -41,19 +41,22 @@ public class PongServerApplication {
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                     .bindNow(TcpServerTransport.create(rSocketPort));
 
-            // Log summary of pings received and pongs sent every configured interval
-            Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
-                    .subscribe(i -> {
-                        int pingsReceived = pingsReceivedCounter.getAndSet(0);
-                        int pongsSent = pongsSentCounter.getAndSet(0);
-                        System.out.println("Server Node ID: " + serverNodeId +
-                                " | Pings Received: " + pingsReceived +
-                                ", Pongs Sent: " + pongsSent);
-                    });
-
-            System.out.println("RSocket server running on port " + rSocketPort);
+            System.out.println("RSocket server is running on port " + rSocketPort);
+            startSummaryLogging();
             Thread.currentThread().join();
         };
+    }
+
+    private void startSummaryLogging() {
+        Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
+                .doOnNext(i -> {
+                    int pingsReceived = pingsReceivedCounter.get();
+                    int pongsSent = pongsSentCounter.get();
+                    System.out.println("Server Node ID: " + serverNodeId +
+                            " | Pings Received: " + pingsReceived +
+                            ", Pongs Sent: " + pongsSent);
+                })
+                .subscribe();
     }
 
     private Flux<Payload> handleRequestStream(Payload payload) {
@@ -62,35 +65,12 @@ public class PongServerApplication {
 
         pingsReceivedCounter.incrementAndGet();
 
-        // Extract client info from the message
         String[] parts = receivedMessage.split("-");
-        if (parts.length < 6) {
-            System.err.println("Invalid message format");
-            return Flux.empty();
-        }
-
-        String clientNodeId = parts[1];
-        String clientThreadId = parts[3];
-        String clientCount = parts[5];
         String padding = parts[parts.length - 2];
-        long clientChecksum;
+        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
-        try {
-            clientChecksum = Long.parseLong(parts[parts.length - 1]);
-        } catch (NumberFormatException e) {
-            System.err.println("Invalid checksum in message");
-            return Flux.empty();
-        }
-
-        System.out.println("Client Node ID: " + clientNodeId + 
-                ", Thread ID: " + clientThreadId + 
-                ", Count: " + clientCount + 
-                ", Client Checksum: " + clientChecksum);
-
-        // Calculate the server-side checksum for the received padding
         long serverChecksum = calculateChecksum(padding);
 
-        // Construct the response message
         String responseMessage = receivedMessage.replace("ping", "pong") +
                 "-nodeId:" + serverNodeId + "-" + serverChecksum;
 
@@ -99,7 +79,6 @@ public class PongServerApplication {
         return Flux.just(DefaultPayload.create(responseMessage));
     }
 
-    // Method to calculate the checksum using CRC32
     private long calculateChecksum(String data) {
         CRC32 crc = new CRC32();
         crc.update(data.getBytes());
