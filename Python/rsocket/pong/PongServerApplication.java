@@ -53,20 +53,6 @@ public class PongServerApplication {
         };
     }
 
-    private void startSummaryLogging() {
-        // Log summary at regular intervals
-        Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
-                .doOnNext(i -> {
-                    int pingsReceived = getRecentCount(pingsTimestamps);
-                    int pongsSent = getRecentCount(pongsTimestamps);
-                    System.out.println("Summary (Last " + summaryIntervalSeconds + "s) - " +
-                            "Server Node ID: " + serverNodeId +
-                            " | Pings Received: " + pingsReceived +
-                            ", Pongs Sent: " + pongsSent);
-                })
-                .subscribe();
-    }
-
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
@@ -79,12 +65,13 @@ public class PongServerApplication {
 
         long serverChecksum = calculateChecksum(padding);
 
-        String responseMessage = receivedMessage.replace("ping", "pong") +
-                "-nodeId:" + serverNodeId + "-" + serverChecksum;
-
-        addTimestamp(pongsTimestamps);
-
-        return Flux.just(DefaultPayload.create(responseMessage));
+        return Flux.interval(Duration.ofMillis(100))
+                .map(i -> {
+                    String responseMessage = receivedMessage.replace("ping", "pong") +
+                            "-nodeId:" + serverNodeId + "-" + serverChecksum;
+                    addTimestamp(pongsTimestamps);
+                    return DefaultPayload.create(responseMessage);
+                });
     }
 
     private long calculateChecksum(String data) {
@@ -116,22 +103,19 @@ public class PongServerApplication {
     @RestController
     class HealthCheckController {
 
-        @Value("${health.server.node-id}")
-        private String healthServerNodeId;
-
         @GetMapping("/summary")
         public String getSummary() {
             int pingsReceived = getRecentCount(pingsTimestamps);
             int pongsSent = getRecentCount(pongsTimestamps);
             return "Summary (Last " + summaryIntervalSeconds + "s) - " +
-                    "Server Node ID: " + healthServerNodeId +
+                    "Server Node ID: " + serverNodeId +
                     " | Pings Received: " + pingsReceived +
                     ", Pongs Sent: " + pongsSent;
         }
 
         @GetMapping("/health")
         public String getHealthStatus() {
-            return "Health Status: OK | Server Node ID: " + healthServerNodeId;
+            return "Health Status: OK | Server Node ID: " + serverNodeId;
         }
     }
 }
