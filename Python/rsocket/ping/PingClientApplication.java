@@ -8,6 +8,7 @@ import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -63,13 +64,22 @@ class PingClient implements CommandLineRunner {
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
-        // Log summary of pings sent and pongs received based on the configured interval
+        // Log summary of pings sent and pongs received every configured interval
         Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
-                .subscribe(i -> {
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnNext(i -> {
                     int pingsSent = pingsSentCounter.getAndSet(0);
                     int pongsReceived = pongsReceivedCounter.getAndSet(0);
                     System.out.println("Client Summary - Pings Sent: " + pingsSent + ", Pongs Received: " + pongsReceived);
-                });
+                })
+                .subscribe();
+
+        // Keep the main thread alive to prevent the application from exiting
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void sendStreamingRequest(RSocketRequester requester, int threadId, long intervalMillis) {
@@ -89,6 +99,7 @@ class PingClient implements CommandLineRunner {
                             })
                             .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
                 })
+                .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
     }
 }
