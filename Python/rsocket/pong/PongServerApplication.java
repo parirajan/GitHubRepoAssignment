@@ -102,6 +102,7 @@ public class PongServerApplication {
 
     @RestController
     class HealthCheckController {
+    
         @GetMapping("/summary")
         public String getSummary() {
             int pingsReceived = getRecentCount(pingsTimestamps);
@@ -111,10 +112,11 @@ public class PongServerApplication {
                     " | Pings Received: " + pingsReceived +
                     ", Pongs Sent: " + pongsSent;
         }
-
+    
         @GetMapping("/health")
         public String getHealthStatus() {
             return "Health Status: OK | Server Node ID: " + serverNodeId;
         }
     }
+
 }
