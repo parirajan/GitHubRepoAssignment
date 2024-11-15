@@ -1,20 +1,17 @@
 spring:
   application:
     name: pongserver
-  server:
-    port: 7000
-    reactive:
-      max-threads: 200
-      netty:
-        boss-threads: 4
-        worker-threads: 200
 
 pong:
   server:
+    port: 7000         # RSocket server port
     node-id: 1
   summary-interval-seconds: 60
 
 health:
   server:
-    port: 8000
+    port: 8000         # Health check endpoint port
     node-id: 1
+
+server:
+  port: ${pong.server.port}  # This is for the main RSocket server
