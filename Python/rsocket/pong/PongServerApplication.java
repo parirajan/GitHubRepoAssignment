@@ -4,10 +4,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.boot.web.context.WebServerApplicationContext;
-import org.springframework.boot.web.server.WebServer;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
@@ -17,7 +13,6 @@ import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedList;
 import java.util.List;
@@ -29,9 +24,6 @@ public class PongServerApplication {
 
     @Value("${pong.server.port}")
     private int rSocketPort;
-
-    @Value("${management.server.port}")
-    private int managementPort;
 
     @Value("${pong.server.node-id}")
     private String serverNodeId;
@@ -52,7 +44,6 @@ public class PongServerApplication {
         return args -> {
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                     .bindNow(TcpServerTransport.create(rSocketPort));
-
             System.out.println("RSocket server is running on port " + rSocketPort);
             Thread.currentThread().join();
         };
@@ -60,13 +51,25 @@ public class PongServerApplication {
 
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
-        System.out.println("Received: " + receivedMessage);
-        addTimestamp(pingsTimestamps);
+        System.out.println("Received Ping: " + receivedMessage);
 
-        String responseMessage = receivedMessage.replace("ping", "pong");
+        String[] parts = receivedMessage.split("-");
+        String padding = parts[parts.length - 2];
+        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+
+        long serverChecksum = calculateChecksum(padding);
+        String responseMessage = receivedMessage.replace("ping", "pong") +
+                "-server-" + serverNodeId + "-checksum-" + serverChecksum;
+
+        System.out.println("Sending Pong: " + responseMessage);
         addTimestamp(pongsTimestamps);
-
         return Flux.just(DefaultPayload.create(responseMessage));
+    }
+
+    private long calculateChecksum(String data) {
+        CRC32 crc = new CRC32();
+        crc.update(data.getBytes());
+        return crc.getValue();
     }
 
     private void addTimestamp(List<Instant> timestamps) {
@@ -89,20 +92,8 @@ public class PongServerApplication {
         }
     }
 
-    @Bean
-    public CommandLineRunner verifyManagementPort(ApplicationContext context) {
-        return args -> {
-            WebServerApplicationContext webServerAppContext = (WebServerApplicationContext) context;
-            WebServer managementWebServer = webServerAppContext.getWebServer();
-            if (managementWebServer != null) {
-                System.out.println("Pong Server - Management server is running on port: " + managementWebServer.getPort());
-            }
-        };
-    }
-
     @RestController
     class HealthCheckController {
-    
         @GetMapping("/summary")
         public String getSummary() {
             int pingsReceived = getRecentCount(pingsTimestamps);
@@ -112,11 +103,10 @@ public class PongServerApplication {
                     " | Pings Received: " + pingsReceived +
                     ", Pongs Sent: " + pongsSent;
         }
-    
+
         @GetMapping("/health")
         public String getHealthStatus() {
             return "Health Status: OK | Server Node ID: " + serverNodeId;
         }
     }
-
 }
