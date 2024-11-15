@@ -2,16 +2,21 @@ spring:
   application:
     name: pongserver
 
+# Port for the RSocket server
 pong:
   server:
-    port: 7000         # RSocket server port
+    port: 7000        # Use a unique port for RSocket
     node-id: 1
   summary-interval-seconds: 60
 
+# Port for the health check HTTP endpoint
+management:
+  server:
+    port: 8000        # Health check endpoint on a different port
+  endpoints:
+    web:
+      exposure:
+        include: health
 health:
   server:
-    port: 8000         # Health check endpoint port
     node-id: 1
-
-server:
-  port: ${pong.server.port}  # This is for the main RSocket server
