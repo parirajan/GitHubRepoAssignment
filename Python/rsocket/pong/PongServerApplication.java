@@ -30,8 +30,13 @@ public class PongServerApplication {
     @Value("${pong.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
-    public static final AtomicInteger pingsReceivedCounter = new AtomicInteger(0);
-    public static final AtomicInteger pongsSentCounter = new AtomicInteger(0);
+    // Track total counts
+    private static final AtomicInteger totalPingsReceivedCounter = new AtomicInteger(0);
+    private static final AtomicInteger totalPongsSentCounter = new AtomicInteger(0);
+
+    // Track counts for the current interval
+    private final AtomicInteger intervalPingsReceivedCounter = new AtomicInteger(0);
+    private final AtomicInteger intervalPongsSentCounter = new AtomicInteger(0);
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
@@ -40,7 +45,6 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            // Start the RSocket server on the specified port
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                     .bindNow(TcpServerTransport.create(rSocketPort));
 
@@ -53,9 +57,10 @@ public class PongServerApplication {
     private void startSummaryLogging() {
         Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                 .doOnNext(i -> {
-                    int pingsReceived = pingsReceivedCounter.get();
-                    int pongsSent = pongsSentCounter.get();
-                    System.out.println("Server Node ID: " + serverNodeId +
+                    int pingsReceived = intervalPingsReceivedCounter.getAndSet(0);
+                    int pongsSent = intervalPongsSentCounter.getAndSet(0);
+                    System.out.println("Summary (Last " + summaryIntervalSeconds + "s) - " +
+                            "Server Node ID: " + serverNodeId +
                             " | Pings Received: " + pingsReceived +
                             ", Pongs Sent: " + pongsSent);
                 })
@@ -66,7 +71,8 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        pingsReceivedCounter.incrementAndGet();
+        totalPingsReceivedCounter.incrementAndGet();
+        intervalPingsReceivedCounter.incrementAndGet();
 
         String[] parts = receivedMessage.split("-");
         String padding = parts[parts.length - 2];
@@ -77,7 +83,8 @@ public class PongServerApplication {
         String responseMessage = receivedMessage.replace("ping", "pong") +
                 "-nodeId:" + serverNodeId + "-" + serverChecksum;
 
-        pongsSentCounter.incrementAndGet();
+        totalPongsSentCounter.incrementAndGet();
+        intervalPongsSentCounter.incrementAndGet();
 
         return Flux.just(DefaultPayload.create(responseMessage));
     }
@@ -96,11 +103,21 @@ public class PongServerApplication {
 
         @GetMapping("/health")
         public String getHealthStatus() {
-            int pingsReceived = pingsReceivedCounter.get();
-            int pongsSent = pongsSentCounter.get();
+            int totalPingsReceived = totalPingsReceivedCounter.get();
+            int totalPongsSent = totalPongsSentCounter.get();
             return "Health Status: OK | Server Node ID: " + healthServerNodeId +
-                    " | Pings Received: " + pingsReceived +
-                    ", Pongs Sent: " + pongsSent;
+                    " | Total Pings Received: " + totalPingsReceived +
+                    ", Total Pongs Sent: " + totalPongsSent;
+        }
+
+        @GetMapping("/summary")
+        public String getSummary() {
+            int intervalPingsReceived = intervalPingsReceivedCounter.get();
+            int intervalPongsSent = intervalPongsSentCounter.get();
+            return "Summary (Last " + summaryIntervalSeconds + "s) - " +
+                    "Server Node ID: " + healthServerNodeId +
+                    " | Pings Received: " + intervalPingsReceived +
+                    ", Pongs Sent: " + intervalPongsSent;
         }
     }
 }
