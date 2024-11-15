@@ -1,15 +1,14 @@
 spring:
   application:
-    name: pongservice
-
-pong:
+    name: pongserver
   server:
     port: 7000
-    node-id: server1
-
-server:
-  reactive:
-    max-threads: 200
-    netty:
-      boss-threads: 4
-      worker-threads: 200
+    reactive:
+      max-threads: 200
+      netty:
+        boss-threads: 4
+        worker-threads: 200
+pong:
+  server:
+    node-id: 1  # Unique node ID for this server instance
+  summary-interval-seconds: 60
