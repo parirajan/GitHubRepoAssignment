@@ -1,7 +1,6 @@
 spring:
   application:
     name: pingclient
-
 ping:
   server:
     host: localhost
@@ -10,5 +9,4 @@ ping:
     node-id: 1
     threads: 5
     pings-per-second: 10
-    payload-template: ping-node-$$\\{nodeId}-thread-$$\\{threadId}-count-$$\\{count}
-    padding-size: 150  # Variable padding size
+    summary-interval-seconds: 60  # Change this value as needed (e.g., 1 for every second, 60 for every minute)
