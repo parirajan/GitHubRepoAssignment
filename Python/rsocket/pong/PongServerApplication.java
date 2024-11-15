@@ -5,6 +5,8 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
@@ -19,7 +21,7 @@ import java.util.zip.CRC32;
 @SpringBootApplication
 public class PongServerApplication {
 
-    @Value("${server.port}")
+    @Value("${pong.server.port}")
     private int rSocketPort;
 
     @Value("${pong.server.node-id}")
@@ -28,7 +30,6 @@ public class PongServerApplication {
     @Value("${pong.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
-    // Make counters public static so they can be accessed by the HealthCheckController
     public static final AtomicInteger pingsReceivedCounter = new AtomicInteger(0);
     public static final AtomicInteger pongsSentCounter = new AtomicInteger(0);
 
@@ -84,5 +85,22 @@ public class PongServerApplication {
         CRC32 crc = new CRC32();
         crc.update(data.getBytes());
         return crc.getValue();
+    }
+
+    // Health check controller embedded within the same application
+    @RestController
+    class HealthCheckController {
+
+        @Value("${health.server.node-id}")
+        private String healthServerNodeId;
+
+        @GetMapping("/health")
+        public String getHealthStatus() {
+            int pingsReceived = pingsReceivedCounter.get();
+            int pongsSent = pongsSentCounter.get();
+            return "Health Status: OK | Server Node ID: " + healthServerNodeId +
+                    " | Pings Received: " + pingsReceived +
+                    ", Pongs Sent: " + pongsSent;
+        }
     }
 }
