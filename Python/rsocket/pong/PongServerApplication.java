@@ -28,8 +28,9 @@ public class PongServerApplication {
     @Value("${pong.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
-    private final AtomicInteger pingsReceivedCounter = new AtomicInteger(0);
-    private final AtomicInteger pongsSentCounter = new AtomicInteger(0);
+    // Make counters public static so they can be accessed by the HealthCheckController
+    public static final AtomicInteger pingsReceivedCounter = new AtomicInteger(0);
+    public static final AtomicInteger pongsSentCounter = new AtomicInteger(0);
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
