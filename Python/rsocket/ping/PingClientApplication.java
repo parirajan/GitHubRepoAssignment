@@ -15,12 +15,12 @@ import io.rsocket.transport.netty.client.TcpClientTransport;
 import io.rsocket.Payload;
 import io.rsocket.util.DefaultPayload;
 
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.zip.CRC32;
 
 @SpringBootApplication
 public class PingClientApplication {
@@ -30,6 +30,9 @@ public class PingClientApplication {
 
     @Value("${ping.server.port}")
     private int serverPort;
+
+    @Value("${management.server.port}")
+    private int managementPort;
 
     @Value("${ping.client.node-id}")
     private String clientNodeId;
@@ -61,7 +64,6 @@ public class PingClientApplication {
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe();
 
-            // Keep the main thread alive
             Thread.currentThread().join();
         };
     }
@@ -104,7 +106,7 @@ public class PingClientApplication {
 
     @RestController
     class ClientSummaryController {
-    
+
         @GetMapping("/summary")
         public String getClientSummary() {
             int pingsSent = getRecentCount(pingsTimestamps);
