@@ -60,14 +60,19 @@ public class PingClientApplication {
                         startSendingPings(rSocket);
                         startSummaryLogging();
                     })
+                    .doOnError(e -> System.err.println("Connection failed: " + e.getMessage()))
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe();
+
+            // Keep the main thread alive
+            Thread.currentThread().join();
         };
     }
 
     private void startSendingPings(io.rsocket.RSocket rSocket) {
         Flux.interval(Duration.ofMillis(1000 / (threads * pingsPerSecond)))
                 .flatMap(i -> sendPing(rSocket))
+                .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
     }
 
@@ -97,6 +102,7 @@ public class PingClientApplication {
                             " | Pings Sent: " + pingsSent +
                             ", Pongs Received: " + pongsReceived);
                 })
+                .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
     }
 
