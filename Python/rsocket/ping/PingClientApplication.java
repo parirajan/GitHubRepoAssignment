@@ -71,7 +71,7 @@ class PingClient implements CommandLineRunner {
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
-        // Log summary of pings sent and pongs received every configured interval
+        // Log summary every configured interval
         Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(i -> {
@@ -96,32 +96,31 @@ class PingClient implements CommandLineRunner {
         Flux.interval(Duration.ofMillis(intervalMillis))
                 .flatMap(i -> {
                     String message = "ping-node-" + nodeId + "-thread-" + threadId + "-count-" + count.getAndIncrement();
-
                     String padding = generatePadding(paddingSize);
                     long clientChecksum = calculateChecksum(padding);
                     String paddedMessage = message + "-" + padding + "-" + clientChecksum;
 
                     Instant startTime = Instant.now();
-
                     pingsSentCounter.incrementAndGet();
+
+                    System.out.println("Sending: " + paddedMessage);
 
                     return requester.route("ping")
                             .data(paddedMessage)
                             .retrieveFlux(String.class)
                             .doOnNext(response -> {
-                                pongsReceivedCounter.incrementAndGet();
-                                long rtt = Duration.between(startTime, Instant.now()).toMillis();
-
+                                Instant endTime = Instant.now();
+                                long rtt = Duration.between(startTime, endTime).toMillis();
                                 String[] parts = response.split("-");
                                 String serverNodeId = parts[parts.length - 2];
                                 long serverChecksum = Long.parseLong(parts[parts.length - 1]);
 
-                                // Validate checksum
                                 boolean isValid = clientChecksum == serverChecksum;
                                 if (!isValid) checksumFailures.incrementAndGet();
 
                                 System.out.println("Received from server " + serverNodeId +
                                         " | RTT: " + rtt + "ms, Checksum Valid: " + isValid);
+                                pongsReceivedCounter.incrementAndGet();
                             })
                             .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
                 })
