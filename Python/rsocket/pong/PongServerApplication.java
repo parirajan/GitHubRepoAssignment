@@ -15,7 +15,10 @@ import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.time.Instant;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.CRC32;
 
 @SpringBootApplication
@@ -30,13 +33,9 @@ public class PongServerApplication {
     @Value("${pong.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
-    // Track total counts
-    private static final AtomicInteger totalPingsReceivedCounter = new AtomicInteger(0);
-    private static final AtomicInteger totalPongsSentCounter = new AtomicInteger(0);
-
-    // Track counts for the current interval
-    private final AtomicInteger intervalPingsReceivedCounter = new AtomicInteger(0);
-    private final AtomicInteger intervalPongsSentCounter = new AtomicInteger(0);
+    private final List<Instant> pingsTimestamps = new LinkedList<>();
+    private final List<Instant> pongsTimestamps = new LinkedList<>();
+    private final ReentrantLock lock = new ReentrantLock();
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
@@ -55,10 +54,11 @@ public class PongServerApplication {
     }
 
     private void startSummaryLogging() {
+        // Log summary at regular intervals
         Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                 .doOnNext(i -> {
-                    int pingsReceived = intervalPingsReceivedCounter.getAndSet(0);
-                    int pongsSent = intervalPongsSentCounter.getAndSet(0);
+                    int pingsReceived = getRecentCount(pingsTimestamps);
+                    int pongsSent = getRecentCount(pongsTimestamps);
                     System.out.println("Summary (Last " + summaryIntervalSeconds + "s) - " +
                             "Server Node ID: " + serverNodeId +
                             " | Pings Received: " + pingsReceived +
@@ -71,8 +71,7 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        totalPingsReceivedCounter.incrementAndGet();
-        intervalPingsReceivedCounter.incrementAndGet();
+        addTimestamp(pingsTimestamps);
 
         String[] parts = receivedMessage.split("-");
         String padding = parts[parts.length - 2];
@@ -83,8 +82,7 @@ public class PongServerApplication {
         String responseMessage = receivedMessage.replace("ping", "pong") +
                 "-nodeId:" + serverNodeId + "-" + serverChecksum;
 
-        totalPongsSentCounter.incrementAndGet();
-        intervalPongsSentCounter.incrementAndGet();
+        addTimestamp(pongsTimestamps);
 
         return Flux.just(DefaultPayload.create(responseMessage));
     }
@@ -95,29 +93,45 @@ public class PongServerApplication {
         return crc.getValue();
     }
 
+    private void addTimestamp(List<Instant> timestamps) {
+        lock.lock();
+        try {
+            timestamps.add(Instant.now());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private int getRecentCount(List<Instant> timestamps) {
+        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
+        lock.lock();
+        try {
+            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
+            return timestamps.size();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     @RestController
     class HealthCheckController {
 
         @Value("${health.server.node-id}")
         private String healthServerNodeId;
 
-        @GetMapping("/health")
-        public String getHealthStatus() {
-            int totalPingsReceived = totalPingsReceivedCounter.get();
-            int totalPongsSent = totalPongsSentCounter.get();
-            return "Health Status: OK | Server Node ID: " + healthServerNodeId +
-                    " | Total Pings Received: " + totalPingsReceived +
-                    ", Total Pongs Sent: " + totalPongsSent;
-        }
-
         @GetMapping("/summary")
         public String getSummary() {
-            int intervalPingsReceived = intervalPingsReceivedCounter.get();
-            int intervalPongsSent = intervalPongsSentCounter.get();
+            int pingsReceived = getRecentCount(pingsTimestamps);
+            int pongsSent = getRecentCount(pongsTimestamps);
             return "Summary (Last " + summaryIntervalSeconds + "s) - " +
                     "Server Node ID: " + healthServerNodeId +
-                    " | Pings Received: " + intervalPingsReceived +
-                    ", Pongs Sent: " + intervalPongsSent;
+                    " | Pings Received: " + pingsReceived +
+                    ", Pongs Sent: " + pongsSent;
+        }
+
+        @GetMapping("/health")
+        public String getHealthStatus() {
+            return "Health Status: OK | Server Node ID: " + healthServerNodeId;
         }
     }
 }
