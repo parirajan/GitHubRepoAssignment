@@ -14,6 +14,7 @@ import io.rsocket.util.DefaultPayload;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.CRC32;
 
 @SpringBootApplication
 public class PongServerApplication {
@@ -55,24 +56,33 @@ public class PongServerApplication {
         };
     }
 
-private Flux<Payload> handleRequestStream(Payload payload) {
-    String receivedMessage = payload.getDataUtf8();
-    System.out.println("Received: " + receivedMessage);
+    private Flux<Payload> handleRequestStream(Payload payload) {
+        String receivedMessage = payload.getDataUtf8();
+        System.out.println("Received: " + receivedMessage);
 
-    pingsReceivedCounter.incrementAndGet();
+        pingsReceivedCounter.incrementAndGet();
 
-    String[] parts = receivedMessage.split("-");
-    String padding = parts[parts.length - 2];
-    long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+        // Extract padding and checksum from the received message
+        String[] parts = receivedMessage.split("-");
+        String padding = parts[parts.length - 2];
+        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
-    long serverChecksum = calculateChecksum(padding);
+        // Calculate server-side checksum for validation
+        long serverChecksum = calculateChecksum(padding);
 
-    String responseMessage = receivedMessage.replace("ping", "pong") +
-            "-nodeId:" + serverNodeId + "-" + serverChecksum;
+        // Construct the response message
+        String responseMessage = receivedMessage.replace("ping", "pong") +
+                                 "-nodeId:" + serverNodeId + "-" + serverChecksum;
 
-    pongsSentCounter.incrementAndGet();
+        pongsSentCounter.incrementAndGet();
 
-    return Flux.just(DefaultPayload.create(responseMessage));
-}
+        return Flux.just(DefaultPayload.create(responseMessage));
+    }
 
+    // Method to calculate the checksum
+    private long calculateChecksum(String data) {
+        CRC32 crc = new CRC32();
+        crc.update(data.getBytes());
+        return crc.getValue();
+    }
 }
