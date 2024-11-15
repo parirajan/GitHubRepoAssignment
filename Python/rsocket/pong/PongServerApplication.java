@@ -4,10 +4,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
-import reactor.netty.http.server.HttpServer;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.Payload;
@@ -40,6 +40,9 @@ public class PongServerApplication {
         SpringApplication.run(PongServerApplication.class, args);
     }
 
+    /**
+     * Starts the RSocket server on the specified port.
+     */
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
@@ -50,28 +53,38 @@ public class PongServerApplication {
         };
     }
 
+    /**
+     * Handles incoming requests and responds with a pong message.
+     */
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
-        System.out.println("Received: " + receivedMessage);
+        System.out.println("Received Ping: " + receivedMessage);
 
         String[] parts = receivedMessage.split("-");
         String padding = parts[parts.length - 2];
         long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
         long serverChecksum = calculateChecksum(padding);
-        String responseMessage = receivedMessage.replace("ping", "pong") + 
+        String responseMessage = receivedMessage.replace("ping", "pong") +
                 "-server-" + serverNodeId + "-checksum-" + serverChecksum;
 
+        System.out.println("Sending Pong: " + responseMessage);
         addTimestamp(pongsTimestamps);
         return Flux.just(DefaultPayload.create(responseMessage));
     }
 
+    /**
+     * Calculates the checksum of the given data.
+     */
     private long calculateChecksum(String data) {
         CRC32 crc = new CRC32();
         crc.update(data.getBytes());
         return crc.getValue();
     }
 
+    /**
+     * Adds a timestamp to the list.
+     */
     private void addTimestamp(List<Instant> timestamps) {
         lock.lock();
         try {
@@ -81,6 +94,9 @@ public class PongServerApplication {
         }
     }
 
+    /**
+     * Returns the count of timestamps within the summary interval.
+     */
     private int getRecentCount(List<Instant> timestamps) {
         Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
         lock.lock();
