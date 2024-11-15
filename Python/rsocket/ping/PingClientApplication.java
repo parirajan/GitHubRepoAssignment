@@ -11,7 +11,10 @@ import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.CRC32;
+import java.util.Random;
 
 @SpringBootApplication
 public class PingClientApplication {
@@ -40,11 +43,15 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.pings-per-second:10}")
     private int pingsPerSecond;
 
+    @Value("${ping.client.padding-size:150}")
+    private int paddingSize;
+
     @Value("${ping.client.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
     private final AtomicInteger pingsSentCounter = new AtomicInteger(0);
     private final AtomicInteger pongsReceivedCounter = new AtomicInteger(0);
+    private final AtomicInteger checksumFailures = new AtomicInteger(0);
 
     public PingClient(RSocketRequester.Builder requesterBuilder) {
         this.requesterBuilder = requesterBuilder;
@@ -70,11 +77,12 @@ class PingClient implements CommandLineRunner {
                 .doOnNext(i -> {
                     int pingsSent = pingsSentCounter.getAndSet(0);
                     int pongsReceived = pongsReceivedCounter.getAndSet(0);
-                    System.out.println("Client Summary - Pings Sent: " + pingsSent + ", Pongs Received: " + pongsReceived);
+                    int checksumErrors = checksumFailures.getAndSet(0);
+                    System.out.println("Client Summary - Pings Sent: " + pingsSent +
+                            ", Pongs Received: " + pongsReceived + ", Checksum Errors: " + checksumErrors);
                 })
                 .subscribe();
 
-        // Keep the main thread alive to prevent the application from exiting
         try {
             Thread.currentThread().join();
         } catch (InterruptedException e) {
@@ -88,18 +96,51 @@ class PingClient implements CommandLineRunner {
         Flux.interval(Duration.ofMillis(intervalMillis))
                 .flatMap(i -> {
                     String message = "ping-node-" + nodeId + "-thread-" + threadId + "-count-" + count.getAndIncrement();
+
+                    String padding = generatePadding(paddingSize);
+                    long clientChecksum = calculateChecksum(padding);
+                    String paddedMessage = message + "-" + padding + "-" + clientChecksum;
+
+                    Instant startTime = Instant.now();
+
                     pingsSentCounter.incrementAndGet();
 
                     return requester.route("ping")
-                            .data(message)
+                            .data(paddedMessage)
                             .retrieveFlux(String.class)
                             .doOnNext(response -> {
-                                System.out.println("Received: " + response);
                                 pongsReceivedCounter.incrementAndGet();
+                                long rtt = Duration.between(startTime, Instant.now()).toMillis();
+
+                                String[] parts = response.split("-");
+                                String serverNodeId = parts[parts.length - 2];
+                                long serverChecksum = Long.parseLong(parts[parts.length - 1]);
+
+                                // Validate checksum
+                                boolean isValid = clientChecksum == serverChecksum;
+                                if (!isValid) checksumFailures.incrementAndGet();
+
+                                System.out.println("Received from server " + serverNodeId +
+                                        " | RTT: " + rtt + "ms, Checksum Valid: " + isValid);
                             })
                             .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
+    }
+
+    private String generatePadding(int size) {
+        StringBuilder builder = new StringBuilder();
+        Random random = new Random();
+        for (int i = 0; i < size; i++) {
+            builder.append((char) (random.nextInt(26) + 'a'));
+        }
+        return builder.toString();
+    }
+
+    private long calculateChecksum(String data) {
+        CRC32 crc = new CRC32();
+        crc.update(data.getBytes());
+        return crc.getValue();
     }
 }
