@@ -4,6 +4,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.boot.web.context.WebServerApplicationContext;
+import org.springframework.boot.web.server.WebServer;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
@@ -43,21 +47,38 @@ public class PongServerApplication {
         SpringApplication.run(PongServerApplication.class, args);
     }
 
-    private Flux<Payload> handleRequestStream(Payload payload) {
-        String receivedMessage = payload.getDataUtf8();
-        String[] parts = receivedMessage.split("-");
-        String padding = parts[parts.length - 2];
-        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+    @Bean
+    public CommandLineRunner startRSocketServer() {
+        return args -> {
+            RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
+                    .bindNow(TcpServerTransport.create(rSocketPort));
 
-        long serverChecksum = calculateChecksum(padding);
-        String responseMessage = receivedMessage.replace("ping", "pong") + "-server-" + serverNodeId + "-" + serverChecksum;
-
-        return Flux.just(DefaultPayload.create(responseMessage));
+            System.out.println("RSocket server is running on port " + rSocketPort);
+            Thread.currentThread().join();
+        };
     }
 
-    private long calculateChecksum(String data) {
-        CRC32 crc = new CRC32();
-        crc.update(data.getBytes());
-        return crc.getValue();
+    private Flux<Payload> handleRequestStream(Payload payload) {
+        String receivedMessage = payload.getDataUtf8();
+        System.out.println("Received: " + receivedMessage);
+        addTimestamp(pingsTimestamps);
+        return Flux.just(DefaultPayload.create(receivedMessage.replace("ping", "pong")));
+    }
+
+    @Bean
+    public CommandLineRunner verifyManagementPort(ApplicationContext context) {
+        return args -> {
+            WebServerApplicationContext webServerAppContext = (WebServerApplicationContext) context;
+            WebServer managementWebServer = webServerAppContext.getWebServer();
+            System.out.println("Pong Server - Management server is running on port: " + managementWebServer.getPort());
+        };
+    }
+
+    @RestController
+    class HealthCheckController {
+        @GetMapping("/summary")
+        public String getSummary() {
+            return "Pong Server Summary";
+        }
     }
 }
