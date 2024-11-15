@@ -41,17 +41,17 @@ public class PongServerApplication {
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                     .bindNow(TcpServerTransport.create(rSocketPort));
 
-            // Log summary of pings received and pongs sent based on the configured interval
+            // Periodically log summary of received pings and sent pongs
             Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                     .subscribe(i -> {
                         int pingsReceived = pingsReceivedCounter.getAndSet(0);
                         int pongsSent = pongsSentCounter.getAndSet(0);
-                        System.out.println("Server Node ID: " + serverNodeId + 
-                                           " | Pings Received: " + pingsReceived + 
-                                           ", Pongs Sent: " + pongsSent);
+                        System.out.println("Server Node ID: " + serverNodeId +
+                                " | Pings Received: " + pingsReceived +
+                                ", Pongs Sent: " + pongsSent);
                     });
 
-            System.out.println("RSocket server running on port " + rSocketPort);
+            System.out.println("RSocket server is running on port " + rSocketPort);
             Thread.currentThread().join();
         };
     }
@@ -62,24 +62,37 @@ public class PongServerApplication {
 
         pingsReceivedCounter.incrementAndGet();
 
-        // Extract padding and checksum from the received message
+        // Extract padding and client checksum from the received message
         String[] parts = receivedMessage.split("-");
-        String padding = parts[parts.length - 2];
-        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+        if (parts.length < 3) {
+            System.err.println("Invalid message format");
+            return Flux.empty();
+        }
 
-        // Calculate server-side checksum for validation
+        String padding = parts[parts.length - 2];
+        long clientChecksum;
+        try {
+            clientChecksum = Long.parseLong(parts[parts.length - 1]);
+        } catch (NumberFormatException e) {
+            System.err.println("Invalid checksum in message");
+            return Flux.empty();
+        }
+
+        // Calculate the checksum on the server side
         long serverChecksum = calculateChecksum(padding);
 
         // Construct the response message
         String responseMessage = receivedMessage.replace("ping", "pong") +
-                                 "-nodeId:" + serverNodeId + "-" + serverChecksum;
+                "-nodeId:" + serverNodeId + "-" + serverChecksum;
 
         pongsSentCounter.incrementAndGet();
 
         return Flux.just(DefaultPayload.create(responseMessage));
     }
 
-    // Method to calculate the checksum
+    /**
+     * Method to calculate CRC32 checksum for a given string.
+     */
     private long calculateChecksum(String data) {
         CRC32 crc = new CRC32();
         crc.update(data.getBytes());
