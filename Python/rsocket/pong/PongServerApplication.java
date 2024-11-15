@@ -12,7 +12,8 @@ import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 
-import java.util.zip.CRC32;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
 public class PongServerApplication {
@@ -20,8 +21,11 @@ public class PongServerApplication {
     @Value("${pong.server.port}")
     private int rSocketPort;
 
-    @Value("${pong.server.node-id}")
-    private String serverNodeId;
+    @Value("${pong.summary-interval-seconds:60}")
+    private int summaryIntervalSeconds;
+
+    private final AtomicInteger pingsReceivedCounter = new AtomicInteger(0);
+    private final AtomicInteger pongsSentCounter = new AtomicInteger(0);
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
@@ -31,36 +35,30 @@ public class PongServerApplication {
     public CommandLineRunner startRSocketServer() {
         return args -> {
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
-                         .bindNow(TcpServerTransport.create(rSocketPort));
+                    .bindNow(TcpServerTransport.create(rSocketPort));
 
-            System.out.println("RSocket server is running on port " + rSocketPort);
+            // Log summary of pings received and pongs sent based on the configured interval
+            Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
+                    .subscribe(i -> {
+                        int pingsReceived = pingsReceivedCounter.getAndSet(0);
+                        int pongsSent = pongsSentCounter.getAndSet(0);
+                        System.out.println("Server Summary - Pings Received: " + pingsReceived + ", Pongs Sent: " + pongsSent);
+                    });
+
+            System.out.println("RSocket server running on port " + rSocketPort);
             Thread.currentThread().join();
         };
     }
 
-private Flux<Payload> handleRequestStream(Payload payload) {
-    String receivedMessage = payload.getDataUtf8();
-    System.out.println("Received: " + receivedMessage);
+    private Flux<Payload> handleRequestStream(Payload payload) {
+        String receivedMessage = payload.getDataUtf8();
+        System.out.println("Received: " + receivedMessage);
 
-    String[] parts = receivedMessage.split("-");
-    String paddingData = parts[parts.length - 2];
-    long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+        pingsReceivedCounter.incrementAndGet();
 
-    // Calculate checksum on the server side
-    long serverChecksum = calculateChecksum(paddingData);
+        String responseMessage = receivedMessage.replace("ping", "pong");
+        pongsSentCounter.incrementAndGet();
 
-    // Construct the response message with explicit Node ID
-    String responseMessage = receivedMessage.replace("ping", "pong") +
-                             "-nodeId:" + serverNodeId + "-server-" + serverChecksum;
-
-    System.out.println("Responding with: " + responseMessage);
-    return Flux.just(responseMessage).map(DefaultPayload::create);
-}
-
-private long calculateChecksum(String data) {
-    CRC32 crc = new CRC32();
-    crc.update(data.getBytes());
-    return crc.getValue();
-}
-
+        return Flux.just(DefaultPayload.create(responseMessage));
+    }
 }
