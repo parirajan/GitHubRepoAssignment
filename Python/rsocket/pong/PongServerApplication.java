@@ -40,6 +40,7 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
+            // Start the RSocket server on the specified port
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                     .bindNow(TcpServerTransport.create(rSocketPort));
 
@@ -87,7 +88,6 @@ public class PongServerApplication {
         return crc.getValue();
     }
 
-    // Health check controller embedded within the same application
     @RestController
     class HealthCheckController {
 
