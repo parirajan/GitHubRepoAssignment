@@ -4,12 +4,17 @@ spring:
   server:
     port: 7000
     reactive:
-      max-threads: 200     # Max threads for reactive server
+      max-threads: 200
       netty:
-        boss-threads: 4    # Threads responsible for accepting new connections
-        worker-threads: 200  # Threads responsible for processing requests
+        boss-threads: 4
+        worker-threads: 200
 
 pong:
   server:
-    node-id: 1  # Unique node ID for this server
-  summary-interval-seconds: 60  # Interval to log the summary (in seconds)
+    node-id: 1
+  summary-interval-seconds: 60
+
+health:
+  server:
+    port: 8000
+    node-id: 1
