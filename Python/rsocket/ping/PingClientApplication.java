@@ -1,21 +1,19 @@
-package com.mycompany.pingclient;
+package com.mycompany.pongservice;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
-import io.rsocket.core.RSocketConnector;
-import io.rsocket.transport.netty.client.TcpClientTransport;
+import reactor.netty.http.server.HttpServer;
+import io.rsocket.core.RSocketServer;
+import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.Payload;
+import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedList;
 import java.util.List;
@@ -23,27 +21,15 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.CRC32;
 
 @SpringBootApplication
-public class PingClientApplication {
+public class PongServerApplication {
 
-    @Value("${ping.server.host}")
-    private String serverHost;
+    @Value("${pong.server.port}")
+    private int rSocketPort;
 
-    @Value("${ping.server.port}")
-    private int serverPort;
+    @Value("${pong.server.node-id}")
+    private String serverNodeId;
 
-    @Value("${ping.client.node-id}")
-    private String clientNodeId;
-
-    @Value("${ping.client.threads:6}")
-    private int threads;
-
-    @Value("${ping.client.pings-per-second:300}")
-    private int pingsPerSecond;
-
-    @Value("${ping.client.padding-size:100}")
-    private int paddingSize;
-
-    @Value("${ping.summary-interval-seconds:60}")
+    @Value("${pong.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
     private final List<Instant> pingsTimestamps = new LinkedList<>();
@@ -51,46 +37,33 @@ public class PingClientApplication {
     private final ReentrantLock lock = new ReentrantLock();
 
     public static void main(String[] args) {
-        SpringApplication.run(PingClientApplication.class, args);
+        SpringApplication.run(PongServerApplication.class, args);
     }
 
     @Bean
-    public CommandLineRunner startPingClient() {
+    public CommandLineRunner startRSocketServer() {
         return args -> {
-            RSocketConnector.create()
-                    .connect(TcpClientTransport.create(serverHost, serverPort))
-                    .flatMapMany(rSocket -> Flux.interval(Duration.ofMillis(1000 / (threads * pingsPerSecond)))
-                            .flatMap(i -> sendPing(rSocket)))
-                    .subscribeOn(Schedulers.boundedElastic())
-                    .subscribe();
-
+            RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
+                    .bindNow(TcpServerTransport.create(rSocketPort));
+            System.out.println("RSocket server is running on port " + rSocketPort);
             Thread.currentThread().join();
         };
     }
 
-    private Mono<Void> sendPing(io.rsocket.RSocket rSocket) {
-        String padding = generatePadding();
-        long checksum = calculateChecksum(padding);
-        String message = "ping-node-" + clientNodeId + "-thread-" + Thread.currentThread().getId() +
-                "-count-" + System.currentTimeMillis() + "-" + padding + "-" + checksum;
+    private Flux<Payload> handleRequestStream(Payload payload) {
+        String receivedMessage = payload.getDataUtf8();
+        System.out.println("Received: " + receivedMessage);
 
-        addTimestamp(pingsTimestamps);
+        String[] parts = receivedMessage.split("-");
+        String padding = parts[parts.length - 2];
+        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
-        return rSocket.requestStream(DefaultPayload.create(message))
-                .doOnNext(response -> {
-                    String responseMessage = response.getDataUtf8();
-                    System.out.println("Received Pong: " + responseMessage);
-                    addTimestamp(pongsTimestamps);
-                })
-                .onErrorResume(e -> {
-                    System.err.println("Error sending ping: " + e.getMessage());
-                    return Mono.empty();
-                })
-                .then();
-    }
+        long serverChecksum = calculateChecksum(padding);
+        String responseMessage = receivedMessage.replace("ping", "pong") + 
+                "-server-" + serverNodeId + "-checksum-" + serverChecksum;
 
-    private String generatePadding() {
-        return "X".repeat(paddingSize);
+        addTimestamp(pongsTimestamps);
+        return Flux.just(DefaultPayload.create(responseMessage));
     }
 
     private long calculateChecksum(String data) {
@@ -108,16 +81,32 @@ public class PingClientApplication {
         }
     }
 
+    private int getRecentCount(List<Instant> timestamps) {
+        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
+        lock.lock();
+        try {
+            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
+            return timestamps.size();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     @RestController
-    class ClientSummaryController {
+    class HealthCheckController {
         @GetMapping("/summary")
-        public String getClientSummary() {
-            int pingsSent = getRecentCount(pingsTimestamps);
-            int pongsReceived = getRecentCount(pongsTimestamps);
-            return "Client Summary (Last " + summaryIntervalSeconds + "s) - " +
-                    "Node ID: " + clientNodeId +
-                    " | Pings Sent: " + pingsSent +
-                    ", Pongs Received: " + pongsReceived;
+        public String getSummary() {
+            int pingsReceived = getRecentCount(pingsTimestamps);
+            int pongsSent = getRecentCount(pongsTimestamps);
+            return "Summary (Last " + summaryIntervalSeconds + "s) - " +
+                    "Server Node ID: " + serverNodeId +
+                    " | Pings Received: " + pingsReceived +
+                    ", Pongs Sent: " + pongsSent;
+        }
+
+        @GetMapping("/health")
+        public String getHealthStatus() {
+            return "Health Status: OK | Server Node ID: " + serverNodeId;
         }
     }
 }
