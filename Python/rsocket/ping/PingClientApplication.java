@@ -21,6 +21,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.CRC32;
+import java.util.Random;
 
 @SpringBootApplication
 public class PingClientApplication {
@@ -43,12 +44,16 @@ public class PingClientApplication {
     @Value("${ping.client.pings-per-second:300}")
     private int pingsPerSecond;
 
+    @Value("${ping.client.padding-size:100}")
+    private int paddingSize;
+
     @Value("${ping.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
     private final List<Instant> pingsTimestamps = new LinkedList<>();
     private final List<Instant> pongsTimestamps = new LinkedList<>();
     private final ReentrantLock lock = new ReentrantLock();
+    private final Random random = new Random();
 
     public static void main(String[] args) {
         SpringApplication.run(PingClientApplication.class, args);
@@ -69,7 +74,11 @@ public class PingClientApplication {
     }
 
     private Mono<Void> sendPing(io.rsocket.RSocket rSocket) {
-        String message = "ping-node-" + clientNodeId + "-count-" + System.currentTimeMillis();
+        String padding = generatePadding();
+        long checksum = calculateChecksum(padding);
+        String message = "ping-node-" + clientNodeId + "-thread-" + Thread.currentThread().getId() + "-count-" +
+                System.currentTimeMillis() + "-" + padding + "-" + checksum;
+        
         addTimestamp(pingsTimestamps);
         return rSocket.requestStream(DefaultPayload.create(message))
                 .doOnNext(response -> {
@@ -82,6 +91,16 @@ public class PingClientApplication {
                     return Mono.empty();
                 })
                 .then();
+    }
+
+    private String generatePadding() {
+        return "X".repeat(paddingSize);
+    }
+
+    private long calculateChecksum(String data) {
+        CRC32 crc = new CRC32();
+        crc.update(data.getBytes());
+        return crc.getValue();
     }
 
     private void addTimestamp(List<Instant> timestamps) {
@@ -106,7 +125,6 @@ public class PingClientApplication {
 
     @RestController
     class ClientSummaryController {
-
         @GetMapping("/summary")
         public String getClientSummary() {
             int pingsSent = getRecentCount(pingsTimestamps);
