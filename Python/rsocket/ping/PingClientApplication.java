@@ -31,6 +31,15 @@ public class PingClientApplication {
     @Value("${ping.client.node-id}")
     private String clientNodeId;
 
+    @Value("${ping.client.threads:6}")
+    private int threads;
+
+    @Value("${ping.client.pings-per-second:300}")
+    private int pingsPerSecond;
+
+    @Value("${ping.summary-interval-seconds:60}")
+    private int summaryIntervalSeconds;
+
     private final List<Instant> pingsTimestamps = new LinkedList<>();
     private final List<Instant> pongsTimestamps = new LinkedList<>();
     private final ReentrantLock lock = new ReentrantLock();
@@ -44,19 +53,18 @@ public class PingClientApplication {
         return args -> {
             RSocketConnector.create()
                     .connect(TcpClientTransport.create(serverHost, serverPort))
-                    .flatMapMany(rSocket -> {
-                        return Flux.interval(Duration.ofMillis(500))
-                                .flatMap(i -> sendPing(rSocket));
-                    })
+                    .flatMapMany(rSocket -> Flux.interval(Duration.ofMillis(1000 / (threads * pingsPerSecond)))
+                            .flatMap(i -> sendPing(rSocket)))
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe();
 
+            // Keep the main thread alive
             Thread.currentThread().join();
         };
     }
 
     private Mono<Void> sendPing(io.rsocket.RSocket rSocket) {
-        String message = "ping-node-" + clientNodeId;
+        String message = "ping-node-" + clientNodeId + "-count-" + System.currentTimeMillis();
         addTimestamp(pingsTimestamps);
         return rSocket.requestStream(DefaultPayload.create(message))
                 .doOnNext(response -> {
@@ -64,6 +72,44 @@ public class PingClientApplication {
                     System.out.println("Received: " + responseMessage);
                     addTimestamp(pongsTimestamps);
                 })
+                .onErrorResume(e -> {
+                    System.err.println("Error sending ping: " + e.getMessage());
+                    return Mono.empty();
+                })
                 .then();
+    }
+
+    private void addTimestamp(List<Instant> timestamps) {
+        lock.lock();
+        try {
+            timestamps.add(Instant.now());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private int getRecentCount(List<Instant> timestamps) {
+        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
+        lock.lock();
+        try {
+            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
+            return timestamps.size();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @RestController
+    class ClientSummaryController {
+
+        @GetMapping("/summary")
+        public String getClientSummary() {
+            int pingsSent = getRecentCount(pingsTimestamps);
+            int pongsReceived = getRecentCount(pongsTimestamps);
+            return "Client Summary (Last " + summaryIntervalSeconds + "s) - " +
+                    "Node ID: " + clientNodeId +
+                    " | Pings Sent: " + pingsSent +
+                    ", Pongs Received: " + pongsReceived;
+        }
     }
 }
