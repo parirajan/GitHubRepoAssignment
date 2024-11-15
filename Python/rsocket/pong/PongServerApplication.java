@@ -55,16 +55,24 @@ public class PongServerApplication {
         };
     }
 
-    private Flux<Payload> handleRequestStream(Payload payload) {
-        String receivedMessage = payload.getDataUtf8();
-        System.out.println("Received: " + receivedMessage);
+private Flux<Payload> handleRequestStream(Payload payload) {
+    String receivedMessage = payload.getDataUtf8();
+    System.out.println("Received: " + receivedMessage);
 
-        pingsReceivedCounter.incrementAndGet();
+    pingsReceivedCounter.incrementAndGet();
 
-        // Modify the response to include the server node ID
-        String responseMessage = receivedMessage.replace("ping", "pong") + "-nodeId:" + serverNodeId;
-        pongsSentCounter.incrementAndGet();
+    String[] parts = receivedMessage.split("-");
+    String padding = parts[parts.length - 2];
+    long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
-        return Flux.just(DefaultPayload.create(responseMessage));
-    }
+    long serverChecksum = calculateChecksum(padding);
+
+    String responseMessage = receivedMessage.replace("ping", "pong") +
+            "-nodeId:" + serverNodeId + "-" + serverChecksum;
+
+    pongsSentCounter.incrementAndGet();
+
+    return Flux.just(DefaultPayload.create(responseMessage));
+}
+
 }
