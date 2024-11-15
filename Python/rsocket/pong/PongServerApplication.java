@@ -62,7 +62,31 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
         addTimestamp(pingsTimestamps);
-        return Flux.just(DefaultPayload.create(receivedMessage.replace("ping", "pong")));
+
+        String responseMessage = receivedMessage.replace("ping", "pong");
+        addTimestamp(pongsTimestamps);
+
+        return Flux.just(DefaultPayload.create(responseMessage));
+    }
+
+    private void addTimestamp(List<Instant> timestamps) {
+        lock.lock();
+        try {
+            timestamps.add(Instant.now());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private int getRecentCount(List<Instant> timestamps) {
+        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
+        lock.lock();
+        try {
+            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
+            return timestamps.size();
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Bean
@@ -70,7 +94,9 @@ public class PongServerApplication {
         return args -> {
             WebServerApplicationContext webServerAppContext = (WebServerApplicationContext) context;
             WebServer managementWebServer = webServerAppContext.getWebServer();
-            System.out.println("Pong Server - Management server is running on port: " + managementWebServer.getPort());
+            if (managementWebServer != null) {
+                System.out.println("Pong Server - Management server is running on port: " + managementWebServer.getPort());
+            }
         };
     }
 
@@ -78,7 +104,17 @@ public class PongServerApplication {
     class HealthCheckController {
         @GetMapping("/summary")
         public String getSummary() {
-            return "Pong Server Summary";
+            int pingsReceived = getRecentCount(pingsTimestamps);
+            int pongsSent = getRecentCount(pongsTimestamps);
+            return "Summary (Last " + summaryIntervalSeconds + "s) - " +
+                    "Server Node ID: " + serverNodeId +
+                    " | Pings Received: " + pingsReceived +
+                    ", Pongs Sent: " + pongsSent;
+        }
+
+        @GetMapping("/health")
+        public String getHealthStatus() {
+            return "Health Status: OK | Server Node ID: " + serverNodeId;
         }
     }
 }
