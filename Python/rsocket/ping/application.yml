@@ -3,10 +3,11 @@ spring:
     name: pingclient
 ping:
   server:
-    host: localhost
+    host: localhost   # Update this to your server IP if needed
     port: 7000
   client:
     node-id: 1
     threads: 5
-    pings-per-second: 10
-    summary-interval-seconds: 60  # Change this value as needed (e.g., 1 for every second, 60 for every minute)
+    pings-per-second: 10   # Number of pings sent per second per thread
+    padding-size: 150      # Length of the padding message
+    summary-interval-seconds: 60  # Interval to log the summary (in seconds)
