@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.netty.http.server.HttpServer;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.Payload;
@@ -51,17 +52,16 @@ public class PongServerApplication {
 
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
-        System.out.println("Received Ping: " + receivedMessage);
+        System.out.println("Received: " + receivedMessage);
 
         String[] parts = receivedMessage.split("-");
         String padding = parts[parts.length - 2];
         long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
         long serverChecksum = calculateChecksum(padding);
-        String responseMessage = receivedMessage.replace("ping", "pong") +
+        String responseMessage = receivedMessage.replace("ping", "pong") + 
                 "-server-" + serverNodeId + "-checksum-" + serverChecksum;
 
-        System.out.println("Sending Pong: " + responseMessage);
         addTimestamp(pongsTimestamps);
         return Flux.just(DefaultPayload.create(responseMessage));
     }
