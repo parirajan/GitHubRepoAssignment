@@ -121,13 +121,28 @@ public class PingClientApplication {
         }
     }
 
+    /**
+     * Method to get the count of events within the summary interval.
+     */
+    private int getRecentCount(List<Instant> timestamps) {
+        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
+        lock.lock();
+        try {
+            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
+            return timestamps.size();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     @RestController
     class ClientSummaryController {
         @GetMapping("/summary")
         public String getClientSummary() {
             int pingsSent = getRecentCount(pingsTimestamps);
             int pongsReceived = getRecentCount(pongsTimestamps);
-            return "Client Summary - Node ID: " + clientNodeId +
+            return "Client Summary (Last " + summaryIntervalSeconds + "s) - " +
+                    "Node ID: " + clientNodeId +
                     " | Pings Sent: " + pingsSent +
                     ", Pongs Received: " + pongsReceived;
         }
