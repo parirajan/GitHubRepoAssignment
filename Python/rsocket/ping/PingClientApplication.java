@@ -138,6 +138,7 @@ public class PingClientApplication {
 
     @RestController
     class ClientSummaryController {
+        
         @GetMapping("/summary")
         public String getClientSummary() {
             int pingsSent = getRecentCount(pingsTimestamps);
@@ -147,5 +148,11 @@ public class PingClientApplication {
                     " | Pings Sent: " + pingsSent +
                     ", Pongs Received: " + pongsReceived;
         }
+    
+        @GetMapping("/health")
+        public String getHealthStatus() {
+            return "Health Status: OK | Client Node ID: " + clientNodeId;
+        }
     }
+
 }
