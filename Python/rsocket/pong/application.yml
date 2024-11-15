@@ -3,12 +3,12 @@ spring:
     name: pongserver
 
 server:
-  port: 8000            # Main application port
+  port: 8000
   reactive:
-    max-threads: 500      # Maximum threads for the reactive server
+    max-threads: 500        # Maximum threads for the reactive server
     netty:
-      boss-threads: 4     # Threads responsible for accepting new connections
-      worker-threads: 400 # Threads responsible for processing requests
+      boss-threads: 4       # Threads responsible for accepting new connections
+      worker-threads: 400   # Threads responsible for processing requests
 
 pong:
   server:
