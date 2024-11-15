@@ -41,7 +41,7 @@ public class PongServerApplication {
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                     .bindNow(TcpServerTransport.create(rSocketPort));
 
-            // Periodically log summary of received pings and sent pongs
+            // Log summary of pings received and pongs sent every configured interval
             Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                     .subscribe(i -> {
                         int pingsReceived = pingsReceivedCounter.getAndSet(0);
@@ -51,7 +51,7 @@ public class PongServerApplication {
                                 ", Pongs Sent: " + pongsSent);
                     });
 
-            System.out.println("RSocket server is running on port " + rSocketPort);
+            System.out.println("RSocket server running on port " + rSocketPort);
             Thread.currentThread().join();
         };
     }
@@ -62,15 +62,19 @@ public class PongServerApplication {
 
         pingsReceivedCounter.incrementAndGet();
 
-        // Extract padding and client checksum from the received message
+        // Extract client info from the message
         String[] parts = receivedMessage.split("-");
-        if (parts.length < 3) {
+        if (parts.length < 6) {
             System.err.println("Invalid message format");
             return Flux.empty();
         }
 
+        String clientNodeId = parts[1];
+        String clientThreadId = parts[3];
+        String clientCount = parts[5];
         String padding = parts[parts.length - 2];
         long clientChecksum;
+
         try {
             clientChecksum = Long.parseLong(parts[parts.length - 1]);
         } catch (NumberFormatException e) {
@@ -78,7 +82,12 @@ public class PongServerApplication {
             return Flux.empty();
         }
 
-        // Calculate the checksum on the server side
+        System.out.println("Client Node ID: " + clientNodeId + 
+                ", Thread ID: " + clientThreadId + 
+                ", Count: " + clientCount + 
+                ", Client Checksum: " + clientChecksum);
+
+        // Calculate the server-side checksum for the received padding
         long serverChecksum = calculateChecksum(padding);
 
         // Construct the response message
@@ -90,9 +99,7 @@ public class PongServerApplication {
         return Flux.just(DefaultPayload.create(responseMessage));
     }
 
-    /**
-     * Method to calculate CRC32 checksum for a given string.
-     */
+    // Method to calculate the checksum using CRC32
     private long calculateChecksum(String data) {
         CRC32 crc = new CRC32();
         crc.update(data.getBytes());
