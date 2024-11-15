@@ -10,10 +10,7 @@ import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.zip.CRC32;
-import java.util.Random;
 
 @SpringBootApplication
 public class PingClientApplication {
@@ -42,11 +39,11 @@ class PingClient implements CommandLineRunner {
     @Value("${ping.client.pings-per-second:10}")
     private int pingsPerSecond;
 
-    @Value("${ping.client.payload-template:ping-node-{nodeId}-thread-{threadId}-count-{count}}")
-    private String payloadTemplate;
+    @Value("${ping.client.summary-interval-seconds:60}")
+    private int summaryIntervalSeconds;
 
-    @Value("${ping.client.padding-size:150}")
-    private int paddingSize;
+    private final AtomicInteger pingsSentCounter = new AtomicInteger(0);
+    private final AtomicInteger pongsReceivedCounter = new AtomicInteger(0);
 
     public PingClient(RSocketRequester.Builder requesterBuilder) {
         this.requesterBuilder = requesterBuilder;
@@ -66,102 +63,32 @@ class PingClient implements CommandLineRunner {
             sendStreamingRequest(requester, threadId, intervalMillis);
         }
 
-        try {
-            // Keep the main thread running
-            Thread.currentThread().join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        // Log summary of pings sent and pongs received based on the configured interval
+        Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
+                .subscribe(i -> {
+                    int pingsSent = pingsSentCounter.getAndSet(0);
+                    int pongsReceived = pongsReceivedCounter.getAndSet(0);
+                    System.out.println("Client Summary - Pings Sent: " + pingsSent + ", Pongs Received: " + pongsReceived);
+                });
     }
 
-private void sendStreamingRequest(RSocketRequester requester, int threadId, long intervalMillis) {
-    AtomicInteger count = new AtomicInteger(1);
+    private void sendStreamingRequest(RSocketRequester requester, int threadId, long intervalMillis) {
+        AtomicInteger count = new AtomicInteger(1);
 
-    Flux.interval(Duration.ofMillis(intervalMillis))
-        .flatMap(i -> {
-            String message = formatPayload(nodeId, threadId, count.getAndIncrement());
+        Flux.interval(Duration.ofMillis(intervalMillis))
+                .flatMap(i -> {
+                    String message = "ping-node-" + nodeId + "-thread-" + threadId + "-count-" + count.getAndIncrement();
+                    pingsSentCounter.incrementAndGet();
 
-            // Add padding and calculate checksum
-            String paddingData = generatePadding(paddingSize);
-            long clientChecksum = calculateChecksum(paddingData);
-            String paddedMessage = message + "-" + paddingData + "-" + clientChecksum;
-
-            // Capture start time for RTT
-            Instant startTime = Instant.now();
-
-            System.out.println("Sending message: " + paddedMessage);
-
-            return requester.route("ping")
-                    .data(paddedMessage)
-                    .retrieveFlux(String.class)
-                    .doOnNext(response -> {
-                        // Calculate RTT
-                        long rtt = Duration.between(startTime, Instant.now()).toMillis();
-
-                        // Extract server response and checksum
-                        String[] parts = response.split("-");
-                        String serverResponse = reconstructResponse(parts);
-
-                        // Extract the server node ID from the response
-                        String serverNodeId = extractNodeId(parts);
-                        long serverChecksum = Long.parseLong(parts[parts.length - 1]);
-
-                        // Validate checksum
-                        boolean isChecksumValid = (clientChecksum == serverChecksum);
-
-                        // Log RTT and validation along with Node ID
-                        System.out.println(serverResponse);
-                        System.out.println("RTT: " + rtt + "ms, Validation: " + isChecksumValid +
-                                ", Node ID: " + serverNodeId + ", Thread: " + threadId +
-                                ", Count: " + count.get() + ", Src Cksum: " + clientChecksum +
-                                ", Target Cksum: " + serverChecksum);
-                    })
-                    .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
-        })
-        .subscribe();
-}
-
-// Method to extract the Node ID from the response
-private String extractNodeId(String[] parts) {
-    for (String part : parts) {
-        if (part.startsWith("nodeId:")) {
-            return part.substring("nodeId:".length());
-        }
-    }
-    return "unknown";
-}
-
-    private String formatPayload(String nodeId, int threadId, int count) {
-        return payloadTemplate
-                .replace("{nodeId}", nodeId)
-                .replace("{threadId}", String.valueOf(threadId))
-                .replace("{count}", String.valueOf(count));
-    }
-
-    private String generatePadding(int size) {
-        StringBuilder builder = new StringBuilder();
-        Random random = new Random();
-        for (int i = 0; i < size; i++) {
-            builder.append((char) (random.nextInt(26) + 'a'));
-        }
-        return builder.toString();
-    }
-
-    private long calculateChecksum(String data) {
-        CRC32 crc = new CRC32();
-        crc.update(data.getBytes());
-        return crc.getValue();
-    }
-
-    private String reconstructResponse(String[] parts) {
-        // Reconstruct the response excluding the last part (checksum)
-        StringBuilder responseBuilder = new StringBuilder();
-        for (int j = 0; j < parts.length - 1; j++) {
-            responseBuilder.append(parts[j]);
-            if (j < parts.length - 2) {
-                responseBuilder.append("-");
-            }
-        }
-        return responseBuilder.toString();
+                    return requester.route("ping")
+                            .data(message)
+                            .retrieveFlux(String.class)
+                            .doOnNext(response -> {
+                                System.out.println("Received: " + response);
+                                pongsReceivedCounter.incrementAndGet();
+                            })
+                            .doOnError(e -> System.err.println("Client error: " + e.getMessage()));
+                })
+                .subscribe();
     }
 }
