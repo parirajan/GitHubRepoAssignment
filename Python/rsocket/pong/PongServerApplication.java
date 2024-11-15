@@ -21,6 +21,9 @@ public class PongServerApplication {
     @Value("${pong.server.port}")
     private int rSocketPort;
 
+    @Value("${pong.server.node-id}")
+    private String serverNodeId;
+
     @Value("${pong.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
@@ -42,7 +45,9 @@ public class PongServerApplication {
                     .subscribe(i -> {
                         int pingsReceived = pingsReceivedCounter.getAndSet(0);
                         int pongsSent = pongsSentCounter.getAndSet(0);
-                        System.out.println("Server Summary - Pings Received: " + pingsReceived + ", Pongs Sent: " + pongsSent);
+                        System.out.println("Server Node ID: " + serverNodeId + 
+                                           " | Pings Received: " + pingsReceived + 
+                                           ", Pongs Sent: " + pongsSent);
                     });
 
             System.out.println("RSocket server running on port " + rSocketPort);
@@ -56,7 +61,8 @@ public class PongServerApplication {
 
         pingsReceivedCounter.incrementAndGet();
 
-        String responseMessage = receivedMessage.replace("ping", "pong");
+        // Modify the response to include the server node ID
+        String responseMessage = receivedMessage.replace("ping", "pong") + "-nodeId:" + serverNodeId;
         pongsSentCounter.incrementAndGet();
 
         return Flux.just(DefaultPayload.create(responseMessage));
