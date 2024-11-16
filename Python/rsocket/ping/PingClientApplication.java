@@ -5,17 +5,13 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.messaging.rsocket.RSocketRequester;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
-import io.rsocket.core.RSocketConnector;
-import io.rsocket.transport.netty.client.TcpClientTransport;
-import io.rsocket.Payload;
-import io.rsocket.util.DefaultPayload;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedList;
 import java.util.List;
@@ -25,6 +21,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.CRC32;
 
 @SpringBootApplication
+@EnableScheduling
 public class PingClientApplication {
 
     @Value("${ping.server.host}")
@@ -54,56 +51,55 @@ public class PingClientApplication {
     private final Random random = new Random();
     private final AtomicInteger pingCounter = new AtomicInteger(1);
 
+    private RSocketRequester rSocketRequester;
+
     public static void main(String[] args) {
         SpringApplication.run(PingClientApplication.class, args);
     }
 
     @Bean
-    public CommandLineRunner startPingClient() {
+    public CommandLineRunner startPingClient(RSocketRequester.Builder builder) {
         return args -> {
-            RSocketConnector.create()
-                    .connect(TcpClientTransport.create(serverHost, serverPort))
-                    .flatMapMany(rSocket -> Flux.interval(Duration.ofMillis(1000 / (threads * pingsPerSecond)))
-                            .flatMap(i -> sendPing(rSocket)))
-                    .subscribeOn(Schedulers.boundedElastic())
-                    .subscribe();
+            this.rSocketRequester = builder
+                    .tcp(serverHost, serverPort);
 
-            Thread.currentThread().join();
+            for (int i = 0; i < threads; i++) {
+                startSendingPings();
+            }
         };
     }
 
-    private Mono<Void> sendPing(io.rsocket.RSocket rSocket) {
+    private void startSendingPings() {
+        for (int i = 0; i < pingsPerSecond; i++) {
+            sendPing();
+        }
+    }
+
+    private void sendPing() {
         String padding = generateRandomString(paddingSize);
         long checksum = calculateChecksum(padding);
         int count = pingCounter.getAndIncrement();
-        Instant startTime = Instant.now();
-        String message = "ping-node-" + clientNodeId + "-thread-" + Thread.currentThread().getId() +
-                "-count-" + count + "-" + padding + "-" + checksum;
+        String message = "ping-node-" + clientNodeId + "-count-" + count + "-" + padding + "-" + checksum;
 
         addTimestamp(pingsTimestamps);
 
-        return rSocket.requestStream(DefaultPayload.create(message))
+        rSocketRequester.route("ping")
+                .data(message)
+                .retrieveMono(String.class)
                 .doOnNext(response -> {
-                    String responseMessage = response.getDataUtf8();
-                    Instant endTime = Instant.now();
-                    long rtt = Duration.between(startTime, endTime).toMillis();
-                    System.out.println("Received Pong: " + responseMessage + " | RTT: " + rtt + "ms");
+                    System.out.println("Received Pong: " + response);
                     addTimestamp(pongsTimestamps);
                 })
-                .onErrorResume(e -> {
-                    System.err.println("Error sending ping: " + e.getMessage());
-                    return Mono.empty();
-                })
-                .then();
+                .doOnError(e -> System.err.println("Error sending ping: " + e.getMessage()))
+                .subscribe();
     }
 
     private String generateRandomString(int length) {
-        String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < length; i++) {
-            sb.append(characters.charAt(random.nextInt(characters.length())));
-        }
-        return sb.toString();
+        return random.ints(48, 123)
+                .filter(i -> (i <= 57 || i >= 65) && (i <= 90 || i >= 97))
+                .limit(length)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
     }
 
     private long calculateChecksum(String data) {
@@ -118,33 +114,6 @@ public class PingClientApplication {
             timestamps.add(Instant.now());
         } finally {
             lock.unlock();
-        }
-    }
-
-    /**
-     * Method to get the count of events within the summary interval.
-     */
-    private int getRecentCount(List<Instant> timestamps) {
-        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
-        lock.lock();
-        try {
-            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
-            return timestamps.size();
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    @RestController
-    class ClientSummaryController {
-        @GetMapping("/summary")
-        public String getClientSummary() {
-            int pingsSent = getRecentCount(pingsTimestamps);
-            int pongsReceived = getRecentCount(pongsTimestamps);
-            return "Client Summary (Last " + summaryIntervalSeconds + "s) - " +
-                    "Node ID: " + clientNodeId +
-                    " | Pings Sent: " + pingsSent +
-                    ", Pongs Received: " + pongsReceived;
         }
     }
 }
