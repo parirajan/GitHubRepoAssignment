@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.stereotype.Controller;
 import reactor.core.publisher.Mono;
@@ -11,7 +12,6 @@ import reactor.core.publisher.Flux;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.Payload;
-import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
 
 import java.time.Instant;
@@ -43,7 +43,8 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            RSocketServer.create(SocketAcceptor.forRequestResponse(this::handleRequestResponse))
+            RSocketServer.create()
+                    .acceptor((setup, sendingSocket) -> Mono.just(this::handleRequestResponse))
                     .bindNow(TcpServerTransport.create(rSocketPort));
             System.out.println("RSocket server running on port " + rSocketPort);
             Thread.currentThread().join();
