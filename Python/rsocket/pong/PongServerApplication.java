@@ -41,14 +41,9 @@ public class PongServerApplication {
             )
             .bindNow(TcpServerTransport.create(rSocketPort));
 
-            System.out.println("RSocket server running on port " + rSocketPort);
+            System.out.println("RSocket server is running on port " + rSocketPort);
 
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                System.out.println("Shutting down RSocket server...");
-                server.dispose();
-            }));
-
-            // Keep the server running until terminated
+            // Keep the server running
             server.onDispose().block();
         };
     }
@@ -57,15 +52,7 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
 
-        String[] parts = receivedMessage.split("-");
-        String padding = parts[parts.length - 2];
-        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
-
-        long serverChecksum = calculateChecksum(padding);
-        String responseMessage = receivedMessage.replace("ping", "pong") +
-                "-server-" + serverNodeId + "-checksum-" + serverChecksum;
-
-        System.out.println("Sending Pong: " + responseMessage);
+        String responseMessage = receivedMessage.replace("ping", "pong");
         return Flux.just(DefaultPayload.create(responseMessage));
     }
 
