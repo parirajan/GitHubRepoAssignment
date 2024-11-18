@@ -5,12 +5,11 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.stereotype.Controller;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Flux;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
+import io.rsocket.SocketAcceptor;
 import io.rsocket.Payload;
 import io.rsocket.util.DefaultPayload;
 
@@ -44,9 +43,10 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            RSocketServer.create()
-                    .acceptor((setup, sendingSocket) -> Mono.just(this::handleRequestStream))
-                    .bindNow(TcpServerTransport.create(rSocketPort));
+            RSocketServer.create(
+                    SocketAcceptor.forRequestStream(this::handleRequestStream)
+            )
+            .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server running on port " + rSocketPort);
             startSummaryLogging();
@@ -54,22 +54,28 @@ public class PongServerApplication {
         };
     }
 
+    // Handle streaming pings from clients
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
 
+        // Extract parts of the incoming message
         String[] parts = receivedMessage.split("-");
         String padding = parts[parts.length - 2];
         long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
+        // Calculate server-side checksum
         long serverChecksum = calculateChecksum(padding);
-        String responseMessage = receivedMessage.replace("ping", "pong") +
-                "-server-" + serverNodeId + "-checksum-" + serverChecksum;
 
-        System.out.println("Sending Pong: " + responseMessage);
-        addTimestamp(pongsTimestamps);
-
-        return Flux.just(DefaultPayload.create(responseMessage));
+        // Stream a continuous response
+        return Flux.interval(Duration.ofMillis(200))
+                .map(i -> {
+                    String responseMessage = receivedMessage.replace("ping", "pong") +
+                            "-server-" + serverNodeId + "-checksum-" + serverChecksum;
+                    System.out.println("Sending Pong: " + responseMessage);
+                    addTimestamp(pongsTimestamps);
+                    return DefaultPayload.create(responseMessage);
+                });
     }
 
     private long calculateChecksum(String data) {
@@ -87,6 +93,7 @@ public class PongServerApplication {
         }
     }
 
+    // Log summary statistics every 'summaryIntervalSeconds'
     private void startSummaryLogging() {
         Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                 .doOnNext(i -> {
@@ -109,34 +116,5 @@ public class PongServerApplication {
         } finally {
             lock.unlock();
         }
-    }
-}
-
-@Controller
-class PongController {
-
-    @Value("${pong.server.node-id}")
-    private String serverNodeId;
-
-    @MessageMapping("ping")
-    public Mono<String> handlePing(String message) {
-        System.out.println("Received Ping: " + message);
-
-        String[] parts = message.split("-");
-        String padding = parts[parts.length - 2];
-        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
-
-        long serverChecksum = calculateChecksum(padding);
-        String response = message.replace("ping", "pong") +
-                "-server-" + serverNodeId + "-checksum-" + serverChecksum;
-
-        System.out.println("Sending Pong: " + response);
-        return Mono.just(response);
-    }
-
-    private long calculateChecksum(String data) {
-        CRC32 crc = new CRC32();
-        crc.update(data.getBytes());
-        return crc.getValue();
     }
 }
