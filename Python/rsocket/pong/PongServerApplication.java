@@ -18,7 +18,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.CRC32;
 
@@ -45,23 +44,20 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            // Start the RSocket server and return a DisposableServer
             DisposableServer server = RSocketServer.create(
                     SocketAcceptor.forRequestStream(this::handleRequestStream)
-            ).bindNow(TcpServerTransport.create(rSocketPort));
+            )
+            .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server running on port " + rSocketPort);
 
-            // Add a shutdown hook to gracefully stop the server
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 System.out.println("Shutting down RSocket server...");
                 server.dispose();
             }));
 
-            // Keep the server alive using CompletableFuture to avoid blocking the main thread
-            CompletableFuture.runAsync(() -> {
-                server.onDispose().block();
-            }).get(); // This will block the main thread without interfering with the event loop
+            // Keep the server running
+            server.onDispose().block();
         };
     }
 
