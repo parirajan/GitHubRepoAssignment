@@ -12,7 +12,7 @@ import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
-import reactor.netty.DisposableServer;
+import io.rsocket.transport.netty.server.CloseableChannel;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -44,7 +44,7 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            DisposableServer server = RSocketServer.create(
+            CloseableChannel server = RSocketServer.create(
                     SocketAcceptor.forRequestStream(this::handleRequestStream)
             )
             .bindNow(TcpServerTransport.create(rSocketPort));
@@ -56,7 +56,7 @@ public class PongServerApplication {
                 server.dispose();
             }));
 
-            server.onDispose().block();
+            server.onClose().block();
         };
     }
 
