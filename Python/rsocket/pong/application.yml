@@ -4,13 +4,13 @@ pong:
   node-id: 1
   summary-interval-seconds: 60
 
-# Netty configurations for high concurrency
+# Netty configurations for better concurrency
 server:
   reactive:
-    max-threads: 500      # Maximum threads for the reactive server
+    max-threads: 500
     netty:
-      boss-threads: 4     # Threads responsible for accepting new connections
-      worker-threads: 400 # Threads responsible for processing requests
+      boss-threads: 4
+      worker-threads: 400
 
 management:
   server:
