@@ -51,13 +51,11 @@ public class PongServerApplication {
 
             System.out.println("RSocket server running on port " + rSocketPort);
 
-            // Add a shutdown hook to gracefully stop the server
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 System.out.println("Shutting down RSocket server...");
                 server.dispose();
             }));
 
-            // Keep the server running until it's manually stopped
             server.onDispose().block();
         };
     }
