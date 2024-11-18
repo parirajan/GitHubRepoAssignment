@@ -1,14 +1,10 @@
 spring:
   application:
     name: pongserver
-
-server:
-  port: 8000
-  reactive:
-    max-threads: 500        # Maximum threads for the reactive server
-    netty:
-      boss-threads: 4       # Threads responsible for accepting new connections
-      worker-threads: 400   # Threads responsible for processing requests
+  rsocket:
+    server:
+      port: 7000
+      transport: tcp
 
 pong:
   server:
@@ -17,10 +13,17 @@ pong:
   summary-interval-seconds: 60
 
 management:
+  server:
+    port: 8000  # Health and summary endpoints on a separate port
   endpoints:
     web:
       exposure:
-        include: summary, health
-logging:
-  level:
-    root: INFO
+        include: health, summary
+
+# Reactive and Netty configuration to handle high concurrency
+server:
+  reactive:
+    max-threads: 500      # Maximum threads for the reactive server
+    netty:
+      boss-threads: 4     # Threads responsible for accepting new connections
+      worker-threads: 400 # Threads responsible for processing requests
