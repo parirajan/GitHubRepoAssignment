@@ -54,12 +54,12 @@ public class PongServerApplication {
         };
     }
 
-    // Handle streaming pings from clients
+    // Handles the streaming pings from clients and continuously sends back responses
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
 
-        // Extract parts of the incoming message
+        // Parse the incoming message to extract the checksum and padding
         String[] parts = receivedMessage.split("-");
         String padding = parts[parts.length - 2];
         long clientChecksum = Long.parseLong(parts[parts.length - 1]);
@@ -67,7 +67,7 @@ public class PongServerApplication {
         // Calculate server-side checksum
         long serverChecksum = calculateChecksum(padding);
 
-        // Stream a continuous response
+        // Stream a continuous response back to the client
         return Flux.interval(Duration.ofMillis(200))
                 .map(i -> {
                     String responseMessage = receivedMessage.replace("ping", "pong") +
@@ -78,12 +78,14 @@ public class PongServerApplication {
                 });
     }
 
+    // Calculate checksum for data integrity
     private long calculateChecksum(String data) {
         CRC32 crc = new CRC32();
         crc.update(data.getBytes());
         return crc.getValue();
     }
 
+    // Add a timestamp for received pings or sent pongs
     private void addTimestamp(List<Instant> timestamps) {
         lock.lock();
         try {
@@ -93,7 +95,7 @@ public class PongServerApplication {
         }
     }
 
-    // Log summary statistics every 'summaryIntervalSeconds'
+    // Logs summary statistics every interval defined in the configuration
     private void startSummaryLogging() {
         Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                 .doOnNext(i -> {
@@ -107,6 +109,7 @@ public class PongServerApplication {
                 .subscribe();
     }
 
+    // Get the count of recent timestamps within the interval
     private int getRecentCount(List<Instant> timestamps) {
         Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
         lock.lock();
