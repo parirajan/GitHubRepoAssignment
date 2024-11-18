@@ -12,7 +12,7 @@ import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
-import io.rsocket.transport.netty.server.CloseableChannel;
+import reactor.netty.DisposableServer;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -44,20 +44,27 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            CloseableChannel server = RSocketServer.create(
-                    SocketAcceptor.forRequestStream(this::handleRequestStream)
-            )
-            .bindNow(TcpServerTransport.create(rSocketPort));
+            try {
+                // Start the RSocket server using DisposableServer
+                DisposableServer server = RSocketServer.create(
+                        SocketAcceptor.forRequestStream(this::handleRequestStream)
+                )
+                .bindNow(TcpServerTransport.create(rSocketPort));
 
-            System.out.println("RSocket server running on port " + rSocketPort);
+                System.out.println("RSocket server running on port " + rSocketPort);
 
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                System.out.println("Shutting down RSocket server...");
-                server.dispose();
-            }));
+                // Add a shutdown hook to release the port properly
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    System.out.println("Shutting down RSocket server...");
+                    server.dispose();
+                }));
 
-            // Keep the server running
-            server.onClose().block();
+                // Keep the server running until it is manually stopped
+                server.onDispose().block();
+            } catch (Exception e) {
+                System.err.println("Failed to start RSocket server: " + e.getMessage());
+                e.printStackTrace();
+            }
         };
     }
 
@@ -65,20 +72,24 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
 
+        // Extracting padding and checksum from the received message
         String[] parts = receivedMessage.split("-");
         String padding = parts[parts.length - 2];
         long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
+        // Calculate server-side checksum
         long serverChecksum = calculateChecksum(padding);
 
-        return Flux.interval(Duration.ofMillis(200))
-                .map(i -> {
-                    String responseMessage = receivedMessage.replace("ping", "pong") +
-                            "-server-" + serverNodeId + "-checksum-" + serverChecksum;
-                    System.out.println("Sending Pong: " + responseMessage);
-                    addTimestamp(pongsTimestamps);
-                    return DefaultPayload.create(responseMessage);
-                });
+        // Prepare the response message with checksum
+        String responseMessage = receivedMessage.replace("ping", "pong") +
+                "-server-" + serverNodeId + "-checksum-" + serverChecksum;
+
+        System.out.println("Sending Pong: " + responseMessage);
+
+        // Log the timestamp for pongs sent
+        addTimestamp(pongsTimestamps);
+
+        return Flux.just(DefaultPayload.create(responseMessage));
     }
 
     private long calculateChecksum(String data) {
