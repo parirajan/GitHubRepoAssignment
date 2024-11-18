@@ -40,19 +40,27 @@ public class PongServerApplication {
         SpringApplication.run(PongServerApplication.class, args);
     }
 
-    @Bean
-    public CommandLineRunner startRSocketServer() {
-        return args -> {
-            RSocketServer.create(
-                    SocketAcceptor.forRequestStream(this::handleRequestStream)
-            )
-            .bindNow(TcpServerTransport.create(rSocketPort));
+@Bean
+public CommandLineRunner startRSocketServer() {
+    return args -> {
+        RSocketServer server = RSocketServer.create(
+                SocketAcceptor.forRequestStream(this::handleRequestStream)
+        )
+        .bindNow(TcpServerTransport.create(rSocketPort));
 
-            System.out.println("RSocket server running on port " + rSocketPort);
-            startSummaryLogging();
-            Thread.currentThread().join();
-        };
-    }
+        System.out.println("RSocket server running on port " + rSocketPort);
+
+        // Add a shutdown hook to ensure proper cleanup
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutting down RSocket server...");
+            server.dispose();
+        }));
+
+        // Keep the server running without blocking the event loop
+        server.onClose().block();
+    };
+}
+
 
     // Handles the streaming pings from clients and continuously sends back responses
     private Flux<Payload> handleRequestStream(Payload payload) {
