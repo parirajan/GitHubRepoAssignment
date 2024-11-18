@@ -5,13 +5,14 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import reactor.core.publisher.Mono;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
-import io.rsocket.SocketAcceptor;
 import io.rsocket.Payload;
+import io.rsocket.SocketAcceptor;
 import io.rsocket.util.DefaultPayload;
+import reactor.netty.DisposableServer;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -40,42 +41,37 @@ public class PongServerApplication {
         SpringApplication.run(PongServerApplication.class, args);
     }
 
-@Bean
-public CommandLineRunner startRSocketServer() {
-    return args -> {
-        RSocketServer server = RSocketServer.create(
-                SocketAcceptor.forRequestStream(this::handleRequestStream)
-        )
-        .bindNow(TcpServerTransport.create(rSocketPort));
+    @Bean
+    public CommandLineRunner startRSocketServer() {
+        return args -> {
+            DisposableServer server = RSocketServer.create(
+                    SocketAcceptor.forRequestStream(this::handleRequestStream)
+            )
+            .bindNow(TcpServerTransport.create(rSocketPort));
 
-        System.out.println("RSocket server running on port " + rSocketPort);
+            System.out.println("RSocket server running on port " + rSocketPort);
 
-        // Add a shutdown hook to ensure proper cleanup
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Shutting down RSocket server...");
-            server.dispose();
-        }));
+            // Add a shutdown hook to gracefully stop the server
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                System.out.println("Shutting down RSocket server...");
+                server.dispose();
+            }));
 
-        // Keep the server running without blocking the event loop
-        server.onClose().block();
-    };
-}
+            // Keep the server alive
+            server.onDispose().block();
+        };
+    }
 
-
-    // Handles the streaming pings from clients and continuously sends back responses
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
 
-        // Parse the incoming message to extract the checksum and padding
         String[] parts = receivedMessage.split("-");
         String padding = parts[parts.length - 2];
         long clientChecksum = Long.parseLong(parts[parts.length - 1]);
 
-        // Calculate server-side checksum
         long serverChecksum = calculateChecksum(padding);
 
-        // Stream a continuous response back to the client
         return Flux.interval(Duration.ofMillis(200))
                 .map(i -> {
                     String responseMessage = receivedMessage.replace("ping", "pong") +
@@ -86,14 +82,12 @@ public CommandLineRunner startRSocketServer() {
                 });
     }
 
-    // Calculate checksum for data integrity
     private long calculateChecksum(String data) {
         CRC32 crc = new CRC32();
         crc.update(data.getBytes());
         return crc.getValue();
     }
 
-    // Add a timestamp for received pings or sent pongs
     private void addTimestamp(List<Instant> timestamps) {
         lock.lock();
         try {
@@ -103,7 +97,6 @@ public CommandLineRunner startRSocketServer() {
         }
     }
 
-    // Logs summary statistics every interval defined in the configuration
     private void startSummaryLogging() {
         Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                 .doOnNext(i -> {
@@ -117,7 +110,6 @@ public CommandLineRunner startRSocketServer() {
                 .subscribe();
     }
 
-    // Get the count of recent timestamps within the interval
     private int getRecentCount(List<Instant> timestamps) {
         Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
         lock.lock();
