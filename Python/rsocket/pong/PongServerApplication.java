@@ -14,6 +14,7 @@ import io.rsocket.transport.netty.server.TcpServerTransport;
 import io.rsocket.Payload;
 import io.rsocket.util.DefaultPayload;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedList;
 import java.util.List;
@@ -46,6 +47,7 @@ public class PongServerApplication {
             RSocketServer.create()
                     .acceptor((setup, sendingSocket) -> Mono.just(this::handleRequestStream))
                     .bindNow(TcpServerTransport.create(rSocketPort));
+
             System.out.println("RSocket server running on port " + rSocketPort);
             startSummaryLogging();
             Thread.currentThread().join();
@@ -86,7 +88,7 @@ public class PongServerApplication {
     }
 
     private void startSummaryLogging() {
-        Flux.interval(java.time.Duration.ofSeconds(summaryIntervalSeconds))
+        Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
                 .doOnNext(i -> {
                     int pingsReceived = getRecentCount(pingsTimestamps);
                     int pongsSent = getRecentCount(pongsTimestamps);
