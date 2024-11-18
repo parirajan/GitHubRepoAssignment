@@ -44,14 +44,15 @@ public class PongServerApplication {
     public CommandLineRunner startRSocketServer() {
         return args -> {
             RSocketServer.create()
-                    .acceptor((setup, sendingSocket) -> Mono.just(this::handleRequestResponse))
+                    .acceptor((setup, sendingSocket) -> Mono.just(this::handleRequestStream))
                     .bindNow(TcpServerTransport.create(rSocketPort));
             System.out.println("RSocket server running on port " + rSocketPort);
+            startSummaryLogging();
             Thread.currentThread().join();
         };
     }
 
-    private Mono<Payload> handleRequestResponse(Payload payload) {
+    private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
 
@@ -65,7 +66,8 @@ public class PongServerApplication {
 
         System.out.println("Sending Pong: " + responseMessage);
         addTimestamp(pongsTimestamps);
-        return Mono.just(DefaultPayload.create(responseMessage));
+
+        return Flux.just(DefaultPayload.create(responseMessage));
     }
 
     private long calculateChecksum(String data) {
@@ -81,6 +83,19 @@ public class PongServerApplication {
         } finally {
             lock.unlock();
         }
+    }
+
+    private void startSummaryLogging() {
+        Flux.interval(java.time.Duration.ofSeconds(summaryIntervalSeconds))
+                .doOnNext(i -> {
+                    int pingsReceived = getRecentCount(pingsTimestamps);
+                    int pongsSent = getRecentCount(pongsTimestamps);
+                    System.out.println("Summary (Last " + summaryIntervalSeconds + "s) - " +
+                            "Server Node ID: " + serverNodeId +
+                            " | Pings Received: " + pingsReceived +
+                            ", Pongs Sent: " + pongsSent);
+                })
+                .subscribe();
     }
 
     private int getRecentCount(List<Instant> timestamps) {
