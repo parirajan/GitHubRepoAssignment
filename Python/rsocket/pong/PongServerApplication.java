@@ -57,7 +57,7 @@ public class PongServerApplication {
                 server.dispose();
             }));
 
-            // Keep the server alive
+            // Keep the server running until it's manually stopped
             server.onDispose().block();
         };
     }
