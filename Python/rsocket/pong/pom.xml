@@ -1,50 +1,35 @@
 <properties>
     <java.version>17</java.version>
-    <spring-boot.version>3.1.0</spring-boot.version>
+    <spring-boot.version>3.1.4</spring-boot.version>
+    <rsocket.version>1.1.2</rsocket.version>
+    <reactor-netty.version>1.1.5</reactor-netty.version>
 </properties>
 
 <dependencies>
-    <!-- Spring Boot Web dependency -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-web</artifactId>
-    </dependency>
-
-    <!-- Spring Boot RSocket dependency -->
+    <!-- Spring Boot Starter for RSocket -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-rsocket</artifactId>
-    </dependency>
-
-    <!-- Spring Messaging dependency for @MessageMapping -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-messaging</artifactId>
         <version>${spring-boot.version}</version>
     </dependency>
 
-    <!-- Spring Boot Actuator dependency -->
+    <!-- Netty Dependencies for High-Performance Networking -->
+    <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-all</artifactId>
+        <version>4.1.96.Final</version>
+    </dependency>
+
+    <!-- Reactor Netty for RSocket -->
+    <dependency>
+        <groupId>io.projectreactor.netty</groupId>
+        <artifactId>reactor-netty</artifactId>
+        <version>${reactor-netty.version}</version>
+    </dependency>
+
+    <!-- Spring Boot Actuator for Monitoring -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
-
-    <!-- Lombok (optional, for reducing boilerplate code) -->
-    <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
-        <scope>provided</scope>
-    </dependency>
 </dependencies>
-
-<dependencyManagement>
-    <dependencies>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-dependencies</artifactId>
-            <version>${spring-boot.version}</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
-    </dependencies>
-</dependencyManagement>
