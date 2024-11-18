@@ -31,13 +31,17 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            DisposableServer server = RSocketServer.create(
-                    SocketAcceptor.forRequestStream(this::handleRequestStream)
-            ).bindNow(TcpServerTransport.create(rSocketPort));
+            // Using DisposableServer with the new Reactor Netty API
+            DisposableServer server = RSocketServer.create()
+                    .acceptor(SocketAcceptor.forRequestStream(this::handleRequestStream))
+                    .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server running on port " + rSocketPort);
 
-            // Keep the server running
+            // Add a shutdown hook for graceful server shutdown
+            Runtime.getRuntime().addShutdownHook(new Thread(server::dispose));
+
+            // Keep the server running until terminated
             server.onDispose().block();
         };
     }
@@ -46,7 +50,7 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
 
-        // Generate a pong response with checksum
+        // Generate a pong response
         String responseMessage = receivedMessage.replace("ping", "pong");
         return Flux.just(DefaultPayload.create(responseMessage));
     }
