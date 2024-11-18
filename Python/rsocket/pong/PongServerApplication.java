@@ -6,15 +6,13 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import reactor.netty.DisposableServer;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
-import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
+import io.rsocket.Payload;
 import io.rsocket.util.DefaultPayload;
-import reactor.netty.DisposableServer;
 
-import java.time.Duration;
 import java.util.zip.CRC32;
 
 @SpringBootApplication
@@ -26,9 +24,6 @@ public class PongServerApplication {
     @Value("${pong.server.node-id}")
     private String serverNodeId;
 
-    @Value("${pong.summary-interval-seconds:60}")
-    private int summaryIntervalSeconds;
-
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
     }
@@ -38,10 +33,9 @@ public class PongServerApplication {
         return args -> {
             DisposableServer server = RSocketServer.create(
                     SocketAcceptor.forRequestStream(this::handleRequestStream)
-            )
-            .bindNow(TcpServerTransport.create(rSocketPort));
+            ).bindNow(TcpServerTransport.create(rSocketPort));
 
-            System.out.println("RSocket server is running on port " + rSocketPort);
+            System.out.println("RSocket server running on port " + rSocketPort);
 
             // Keep the server running
             server.onDispose().block();
@@ -52,6 +46,7 @@ public class PongServerApplication {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
 
+        // Generate a pong response with checksum
         String responseMessage = receivedMessage.replace("ping", "pong");
         return Flux.just(DefaultPayload.create(responseMessage));
     }
