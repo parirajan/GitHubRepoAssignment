@@ -54,6 +54,18 @@ public class PingClientApplication {
         SpringApplication.run(PingClientApplication.class, args);
     }
 
+    private int getRecentCount(List<Instant> timestamps) {
+        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
+        lock.lock();
+        try {
+            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
+            return timestamps.size();
+        } finally {
+            lock.unlock();
+        }
+    }
+    
+
     @Bean
     public CommandLineRunner startPingClient() {
         return args -> {
