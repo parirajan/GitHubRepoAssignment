@@ -15,6 +15,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.annotation.PostConstruct;
 import reactor.core.publisher.Flux;
 
 import java.util.Map;
@@ -39,6 +43,9 @@ public class PongServerApplication {
     @Value("${netty.config.worker-threads:4}")
     private int workerThreads;
 
+    @Value("${metrics.server.port}")
+    private int metricsPort;
+
     private final AtomicInteger totalPingsReceived = new AtomicInteger();
     private final AtomicInteger totalPongsSent = new AtomicInteger();
 
@@ -52,18 +59,19 @@ public class PongServerApplication {
             EventLoopGroup bossGroup = createEventLoopGroup(bossThreads);
             EventLoopGroup workerGroup = createEventLoopGroup(workerThreads);
 
-            // Report Netty configuration
-            System.out.printf("Netty Configurations:%n");
-            System.out.printf("  Boss Threads: %d%n", bossThreads);
-            System.out.printf("  Worker Threads: %d%n", workerThreads);
-            System.out.printf("  Using Epoll: %b%n", useEpoll);
-
+            System.out.printf("Starting RSocket server on port %d%n", rSocketPort);
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                 .bindNow(TcpServerTransport.create(rSocketPort));
 
-            System.out.println("RSocket server is running on port " + rSocketPort);
             Thread.currentThread().join(); // Keep the server running
         };
+    }
+
+    @PostConstruct
+    public void logMetricsServerDetails() {
+        System.out.printf("Metrics server is running on port %d%n", metricsPort);
+        System.out.println("Available Metrics Endpoints:");
+        System.out.printf("  - Summary: http://localhost:%d/summary%n", metricsPort);
     }
 
     private EventLoopGroup createEventLoopGroup(int threads) {
@@ -78,11 +86,10 @@ public class PongServerApplication {
         totalPingsReceived.incrementAndGet();
 
         String receivedMessage = payload.getDataUtf8();
-        System.out.println("Received: " + receivedMessage);
+        System.out.printf("Received: %s%n", receivedMessage);
 
         String responseMessage = receivedMessage.replace("ping", "pong") + "-server-" + serverNodeId;
-
-        System.out.println("Responding with: " + responseMessage);
+        System.out.printf("Responding with: %s%n", responseMessage);
 
         totalPongsSent.incrementAndGet();
 
@@ -96,11 +103,24 @@ public class PongServerApplication {
         );
     }
 
-    // Periodic Reporting
     @Scheduled(fixedRateString = "${reporting.interval.ms:5000}")
-    public void reportMetrics() {
+    public void reportMetricsToConsole() {
         System.out.println("Metrics Report:");
         System.out.printf("  Total Pings Received: %d%n", totalPingsReceived.get());
         System.out.printf("  Total Pongs Sent: %d%n", totalPongsSent.get());
+    }
+}
+
+@RestController
+class MetricsController {
+    private final PongServerApplication pongServer;
+
+    public MetricsController(PongServerApplication pongServer) {
+        this.pongServer = pongServer;
+    }
+
+    @GetMapping("/summary")
+    public Map<String, Integer> getMetricsSummary() {
+        return pongServer.getMetrics();
     }
 }
