@@ -42,9 +42,6 @@ public class PongServerApplication {
     @Value("${netty.config.worker-threads:4}")
     private int workerThreads;
 
-    @Value("${metrics.server.port}")
-    private int metricsPort;
-
     private final AtomicInteger totalPingsReceived = new AtomicInteger();
     private final AtomicInteger totalPongsSent = new AtomicInteger();
 
@@ -62,17 +59,7 @@ public class PongServerApplication {
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                 .bindNow(TcpServerTransport.create(rSocketPort));
 
-            Thread.currentThread().join(); // Keep the server running
-        };
-    }
-
-    @Bean
-    public CommandLineRunner logMetricsServerDetails() {
-        return args -> {
-            System.out.printf("Metrics server is running on port %d%n", metricsPort);
-            System.out.println("Available Metrics Endpoints:");
-            System.out.printf("  - Summary: http://localhost:%d/summary%n", metricsPort);
-            System.out.printf("  - Health: http://localhost:%d/health%n", metricsPort);
+            System.out.println("RSocket server started.");
         };
     }
 
@@ -121,7 +108,11 @@ public class PongServerApplication {
 
 @RestController
 class MetricsController {
+
     private final PongServerApplication pongServer;
+
+    @Value("${metrics.server.port}")
+    private int metricsPort;
 
     public MetricsController(PongServerApplication pongServer) {
         this.pongServer = pongServer;
