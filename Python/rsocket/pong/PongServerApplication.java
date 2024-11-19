@@ -1,112 +1,108 @@
-package com.example.pongserver;
+package org.frb.fednow.pongservice;
 
+import io.rsocket.Payload;
+import io.rsocket.SocketAcceptor;
+import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
+import io.rsocket.util.DefaultPayload;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.rsocket.annotation.support.RSocketMessageHandler;
-import org.springframework.stereotype.Component;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Hooks;
-import reactor.netty.DisposableServer;
+import reactor.core.publisher.Flux;
 
-import java.util.HashMap;
+import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
 public class PongServerApplication {
 
-    @Value("${server.rsocketPort}")
-    private int rsocketPort;
+    @Value("${pong.server.port}")
+    private int rSocketPort;
+
+    @Value("${pong.server.node-id}")
+    private String serverNodeId;
+
+    private final AtomicInteger totalPingsReceived = new AtomicInteger(0);
+    private final AtomicInteger totalResponsesSent = new AtomicInteger(0);
+    private final ConcurrentHashMap<Long, Integer> recentActivity = new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
-        Hooks.onErrorDropped(error -> {}); // Suppress Reactor's unhandled error warnings
         SpringApplication.run(PongServerApplication.class, args);
     }
 
     @Bean
-    public DisposableServer rSocketServer(RSocketMessageHandler messageHandler) {
-        // Bind the RSocket server and block the thread to keep the application running
-        return io.rsocket.core.RSocketServer.create(messageHandler.responder())
-                .bindNow(TcpServerTransport.create(rsocketPort));
-    }
+    public CommandLineRunner startRSocketServer() {
+        return args -> {
+            RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
+                .bindNow(TcpServerTransport.create(rSocketPort));
 
-    @Bean
-    public RSocketMessageHandler rSocketMessageHandler() {
-        return new RSocketMessageHandler(); // Register the RSocket message handlers
-    }
-
-    @Bean
-    public Runnable blockMainThread(DisposableServer disposableServer) {
-        // Block the main thread to ensure the server remains active
-        return () -> {
-            try {
-                disposableServer.onDispose().block();
-            } catch (Exception e) {
-                throw new RuntimeException("Error while running PongServer", e);
-            }
+            System.out.println("RSocket server is running on port " + rSocketPort);
+            Thread.currentThread().join(); // Keep the server running
         };
     }
 
-    // Component for handling RSocket requests
-    @Component
-    public static class PingHandler {
-        private final AtomicInteger totalPingsReceived = new AtomicInteger();
-        private final AtomicInteger totalPongsSent = new AtomicInteger();
-        private final AtomicInteger checksumFailures = new AtomicInteger();
+    private Flux<Payload> handleRequestStream(Payload payload) {
+        // Increment pings received counter
+        totalPingsReceived.incrementAndGet();
+        recordActivity();
 
-        @Value("${server.id}")
-        private int serverId;
+        // Read and process the payload
+        String receivedMessage = payload.getDataUtf8();
+        System.out.println("Received: " + receivedMessage);
 
-        @MessageMapping("ping") // RSocket message handler for "ping"
-        public PongResponse handlePing(PingRequest request) {
-            totalPingsReceived.incrementAndGet();
-            String calculatedChecksum = calculateChecksum(request.payload());
+        // Append the server ID to the response message
+        String responseMessage = receivedMessage.replace("ping", "pong") + "-server-" + serverNodeId;
 
-            if (!calculatedChecksum.equals(request.checksum())) {
-                checksumFailures.incrementAndGet();
-                throw new IllegalArgumentException("Checksum mismatch");
-            }
+        System.out.println("Responding with: " + responseMessage);
 
-            totalPongsSent.incrementAndGet();
-            return new PongResponse("pong-server-" + serverId, request.payload(), calculatedChecksum, System.currentTimeMillis());
-        }
+        // Increment responses sent counter
+        totalResponsesSent.incrementAndGet();
 
-        private String calculateChecksum(String payload) {
-            return Integer.toHexString(payload.hashCode());
-        }
-
-        public Map<String, Integer> getMetrics() {
-            Map<String, Integer> metrics = new HashMap<>();
-            metrics.put("totalPingsReceived", totalPingsReceived.get());
-            metrics.put("totalPongsSent", totalPongsSent.get());
-            metrics.put("checksumFailures", checksumFailures.get());
-            return metrics;
-        }
+        // Respond with the modified message
+        return Flux.just(responseMessage).map(DefaultPayload::create);
     }
 
-    // REST Controller for Health Endpoint
-    @RestController
-    public static class PongHealthController {
-        private final PingHandler pingHandler;
-
-        public PongHealthController(PingHandler pingHandler) {
-            this.pingHandler = pingHandler;
-        }
-
-        @GetMapping("/health") // Expose health endpoint
-        public Map<String, Integer> getHealth() {
-            return pingHandler.getMetrics();
-        }
+    private void recordActivity() {
+        long currentMinute = Instant.now().getEpochSecond() / 60;
+        recentActivity.merge(currentMinute, 1, Integer::sum);
     }
 
-    // Record for RSocket request data
-    public static record PingRequest(String nodeId, String threadId, String payload, String checksum) {}
+    @Bean
+    public CommandLineRunner exposeMetricsEndpoints() {
+        return args -> {
+            System.out.println("\nMetrics Endpoints Available:");
+            System.out.println("Health Endpoint: http://localhost:" + (rSocketPort + 1) + "/health");
+            System.out.println("Summary Endpoint: http://localhost:" + (rSocketPort + 1) + "/summary");
+        };
+    }
 
-    // Record for RSocket response data
-    public static record PongResponse(String serverId, String payload, String checksum, long timestamp) {}
+    @Bean
+    public org.springframework.boot.web.embedded.netty.NettyReactiveWebServerFactory webServerFactory() {
+        return new org.springframework.boot.web.embedded.netty.NettyReactiveWebServerFactory(rSocketPort + 1);
+    }
+
+    @Bean
+    public org.springframework.web.reactive.function.server.RouterFunction<org.springframework.web.reactive.function.server.ServerResponse> routerFunction() {
+        return org.springframework.web.reactive.function.server.RouterFunctions.route()
+                .GET("/health", request -> {
+                    Map<String, Object> healthMetrics = Map.of(
+                            "totalPingsReceived", totalPingsReceived.get(),
+                            "totalResponsesSent", totalResponsesSent.get()
+                    );
+                    return org.springframework.web.reactive.function.server.ServerResponse.ok().bodyValue(healthMetrics);
+                })
+                .GET("/summary", request -> {
+                    int totalActivity = recentActivity.values().stream().mapToInt(Integer::intValue).sum();
+                    Map<String, Object> summaryMetrics = Map.of(
+                            "totalActivityInLastMinute", totalActivity,
+                            "recentActivity", recentActivity
+                    );
+                    return org.springframework.web.reactive.function.server.ServerResponse.ok().bodyValue(summaryMetrics);
+                })
+                .build();
+    }
 }
