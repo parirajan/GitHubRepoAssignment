@@ -43,40 +43,49 @@ public class PongServerApplication {
 @Bean
 public CommandLineRunner startRSocketServer() {
     return args -> {
-        RSocketServer.create((setup, sendingSocket) -> Mono.just((io.rsocket.RSocket) (requestStream) ->
-                requestStream.map(payload -> {
-                    String receivedMessage = payload.getDataUtf8();
-                    System.out.println("Received Ping: " + receivedMessage);
-
-                    String[] parts = receivedMessage.split("-");
-                    String padding = parts[parts.length - 2];
-                    long clientChecksum = Long.parseLong(parts[parts.length - 1]);
-                    long serverChecksum = calculateChecksum(padding);
-
-                    if (clientChecksum != serverChecksum) {
-                        System.err.println("Checksum mismatch! Expected: " + serverChecksum + ", Received: " + clientChecksum);
-                    }
-
-                    addTimestamp(pingsTimestamps);
-
-                    String responseMessage = receivedMessage.replace("ping", "pong") +
-                            "-server-" + serverNodeId + "-checksum-" + serverChecksum;
-
-                    System.out.println("Sending Pong: " + responseMessage);
-                    addTimestamp(pongsTimestamps);
-
-                    return DefaultPayload.create(responseMessage);
-                })
-        ))
+        RSocketServer.create((setup, sendingSocket) -> Mono.just(new io.rsocket.RSocket() {
+            @Override
+            public Flux<Payload> requestStream(Payload payload) {
+                return handleRequestStream(payload);
+            }
+        }))
         .bind(TcpServerTransport.create(rSocketPort))
         .block();
-        
+
         System.out.println("Pong Server started on port: " + rSocketPort);
 
         startSummaryLogging();
         Thread.currentThread().join();
     };
 }
+
+private Flux<Payload> handleRequestStream(Payload payload) {
+    return Flux.interval(Duration.ofMillis(100)) // Simulate stream of responses
+            .map(i -> {
+                String receivedMessage = payload.getDataUtf8();
+                System.out.println("Received Ping: " + receivedMessage);
+
+                String[] parts = receivedMessage.split("-");
+                String padding = parts[parts.length - 2];
+                long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+                long serverChecksum = calculateChecksum(padding);
+
+                if (clientChecksum != serverChecksum) {
+                    System.err.println("Checksum mismatch! Expected: " + serverChecksum + ", Received: " + clientChecksum);
+                }
+
+                addTimestamp(pingsTimestamps);
+
+                String responseMessage = receivedMessage.replace("ping", "pong") +
+                        "-server-" + serverNodeId + "-checksum-" + serverChecksum;
+
+                System.out.println("Sending Pong: " + responseMessage);
+                addTimestamp(pongsTimestamps);
+
+                return DefaultPayload.create(responseMessage);
+            });
+}
+
 
     private long calculateChecksum(String data) {
         CRC32 crc = new CRC32();
