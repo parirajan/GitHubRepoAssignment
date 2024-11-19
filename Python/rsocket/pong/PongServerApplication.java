@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -71,6 +72,7 @@ public class PongServerApplication {
             System.out.printf("Metrics server is running on port %d%n", metricsPort);
             System.out.println("Available Metrics Endpoints:");
             System.out.printf("  - Summary: http://localhost:%d/summary%n", metricsPort);
+            System.out.printf("  - Health: http://localhost:%d/health%n", metricsPort);
         };
     }
 
@@ -96,11 +98,17 @@ public class PongServerApplication {
         return Flux.just(responseMessage).map(DefaultPayload::create);
     }
 
-    public Map<String, Integer> getMetrics() {
-        return Map.of(
-            "totalPingsReceived", totalPingsReceived.get(),
-            "totalPongsSent", totalPongsSent.get()
-        );
+    public Map<String, Object> getMetrics() {
+        Map<String, Object> metrics = new HashMap<>();
+        metrics.put("totalPingsReceived", totalPingsReceived.get());
+        metrics.put("totalPongsSent", totalPongsSent.get());
+        metrics.put("serverNodeId", serverNodeId);
+        return metrics;
+    }
+
+    public boolean isHealthy() {
+        // Example health check logic; always healthy for this example
+        return true;
     }
 
     @Scheduled(fixedRateString = "${reporting.interval.ms:5000}")
@@ -120,7 +128,16 @@ class MetricsController {
     }
 
     @GetMapping("/summary")
-    public Map<String, Integer> getMetricsSummary() {
+    public Map<String, Object> getMetricsSummary() {
         return pongServer.getMetrics();
+    }
+
+    @GetMapping("/health")
+    public Map<String, String> getHealthStatus() {
+        boolean healthy = pongServer.isHealthy();
+        return Map.of(
+            "status", healthy ? "UP" : "DOWN",
+            "description", healthy ? "Server is healthy" : "Server has issues"
+        );
     }
 }
