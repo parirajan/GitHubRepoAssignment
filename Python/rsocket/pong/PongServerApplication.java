@@ -3,10 +3,13 @@ package com.example.pongserver;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.rsocket.annotation.support.RSocketMessageHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Hooks;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -16,9 +19,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class PongServerApplication {
 
     public static void main(String[] args) {
+        Hooks.onErrorDropped(error -> {}); // Prevent Reactor from logging unhandled exceptions
         SpringApplication.run(PongServerApplication.class, args);
     }
 
+    @Bean
+    public RSocketMessageHandler rSocketMessageHandler() {
+        return new RSocketMessageHandler(); // Registers the RSocket endpoint
+    }
+    
     @Component
     public static class PingHandler {
         private final AtomicInteger totalPingsReceived = new AtomicInteger();
@@ -28,7 +37,7 @@ public class PongServerApplication {
         @Value("${server.id}")
         private int serverId;
 
-        @MessageMapping("ping")
+        @MessageMapping("ping") // RSocket message handler for "ping"
         public PongResponse handlePing(PingRequest request) {
             totalPingsReceived.incrementAndGet();
             String calculatedChecksum = calculateChecksum(request.payload());
