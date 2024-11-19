@@ -1,119 +1,118 @@
-package com.mycompany.pingclient;
+package com.example.pingclient;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.messaging.rsocket.RSocketRequester;
-import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
-import java.time.Instant;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.zip.CRC32;
 
 @SpringBootApplication
-@EnableScheduling
 public class PingClientApplication {
-
-    @Value("${ping.server.host}")
-    private String serverHost;
-
-    @Value("${ping.server.port}")
-    private int serverPort;
-
-    @Value("${ping.client.node-id}")
-    private String clientNodeId;
-
-    @Value("${ping.client.threads:6}")
-    private int threads;
-
-    @Value("${ping.client.pings-per-second:300}")
-    private int pingsPerSecond;
-
-    @Value("${ping.client.padding-size:100}")
-    private int paddingSize;
-
-    @Value("${ping.summary-interval-seconds:60}")
-    private int summaryIntervalSeconds;
-
-    private final List<Instant> pingsTimestamps = new LinkedList<>();
-    private final List<Instant> pongsTimestamps = new LinkedList<>();
-    private final ReentrantLock lock = new ReentrantLock();
-    private final Random random = new Random();
-    private final AtomicInteger pingCounter = new AtomicInteger(1);
-
-    private RSocketRequester rSocketRequester;
 
     public static void main(String[] args) {
         SpringApplication.run(PingClientApplication.class, args);
     }
 
     @Bean
-    public CommandLineRunner startPingClient(RSocketRequester.Builder builder) {
-        return args -> {
-            this.rSocketRequester = builder
-                    .tcp(serverHost, serverPort);
+    CommandLineRunner runner(PingService pingService) {
+        return args -> pingService.startPinging();
+    }
 
-            for (int i = 0; i < threads; i++) {
-                startSendingPings();
+    @Service
+    public static class PingService {
+        private final ScheduledExecutorService executorService;
+        private final RSocketRequester rSocketRequester;
+
+        private final AtomicInteger totalPingsSent = new AtomicInteger();
+        private final AtomicInteger totalPongsReceived = new AtomicInteger();
+        private final AtomicInteger checksumFailures = new AtomicInteger();
+        private final AtomicInteger noResponseFailures = new AtomicInteger();
+
+        private final String nodeId = "client-1";
+        private final int paddingSize = 1024;
+        private final int ratePerSecond = 10;
+        private final int threadCount = 4;
+
+        public PingService(RSocketRequester.Builder builder) {
+            this.executorService = Executors.newScheduledThreadPool(threadCount);
+            this.rSocketRequester = builder.connectTcp("localhost", 8080).block();
+        }
+
+        public void startPinging() {
+            Runnable task = () -> {
+                String payload = generatePayload();
+                String checksum = calculateChecksum(payload);
+
+                rSocketRequester
+                    .route("ping")
+                    .data(new PingRequest(nodeId, Thread.currentThread().getName(), payload, checksum))
+                    .retrieveMono(PongResponse.class)
+                    .timeout(Duration.ofSeconds(5))
+                    .doOnNext(this::processResponse)
+                    .doOnError(e -> handleFailure(e, payload, checksum))
+                    .subscribe();
+
+                totalPingsSent.incrementAndGet();
+            };
+
+            for (int i = 0; i < threadCount; i++) {
+                executorService.scheduleAtFixedRate(task, 0, 1000 / ratePerSecond, TimeUnit.MILLISECONDS);
             }
-        };
-    }
+        }
 
-    private void startSendingPings() {
-        for (int i = 0; i < pingsPerSecond; i++) {
-            sendPing();
+        private String generatePayload() {
+            return "0".repeat(paddingSize);
+        }
+
+        private String calculateChecksum(String payload) {
+            return Integer.toHexString(payload.hashCode());
+        }
+
+        private void processResponse(PongResponse response) {
+            long rtt = System.currentTimeMillis() - response.getTimestamp();
+            if (!response.getChecksum().equals(calculateChecksum(response.getPayload()))) {
+                checksumFailures.incrementAndGet();
+                System.err.printf("Checksum mismatch for pong from %s%n", response.getServerId());
+            } else {
+                totalPongsReceived.incrementAndGet();
+                System.out.printf("Pong from %s: RTT=%dms, Checksum=%s%n", response.getServerId(), rtt, response.getChecksum());
+            }
+        }
+
+        private void handleFailure(Throwable e, String payload, String checksum) {
+            noResponseFailures.incrementAndGet();
+            System.err.printf("Ping failed: Payload=%s, Checksum=%s, Error=%s%n", payload, checksum, e.getMessage());
         }
     }
 
-    private void sendPing() {
-        String padding = generateRandomString(paddingSize);
-        long checksum = calculateChecksum(padding);
-        int count = pingCounter.getAndIncrement();
-        String message = "ping-node-" + clientNodeId + "-count-" + count + "-" + padding + "-" + checksum;
+    @RestController
+    public static class PingHealthController {
+        private final PingService pingService;
 
-        addTimestamp(pingsTimestamps);
+        public PingHealthController(PingService pingService) {
+            this.pingService = pingService;
+        }
 
-        rSocketRequester.route("ping")
-                .data(message)
-                .retrieveMono(String.class)
-                .doOnNext(response -> {
-                    System.out.println("Received Pong: " + response);
-                    addTimestamp(pongsTimestamps);
-                })
-                .doOnError(e -> System.err.println("Error sending ping: " + e.getMessage()))
-                .subscribe();
-    }
-
-    private String generateRandomString(int length) {
-        return random.ints(48, 123)
-                .filter(i -> (i <= 57 || i >= 65) && (i <= 90 || i >= 97))
-                .limit(length)
-                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
-                .toString();
-    }
-
-    private long calculateChecksum(String data) {
-        CRC32 crc = new CRC32();
-        crc.update(data.getBytes());
-        return crc.getValue();
-    }
-
-    private void addTimestamp(List<Instant> timestamps) {
-        lock.lock();
-        try {
-            timestamps.add(Instant.now());
-        } finally {
-            lock.unlock();
+        @GetMapping("/health")
+        public Map<String, Object> getHealth() {
+            Map<String, Object> metrics = new HashMap<>();
+            metrics.put("totalPingsSent", pingService.totalPingsSent.get());
+            metrics.put("totalPongsReceived", pingService.totalPongsReceived.get());
+            metrics.put("checksumFailures", pingService.checksumFailures.get());
+            metrics.put("noResponseFailures", pingService.noResponseFailures.get());
+            return metrics;
         }
     }
+
+    public static record PingRequest(String nodeId, String threadId, String payload, String checksum) {}
+    public static record PongResponse(String serverId, String payload, String checksum, long timestamp) {}
 }
