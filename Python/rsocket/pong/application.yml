@@ -1,7 +1,8 @@
 server:
-  id: "pong-server-1"             # Unique identifier for the PongServer
+  id: 1                           # Numeric ID for the Pong Server
   rsocketPort: 8080               # Port for the RSocket server listener
   webPort: 8082                   # Port for PongServer's health and summary endpoints
+
 
 timeout:
   serverIdle: 60                  # Timeout for idle server connections in seconds
