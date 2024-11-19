@@ -9,7 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
+import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
 import java.time.Instant;
@@ -26,26 +28,32 @@ public class PongServerApplication {
     @Value("${pong.server.node-id}")
     private String serverNodeId;
 
-    private final AtomicInteger totalPingsReceived = new AtomicInteger(0);
-    private final AtomicInteger totalResponsesSent = new AtomicInteger(0);
-    private final ConcurrentHashMap<Long, Integer> recentActivity = new ConcurrentHashMap<>();
-
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
     }
 
     @Bean
-    public CommandLineRunner startRSocketServer() {
+    public CommandLineRunner startRSocketServer(PongHandler pongHandler) {
         return args -> {
-            RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
+            RSocketServer.create(SocketAcceptor.forRequestStream(pongHandler::handleRequestStream))
                 .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server is running on port " + rSocketPort);
             Thread.currentThread().join(); // Keep the server running
         };
     }
+}
 
-    private Flux<Payload> handleRequestStream(Payload payload) {
+@Component
+class PongHandler {
+    private final AtomicInteger totalPingsReceived = new AtomicInteger(0);
+    private final AtomicInteger totalResponsesSent = new AtomicInteger(0);
+    private final ConcurrentHashMap<Long, Integer> recentActivity = new ConcurrentHashMap<>();
+
+    @Value("${pong.server.node-id}")
+    private String serverNodeId;
+
+    public Flux<Payload> handleRequestStream(Payload payload) {
         // Increment pings received counter
         totalPingsReceived.incrementAndGet();
         recordActivity();
@@ -71,38 +79,44 @@ public class PongServerApplication {
         recentActivity.merge(currentMinute, 1, Integer::sum);
     }
 
-    @Bean
-    public CommandLineRunner exposeMetricsEndpoints() {
-        return args -> {
-            System.out.println("\nMetrics Endpoints Available:");
-            System.out.println("Health Endpoint: http://localhost:" + (rSocketPort + 1) + "/health");
-            System.out.println("Summary Endpoint: http://localhost:" + (rSocketPort + 1) + "/summary");
-        };
+    public int getTotalPingsReceived() {
+        return totalPingsReceived.get();
     }
 
-    @Bean
-    public org.springframework.boot.web.embedded.netty.NettyReactiveWebServerFactory webServerFactory() {
-        return new org.springframework.boot.web.embedded.netty.NettyReactiveWebServerFactory(rSocketPort + 1);
+    public int getTotalResponsesSent() {
+        return totalResponsesSent.get();
     }
 
-    @Bean
-    public org.springframework.web.reactive.function.server.RouterFunction<org.springframework.web.reactive.function.server.ServerResponse> routerFunction() {
-        return org.springframework.web.reactive.function.server.RouterFunctions.route()
-                .GET("/health", request -> {
-                    Map<String, Object> healthMetrics = Map.of(
-                            "totalPingsReceived", totalPingsReceived.get(),
-                            "totalResponsesSent", totalResponsesSent.get()
-                    );
-                    return org.springframework.web.reactive.function.server.ServerResponse.ok().bodyValue(healthMetrics);
-                })
-                .GET("/summary", request -> {
-                    int totalActivity = recentActivity.values().stream().mapToInt(Integer::intValue).sum();
-                    Map<String, Object> summaryMetrics = Map.of(
-                            "totalActivityInLastMinute", totalActivity,
-                            "recentActivity", recentActivity
-                    );
-                    return org.springframework.web.reactive.function.server.ServerResponse.ok().bodyValue(summaryMetrics);
-                })
-                .build();
+    public Map<Long, Integer> getRecentActivity() {
+        return recentActivity;
+    }
+}
+
+@RestController
+class MetricsController {
+    private final PongHandler pongHandler;
+
+    public MetricsController(PongHandler pongHandler) {
+        this.pongHandler = pongHandler;
+    }
+
+    @GetMapping("/health")
+    public Map<String, Integer> getHealth() {
+        return Map.of(
+            "totalPingsReceived", pongHandler.getTotalPingsReceived(),
+            "totalResponsesSent", pongHandler.getTotalResponsesSent()
+        );
+    }
+
+    @GetMapping("/summary")
+    public Map<String, Object> getSummary() {
+        int totalActivityInLastMinute = pongHandler.getRecentActivity().values().stream()
+            .mapToInt(Integer::intValue)
+            .sum();
+
+        return Map.of(
+            "totalActivityInLastMinute", totalActivityInLastMinute,
+            "recentActivity", pongHandler.getRecentActivity()
+        );
     }
 }
