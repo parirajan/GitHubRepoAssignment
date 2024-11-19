@@ -1,141 +1,71 @@
-package com.mycompany.pongservice;
+package com.example.pongserver;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
+import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
-import io.rsocket.core.RSocketServer;
-import io.rsocket.transport.netty.server.TcpServerTransport;
-import io.rsocket.Payload;
-import io.rsocket.util.DefaultPayload;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.zip.CRC32;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
 public class PongServerApplication {
-
-    @Value("${pong.server.port}")
-    private int rSocketPort;
-
-    @Value("${pong.server.node-id}")
-    private String serverNodeId;
-
-    @Value("${pong.summary-interval-seconds:60}")
-    private int summaryIntervalSeconds;
-
-    private final List<Instant> pingsTimestamps = new LinkedList<>();
-    private final List<Instant> pongsTimestamps = new LinkedList<>();
-    private final ReentrantLock lock = new ReentrantLock();
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
     }
 
-@Bean
-public CommandLineRunner startRSocketServer() {
-    return args -> {
-        RSocketServer.create((setup, sendingSocket) -> Mono.just(new io.rsocket.RSocket() {
-            @Override
-            public Flux<Payload> requestStream(Payload payload) {
-                return handleRequestStream(payload);
+    @Component
+    public static class PingHandler {
+        private final AtomicInteger totalPingsReceived = new AtomicInteger();
+        private final AtomicInteger totalPongsSent = new AtomicInteger();
+        private final AtomicInteger checksumFailures = new AtomicInteger();
+        private final String serverId = "pong-server-1";
+
+        @MessageMapping("ping")
+        public PongResponse handlePing(PingRequest request) {
+            totalPingsReceived.incrementAndGet();
+            String calculatedChecksum = calculateChecksum(request.payload());
+
+            if (!calculatedChecksum.equals(request.checksum())) {
+                checksumFailures.incrementAndGet();
+                throw new IllegalArgumentException("Checksum mismatch");
             }
-        }))
-        .bind(TcpServerTransport.create(rSocketPort))
-        .block();
 
-        System.out.println("Pong Server started on port: " + rSocketPort);
-
-        startSummaryLogging();
-        Thread.currentThread().join();
-    };
-}
-
-private Flux<Payload> handleRequestStream(Payload payload) {
-    return Flux.interval(Duration.ofMillis(100)) // Simulate stream of responses
-            .map(i -> {
-                String receivedMessage = payload.getDataUtf8();
-                System.out.println("Received Ping: " + receivedMessage);
-
-                String[] parts = receivedMessage.split("-");
-                String padding = parts[parts.length - 2];
-                long clientChecksum = Long.parseLong(parts[parts.length - 1]);
-                long serverChecksum = calculateChecksum(padding);
-
-                if (clientChecksum != serverChecksum) {
-                    System.err.println("Checksum mismatch! Expected: " + serverChecksum + ", Received: " + clientChecksum);
-                }
-
-                addTimestamp(pingsTimestamps);
-
-                String responseMessage = receivedMessage.replace("ping", "pong") +
-                        "-server-" + serverNodeId + "-checksum-" + serverChecksum;
-
-                System.out.println("Sending Pong: " + responseMessage);
-                addTimestamp(pongsTimestamps);
-
-                return DefaultPayload.create(responseMessage);
-            });
-}
-
-
-    private long calculateChecksum(String data) {
-        CRC32 crc = new CRC32();
-        crc.update(data.getBytes());
-        return crc.getValue();
-    }
-
-    private void addTimestamp(List<Instant> timestamps) {
-        lock.lock();
-        try {
-            timestamps.add(Instant.now());
-        } finally {
-            lock.unlock();
+            totalPongsSent.incrementAndGet();
+            return new PongResponse(serverId, request.payload(), calculatedChecksum, System.currentTimeMillis());
         }
-    }
 
-    private void startSummaryLogging() {
-        Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
-                .doOnNext(i -> {
-                    int pingsReceived = getRecentCount(pingsTimestamps);
-                    int pongsSent = getRecentCount(pongsTimestamps);
-                    System.out.println("Summary (Last " + summaryIntervalSeconds + "s) - " +
-                            "Server Node ID: " + serverNodeId +
-                            " | Pings Received: " + pingsReceived +
-                            ", Pongs Sent: " + pongsSent);
-                })
-                .subscribe();
-    }
+        private String calculateChecksum(String payload) {
+            return Integer.toHexString(payload.hashCode());
+        }
 
-    private int getRecentCount(List<Instant> timestamps) {
-        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
-        lock.lock();
-        try {
-            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
-            return timestamps.size();
-        } finally {
-            lock.unlock();
+        public Map<String, Integer> getMetrics() {
+            Map<String, Integer> metrics = new HashMap<>();
+            metrics.put("totalPingsReceived", totalPingsReceived.get());
+            metrics.put("totalPongsSent", totalPongsSent.get());
+            metrics.put("checksumFailures", checksumFailures.get());
+            return metrics;
         }
     }
 
     @RestController
-    class ServerSummaryController {
-        @GetMapping("/summary")
-        public String getServerSummary() {
-            int pingsReceived = getRecentCount(pingsTimestamps);
-            int pongsSent = getRecentCount(pongsTimestamps);
-            return "Server Summary (Last " + summaryIntervalSeconds + "s) - " +
-                    "Server Node ID: " + serverNodeId +
-                    " | Pings Received: " + pingsReceived +
-                    ", Pongs Sent: " + pongsSent;
+    public static class PongHealthController {
+        private final PingHandler pingHandler;
+
+        public PongHealthController(PingHandler pingHandler) {
+            this.pingHandler = pingHandler;
+        }
+
+        @GetMapping("/health")
+        public Map<String, Integer> getHealth() {
+            return pingHandler.getMetrics();
         }
     }
+
+    public static record PingRequest(String nodeId, String threadId, String payload, String checksum) {}
+    public static record PongResponse(String serverId, String payload, String checksum, long timestamp) {}
 }
