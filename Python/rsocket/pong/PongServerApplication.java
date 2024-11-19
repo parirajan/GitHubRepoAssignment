@@ -12,8 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.web.context.WebServerInitializedEvent;
-import org.springframework.context.event.EventListener;
+import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,6 +32,9 @@ public class PongServerApplication {
 
     @Value("${pong.server.node-id}")
     private String serverNodeId;
+
+    @Value("${server.port}")
+    private int metricsPort;
 
     @Value("${netty.config.use-epoll:false}")
     private boolean useEpoll;
@@ -61,6 +63,16 @@ public class PongServerApplication {
                 .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server started.");
+        };
+    }
+
+    @Bean
+    public CommandLineRunner logMetricsServerDetails() {
+        return args -> {
+            System.out.printf("Metrics server is running on port %d%n", metricsPort);
+            System.out.println("Available Metrics Endpoints:");
+            System.out.printf("  - Summary: http://localhost:%d/summary%n", metricsPort);
+            System.out.printf("  - Health: http://localhost:%d/health%n", metricsPort);
         };
     }
 
@@ -103,12 +115,6 @@ public class PongServerApplication {
         System.out.println("Metrics Report:");
         System.out.printf("  Total Pings Received: %d%n", totalPingsReceived.get());
         System.out.printf("  Total Pongs Sent: %d%n", totalPongsSent.get());
-    }
-
-    @EventListener(WebServerInitializedEvent.class)
-    public void logTomcatPort(WebServerInitializedEvent event) {
-        int tomcatPort = event.getWebServer().getPort();
-        System.out.printf("Tomcat server started on port %d (configured in application.yml)%n", tomcatPort);
     }
 }
 
