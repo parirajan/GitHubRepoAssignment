@@ -17,8 +17,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import javax.annotation.PostConstruct;
 import reactor.core.publisher.Flux;
 
 import java.util.Map;
@@ -67,11 +65,13 @@ public class PongServerApplication {
         };
     }
 
-    @PostConstruct
-    public void logMetricsServerDetails() {
-        System.out.printf("Metrics server is running on port %d%n", metricsPort);
-        System.out.println("Available Metrics Endpoints:");
-        System.out.printf("  - Summary: http://localhost:%d/summary%n", metricsPort);
+    @Bean
+    public CommandLineRunner logMetricsServerDetails() {
+        return args -> {
+            System.out.printf("Metrics server is running on port %d%n", metricsPort);
+            System.out.println("Available Metrics Endpoints:");
+            System.out.printf("  - Summary: http://localhost:%d/summary%n", metricsPort);
+        };
     }
 
     private EventLoopGroup createEventLoopGroup(int threads) {
