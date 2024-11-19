@@ -1,5 +1,6 @@
 package com.example.pingclient;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -37,7 +38,9 @@ public class PingClientApplication {
         private final AtomicInteger checksumFailures = new AtomicInteger();
         private final AtomicInteger noResponseFailures = new AtomicInteger();
 
-        private final String nodeId = "client-1";
+        @Value("${ping.nodeId}")
+        private String nodeId;
+
         private final int paddingSize;
         private final int ratePerSecond;
         private final int threadCount;
