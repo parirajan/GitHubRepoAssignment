@@ -8,10 +8,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
-import reactor.netty.DisposableServer;
 import io.rsocket.core.RSocketServer;
 import io.rsocket.transport.netty.server.TcpServerTransport;
-import io.rsocket.SocketAcceptor;
 import io.rsocket.Payload;
 import io.rsocket.util.DefaultPayload;
 
@@ -45,38 +43,39 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            DisposableServer server = RSocketServer.create()
-                    .acceptor(SocketAcceptor.forRequestStream(this::handleRequestStream))
-                    .bindNow(TcpServerTransport.create(rSocketPort));
+            RSocketServer.create((setup, sendingSocket) ->
+                    Flux.<Payload>create(emitter -> {
+                        sendingSocket.requestStream(DefaultPayload.create("")).subscribe(payload -> {
+                            String receivedMessage = payload.getDataUtf8();
+                            System.out.println("Received Ping: " + receivedMessage);
 
-            System.out.println("RSocket server is running on port " + rSocketPort);
+                            String[] parts = receivedMessage.split("-");
+                            String padding = parts[parts.length - 2];
+                            long clientChecksum = Long.parseLong(parts[parts.length - 1]);
+                            long serverChecksum = calculateChecksum(padding);
 
-            Runtime.getRuntime().addShutdownHook(new Thread(server::dispose));
-            server.onDispose().block();
+                            if (clientChecksum != serverChecksum) {
+                                System.err.println("Checksum mismatch! Expected: " + serverChecksum + ", Received: " + clientChecksum);
+                            }
+
+                            addTimestamp(pingsTimestamps);
+
+                            String responseMessage = receivedMessage.replace("ping", "pong") +
+                                    "-server-" + serverNodeId + "-checksum-" + serverChecksum;
+
+                            System.out.println("Sending Pong: " + responseMessage);
+                            addTimestamp(pongsTimestamps);
+
+                            emitter.next(DefaultPayload.create(responseMessage));
+                        });
+                    }))
+                    .bind(TcpServerTransport.create(rSocketPort))
+                    .block();
+            System.out.println("Pong Server started on port: " + rSocketPort);
+
+            startSummaryLogging();
+            Thread.currentThread().join();
         };
-    }
-
-    private Flux<Payload> handleRequestStream(Payload payload) {
-        String receivedMessage = payload.getDataUtf8();
-        System.out.println("Received Ping: " + receivedMessage);
-
-        addTimestamp(pingsTimestamps);
-
-        String[] parts = receivedMessage.split("-");
-        String padding = parts[parts.length - 2];
-        long clientChecksum = Long.parseLong(parts[parts.length - 1]);
-
-        long serverChecksum = calculateChecksum(padding);
-
-        String responseMessage = receivedMessage.replace("ping", "pong") +
-                "-server-" + serverNodeId +
-                "-checksum-" + serverChecksum;
-
-        System.out.println("Sending Pong: " + responseMessage);
-
-        addTimestamp(pongsTimestamps);
-
-        return Flux.just(DefaultPayload.create(responseMessage));
     }
 
     private long calculateChecksum(String data) {
@@ -94,6 +93,19 @@ public class PongServerApplication {
         }
     }
 
+    private void startSummaryLogging() {
+        Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
+                .doOnNext(i -> {
+                    int pingsReceived = getRecentCount(pingsTimestamps);
+                    int pongsSent = getRecentCount(pongsTimestamps);
+                    System.out.println("Summary (Last " + summaryIntervalSeconds + "s) - " +
+                            "Server Node ID: " + serverNodeId +
+                            " | Pings Received: " + pingsReceived +
+                            ", Pongs Sent: " + pongsSent);
+                })
+                .subscribe();
+    }
+
     private int getRecentCount(List<Instant> timestamps) {
         Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
         lock.lock();
@@ -106,21 +118,15 @@ public class PongServerApplication {
     }
 
     @RestController
-    class HealthCheckController {
-
+    class ServerSummaryController {
         @GetMapping("/summary")
-        public String getSummary() {
+        public String getServerSummary() {
             int pingsReceived = getRecentCount(pingsTimestamps);
             int pongsSent = getRecentCount(pongsTimestamps);
-            return "Summary (Last " + summaryIntervalSeconds + "s) - " +
+            return "Server Summary (Last " + summaryIntervalSeconds + "s) - " +
                     "Server Node ID: " + serverNodeId +
                     " | Pings Received: " + pingsReceived +
                     ", Pongs Sent: " + pongsSent;
-        }
-
-        @GetMapping("/health")
-        public String getHealthStatus() {
-            return "Health Status: OK | Server Node ID: " + serverNodeId;
         }
     }
 }
