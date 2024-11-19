@@ -1,6 +1,6 @@
 pong:
   server:
-    port: 8080       # Port where the RSocket server listens
+    port: 7000       # Port where the RSocket server listens
     node-id: 1       # Unique node ID for the Pong server
 
 netty:
@@ -9,6 +9,10 @@ netty:
     boss-threads: 1  # Number of Netty boss threads (handles incoming connections)
     worker-threads: 4 # Number of Netty worker threads (handles data processing)
 
+metrics:
+  server:
+    port: 8000       # Port for the REST API server (metrics summary)
+
 reporting:
   interval:
-    ms: 5000         # Reporting interval in milliseconds (default: 5 seconds)
+    ms: 5000         # Interval for periodic metrics reporting in milliseconds
