@@ -38,20 +38,21 @@ public class PingClientApplication {
         private final AtomicInteger checksumFailures = new AtomicInteger();
         private final AtomicInteger noResponseFailures = new AtomicInteger();
 
-        @Value("${ping.nodeId}")
-        private String nodeId;
+        private final String nodeId;
 
         private final int paddingSize;
         private final int ratePerSecond;
         private final int threadCount;
 
         public PingService(RSocketRequester.Builder builder,
+                           @Value("${ping.nodeId}") int nodeId,
                            @Value("${ping.paddingSize}") int paddingSize,
                            @Value("${ping.ratePerSecond}") int ratePerSecond,
                            @Value("${ping.threadCount}") int threadCount,
                            @Value("${rsocket.serverAddress}") String serverAddress,
                            @Value("${rsocket.serverPort}") int serverPort) {
             this.executorService = Executors.newScheduledThreadPool(threadCount);
+            this.nodeId = "node-" + nodeId; // Prefix the node ID dynamically
             this.paddingSize = paddingSize;
             this.ratePerSecond = ratePerSecond;
             this.threadCount = threadCount;
