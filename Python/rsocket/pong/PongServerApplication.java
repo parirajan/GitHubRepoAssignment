@@ -26,21 +26,25 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
+            // Start the RSocket server using DisposableServer
             DisposableServer server = RSocketServer.create()
                     .acceptor(SocketAcceptor.forRequestStream(this::handleRequestStream))
-                    .bindNow(TcpServerTransport.create(rSocketPort));
+                    .bind(TcpServerTransport.create(rSocketPort))
+                    .block();
 
-            System.out.println("RSocket server is running on port " + rSocketPort);
-
-            Runtime.getRuntime().addShutdownHook(new Thread(server::dispose));
-
-            server.onDispose().block();
+            if (server != null) {
+                System.out.println("RSocket server is running on port " + rSocketPort);
+                server.onDispose().block();
+            } else {
+                System.err.println("Failed to start RSocket server!");
+            }
         };
     }
 
     private Flux<Payload> handleRequestStream(Payload payload) {
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received Ping: " + receivedMessage);
+
         String responseMessage = receivedMessage.replace("ping", "pong");
         return Flux.just(DefaultPayload.create(responseMessage));
     }
