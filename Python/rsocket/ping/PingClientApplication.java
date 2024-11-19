@@ -1,22 +1,26 @@
-package com.example.pingclient;
+package com.mycompany.pingclient;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import org.springframework.messaging.rsocket.RSocketRequester;
-import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.messaging.rsocket.RSocketRequester;
+import org.springframework.stereotype.Component;
+import org.springframework.util.MimeTypeUtils;
+import reactor.core.publisher.Flux;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
+@EnableScheduling
 public class PingClientApplication {
 
     public static void main(String[] args) {
@@ -24,107 +28,135 @@ public class PingClientApplication {
     }
 
     @Bean
-    CommandLineRunner runner(PingService pingService) {
-        return args -> pingService.startPinging();
+    public RSocketRequester.Builder rSocketRequesterBuilder() {
+        return RSocketRequester.builder();
     }
-
-    @Service
-    public static class PingService {
-        private final ScheduledExecutorService executorService;
-        private final RSocketRequester rSocketRequester;
-
-        private final AtomicInteger totalPingsSent = new AtomicInteger();
-        private final AtomicInteger totalPongsReceived = new AtomicInteger();
-        private final AtomicInteger checksumFailures = new AtomicInteger();
-        private final AtomicInteger noResponseFailures = new AtomicInteger();
-
-        private final String nodeId;
-
-        private final int paddingSize;
-        private final int ratePerSecond;
-        private final int threadCount;
-
-        public PingService(RSocketRequester.Builder builder,
-                           @Value("${ping.nodeId}") int nodeId,
-                           @Value("${ping.paddingSize}") int paddingSize,
-                           @Value("${ping.ratePerSecond}") int ratePerSecond,
-                           @Value("${ping.threadCount}") int threadCount,
-                           @Value("${rsocket.serverAddress}") String serverAddress,
-                           @Value("${rsocket.serverPort}") int serverPort) {
-            this.executorService = Executors.newScheduledThreadPool(threadCount);
-            this.nodeId = "node-" + nodeId; // Prefix the node ID dynamically
-            this.paddingSize = paddingSize;
-            this.ratePerSecond = ratePerSecond;
-            this.threadCount = threadCount;
-            this.rSocketRequester = builder.connectTcp(serverAddress, serverPort).block();
-        }
-
-        public void startPinging() {
-            Runnable task = () -> {
-                String payload = generatePayload();
-                String checksum = calculateChecksum(payload);
-
-                rSocketRequester
-                    .route("ping")
-                    .data(new PingRequest(nodeId, Thread.currentThread().getName(), payload, checksum))
-                    .retrieveMono(PongResponse.class)
-                    .timeout(Duration.ofSeconds(5))
-                    .doOnNext(this::processResponse)
-                    .doOnError(e -> handleFailure(e, payload, checksum))
-                    .subscribe();
-
-                totalPingsSent.incrementAndGet();
-            };
-
-            for (int i = 0; i < threadCount; i++) {
-                executorService.scheduleAtFixedRate(task, 0, 1000 / ratePerSecond, TimeUnit.MILLISECONDS);
-            }
-        }
-
-        private String generatePayload() {
-            return "0".repeat(paddingSize);
-        }
-
-        private String calculateChecksum(String payload) {
-            return Integer.toHexString(payload.hashCode());
-        }
-
-        private void processResponse(PongResponse response) {
-            long rtt = System.currentTimeMillis() - response.timestamp(); // Access timestamp() directly
-            if (!response.checksum().equals(calculateChecksum(response.payload()))) { // Use checksum() and payload()
-                checksumFailures.incrementAndGet();
-                System.err.printf("Checksum mismatch for pong from %s%n", response.serverId());
-            } else {
-                totalPongsReceived.incrementAndGet();
-                System.out.printf("Pong from %s: RTT=%dms, Checksum=%s%n", response.serverId(), rtt, response.checksum());
-            }
-        }
-
-        private void handleFailure(Throwable e, String payload, String checksum) {
-            noResponseFailures.incrementAndGet();
-            System.err.printf("Ping failed: Payload=%s, Checksum=%s, Error=%s%n", payload, checksum, e.getMessage());
-        }
-    }
-
-    @RestController
-    public static class PingHealthController {
-        private final PingService pingService;
-
-        public PingHealthController(PingService pingService) {
-            this.pingService = pingService;
-        }
-
-        @GetMapping("/health")
-        public Map<String, Object> getHealth() {
-            Map<String, Object> metrics = new HashMap<>();
-            metrics.put("totalPingsSent", pingService.totalPingsSent.get());
-            metrics.put("totalPongsReceived", pingService.totalPongsReceived.get());
-            metrics.put("checksumFailures", pingService.checksumFailures.get());
-            metrics.put("noResponseFailures", pingService.noResponseFailures.get());
-            return metrics;
-        }
-    }
-
-    public static record PingRequest(String nodeId, String threadId, String payload, String checksum) {}
-    public static record PongResponse(String serverId, String payload, String checksum, long timestamp) {}
 }
+
+@Component
+class PingClient implements CommandLineRunner {
+
+    private final RSocketRequester.Builder requesterBuilder;
+
+    @Value("${ping.server.host}")
+    private String host;
+
+    @Value("${ping.server.port}")
+    private int port;
+
+    @Value("${ping.client.node-id}")
+    private String nodeId;
+
+    @Value("${ping.client.threads}")
+    private int numThreads;
+
+    @Value("${ping.client.pings-per-second}")
+    private int pingsPerSecond;
+
+    @Value("${ping.client.payload-template}")
+    private String payloadTemplate;
+
+    @Value("${ping.client.padding-size}")
+    private int paddingSize;
+
+    private final AtomicInteger totalPingsSent = new AtomicInteger();
+    private final AtomicInteger totalPongsReceived = new AtomicInteger();
+    private final AtomicInteger totalFailures = new AtomicInteger();
+
+    public PingClient(RSocketRequester.Builder requesterBuilder) {
+        this.requesterBuilder = requesterBuilder;
+    }
+
+    @Override
+    public void run(String... args) {
+        RSocketRequester requester = requesterBuilder.dataMimeType(MimeTypeUtils.TEXT_PLAIN).tcp(host, port);
+        AtomicInteger threadIdCounter = new AtomicInteger(1);
+        long intervalMillis = 1000 / pingsPerSecond;
+
+        for (int i = 0; i < numThreads; i++) {
+            int threadId = threadIdCounter.getAndIncrement();
+            sendStreamingRequest(requester, threadId, intervalMillis);
+        }
+
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void sendStreamingRequest(RSocketRequester requester, int threadId, long intervalMillis) {
+        AtomicInteger count = new AtomicInteger(1);
+
+        Flux.interval(Duration.ofMillis(intervalMillis))
+            .flatMap(i -> {
+                String message = formatPayload(nodeId, threadId, count.getAndIncrement());
+                String paddedMessage = addExtraBytes(message, paddingSize);
+                System.out.println("Sending message: " + paddedMessage);
+                totalPingsSent.incrementAndGet();
+
+                return requester
+                    .route("ping")
+                    .data(paddedMessage)
+                    .retrieveFlux(String.class)
+                    .doOnNext(response -> {
+                        System.out.println("Received response: " + response);
+                        totalPongsReceived.incrementAndGet();
+                    })
+                    .doOnError(e -> {
+                        System.err.println("Failed to send ping: " + e.getMessage());
+                        totalFailures.incrementAndGet();
+                    });
+            })
+            .subscribe();
+    }
+
+    private String formatPayload(String nodeId, int threadId, int count) {
+        return payloadTemplate
+            .replace("{nodeId}", nodeId)
+            .replace("{threadId}", String.valueOf(threadId))
+            .replace("{count}", String.valueOf(count));
+    }
+
+    private String addExtraBytes(String message, int extraBytes) {
+        StringBuilder builder = new StringBuilder(message);
+        Random random = new Random();
+        for (int i = 0; i < extraBytes; i++) {
+            builder.append((char) (random.nextInt(26) + 'a'));
+        }
+        return builder.toString();
+    }
+
+    public Map<String, Integer> getMetrics() {
+        return Map.of(
+            "totalPingsSent", totalPingsSent.get(),
+            "totalPongsReceived", totalPongsReceived.get(),
+            "totalFailures", totalFailures.get()
+        );
+    }
+}
+
+@RestController
+class MetricsController {
+
+    private final PingClient pingClient;
+
+    public MetricsController(PingClient pingClient) {
+        this.pingClient = pingClient;
+    }
+
+    @GetMapping("/summary")
+    public Map<String, Integer> getMetricsSummary() {
+        return pingClient.getMetrics();
+    }
+
+    @GetMapping("/health")
+    public Map<String, String> getHealthStatus() {
+        boolean healthy = pingClient.getMetrics().get("totalFailures") == 0;
+        return Map.of(
+            "status", healthy ? "UP" : "DOWN",
+            "description", healthy ? "Client is healthy" : "Client has issues"
+        );
+    }
+}
+
