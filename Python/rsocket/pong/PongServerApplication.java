@@ -1,5 +1,6 @@
 package com.example.pongserver;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -23,7 +24,9 @@ public class PongServerApplication {
         private final AtomicInteger totalPingsReceived = new AtomicInteger();
         private final AtomicInteger totalPongsSent = new AtomicInteger();
         private final AtomicInteger checksumFailures = new AtomicInteger();
-        private final String serverId = "pong-server-1";
+
+        @Value("${server.id}")
+        private int serverId;
 
         @MessageMapping("ping")
         public PongResponse handlePing(PingRequest request) {
@@ -36,7 +39,7 @@ public class PongServerApplication {
             }
 
             totalPongsSent.incrementAndGet();
-            return new PongResponse(serverId, request.payload(), calculatedChecksum, System.currentTimeMillis());
+            return new PongResponse("pong-server-" + serverId, request.payload(), calculatedChecksum, System.currentTimeMillis());
         }
 
         private String calculateChecksum(String payload) {
