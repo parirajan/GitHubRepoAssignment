@@ -1,4 +1,4 @@
-package org.frb.fednow.pongservice;
+package com.mycompany;
 
 import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
