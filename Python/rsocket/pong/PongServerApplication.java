@@ -9,14 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.stereotype.Component;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
-import java.time.Instant;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
@@ -28,95 +23,70 @@ public class PongServerApplication {
     @Value("${pong.server.node-id}")
     private String serverNodeId;
 
+    private final AtomicInteger totalPingsReceived = new AtomicInteger();
+    private final AtomicInteger totalPongsSent = new AtomicInteger();
+    private final AtomicInteger checksumFailures = new AtomicInteger();
+
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
     }
 
     @Bean
-    public CommandLineRunner startRSocketServer(PongHandler pongHandler) {
+    public CommandLineRunner startRSocketServer() {
         return args -> {
-            RSocketServer.create(SocketAcceptor.forRequestStream(pongHandler::handleRequestStream))
+            RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                 .bindNow(TcpServerTransport.create(rSocketPort));
 
             System.out.println("RSocket server is running on port " + rSocketPort);
             Thread.currentThread().join(); // Keep the server running
         };
     }
-}
 
-@Component
-class PongHandler {
-    private final AtomicInteger totalPingsReceived = new AtomicInteger(0);
-    private final AtomicInteger totalResponsesSent = new AtomicInteger(0);
-    private final ConcurrentHashMap<Long, Integer> recentActivity = new ConcurrentHashMap<>();
+    private Flux<Payload> handleRequestStream(Payload payload) {
+        totalPingsReceived.incrementAndGet(); // Increment total pings received
 
-    @Value("${pong.server.node-id}")
-    private String serverNodeId;
-
-    public Flux<Payload> handleRequestStream(Payload payload) {
-        // Increment pings received counter
-        totalPingsReceived.incrementAndGet();
-        recordActivity();
-
-        // Read and process the payload
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        // Append the server ID to the response message
-        String responseMessage = receivedMessage.replace("ping", "pong") + "-server-" + serverNodeId;
+        // Parse the received payload
+        String[] parts = receivedMessage.split(",");
+        String nodeId = parts[0]; // Node ID of the client
+        String threadId = parts[1]; // Thread ID from the client
+        String payloadData = parts[2]; // Payload data
+        String clientChecksum = parts[3]; // Checksum sent by the client
+
+        // Calculate server checksum
+        String serverChecksum = calculateChecksum(payloadData);
+        boolean checksumValid = serverChecksum.equals(clientChecksum);
+
+        if (!checksumValid) {
+            checksumFailures.incrementAndGet();
+            System.err.println("Checksum mismatch for nodeId: " + nodeId + ", threadId: " + threadId);
+        }
+
+        // Create pong response
+        String responseMessage = String.format(
+            "nodeId:%s,threadId:%s,payload:%s,checksum:%s,serverId:%s",
+            nodeId, threadId, payloadData, serverChecksum, serverNodeId
+        );
 
         System.out.println("Responding with: " + responseMessage);
 
-        // Increment responses sent counter
-        totalResponsesSent.incrementAndGet();
+        totalPongsSent.incrementAndGet(); // Increment total pongs sent
 
-        // Respond with the modified message
+        // Send response
         return Flux.just(responseMessage).map(DefaultPayload::create);
     }
 
-    private void recordActivity() {
-        long currentMinute = Instant.now().getEpochSecond() / 60;
-        recentActivity.merge(currentMinute, 1, Integer::sum);
+    private String calculateChecksum(String data) {
+        return Integer.toHexString(data.hashCode());
     }
 
-    public int getTotalPingsReceived() {
-        return totalPingsReceived.get();
-    }
-
-    public int getTotalResponsesSent() {
-        return totalResponsesSent.get();
-    }
-
-    public Map<Long, Integer> getRecentActivity() {
-        return recentActivity;
-    }
-}
-
-@RestController
-class MetricsController {
-    private final PongHandler pongHandler;
-
-    public MetricsController(PongHandler pongHandler) {
-        this.pongHandler = pongHandler;
-    }
-
-    @GetMapping("/health")
-    public Map<String, Integer> getHealth() {
+    public Map<String, Integer> getMetrics() {
         return Map.of(
-            "totalPingsReceived", pongHandler.getTotalPingsReceived(),
-            "totalResponsesSent", pongHandler.getTotalResponsesSent()
-        );
-    }
-
-    @GetMapping("/summary")
-    public Map<String, Object> getSummary() {
-        int totalActivityInLastMinute = pongHandler.getRecentActivity().values().stream()
-            .mapToInt(Integer::intValue)
-            .sum();
-
-        return Map.of(
-            "totalActivityInLastMinute", totalActivityInLastMinute,
-            "recentActivity", pongHandler.getRecentActivity()
+            "totalPingsReceived", totalPingsReceived.get(),
+            "totalPongsSent", totalPongsSent.get(),
+            "checksumFailures", checksumFailures.get()
         );
     }
 }
