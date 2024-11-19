@@ -1,18 +1,17 @@
 package com.example.pongserver;
 
+import io.rsocket.transport.netty.server.TcpServerTransport;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.rsocket.RSocketStrategies;
 import org.springframework.messaging.rsocket.annotation.support.RSocketMessageHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Hooks;
 
-import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,9 +29,9 @@ public class PongServerApplication {
 
     @Bean
     public io.rsocket.core.RSocketServer rSocketServer(RSocketMessageHandler messageHandler) {
-        // Bind the RSocket server to the specified port and ensure it runs continuously
+        // Configure the RSocket server to use the Netty TCP transport
         io.rsocket.core.RSocketServer server = io.rsocket.core.RSocketServer.create(messageHandler.responder());
-        server.bindNow(new InetSocketAddress(rsocketPort));
+        server.bind(TcpServerTransport.create(rsocketPort)).block(); // Bind and block to keep the server running
         return server;
     }
 
