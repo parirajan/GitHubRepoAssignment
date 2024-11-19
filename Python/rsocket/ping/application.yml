@@ -1,17 +1,20 @@
-spring:
-  application:
-    name: pingclient
-
-server:
-  port: 8082
-
 ping:
-  server:
-    host: localhost
-    port: 7000
-  client:
-    node-id: 1
-    threads: 6
-    pings-per-second: 300
-    padding-size: 100
-  summary-interval-seconds: 60
+  paddingSize: 1024               # Size of the padded payload in bytes
+  ratePerSecond: 10               # Number of pings to send per second
+  threadCount: 4                  # Number of threads for sending pings
+
+connection:
+  retryInterval: 5                # Initial retry interval in seconds
+  maxRetryInterval: 30            # Maximum retry interval in seconds
+  maxRetries: -1                  # Maximum retries (-1 for infinite retries)
+
+reporting:
+  healthInterval: 60              # Interval for health reporting in seconds
+  summaryInterval: 60             # Interval for summary metrics in seconds
+
+rsocket:
+  serverAddress: "localhost"      # Address of the PongServer
+  serverPort: 8080                # Port of the PongServer (RSocket listener)
+
+web:
+  port: 8081                      # Port for PingClient's health and summary endpoints
