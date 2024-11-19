@@ -5,12 +5,14 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.rsocket.RSocketStrategies;
 import org.springframework.messaging.rsocket.annotation.support.RSocketMessageHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Hooks;
 
+import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -18,16 +20,25 @@ import java.util.concurrent.atomic.AtomicInteger;
 @SpringBootApplication
 public class PongServerApplication {
 
+    @Value("${server.rsocketPort}")
+    private int rsocketPort;
+
     public static void main(String[] args) {
-        Hooks.onErrorDropped(error -> {}); // Prevent Reactor from logging unhandled exceptions
+        Hooks.onErrorDropped(error -> {}); // Suppress Reactor's unhandled error warnings
         SpringApplication.run(PongServerApplication.class, args);
     }
 
     @Bean
     public RSocketMessageHandler rSocketMessageHandler() {
-        return new RSocketMessageHandler(); // Registers the RSocket endpoint
+        return new RSocketMessageHandler(); // Registers the RSocket endpoints
     }
-    
+
+    @Bean
+    public io.rsocket.core.RSocketServer rSocketServer(RSocketMessageHandler messageHandler, RSocketStrategies strategies) {
+        return io.rsocket.core.RSocketServer.create(messageHandler.responder())
+                .bindNow(new InetSocketAddress(rsocketPort));
+    }
+
     @Component
     public static class PingHandler {
         private final AtomicInteger totalPingsReceived = new AtomicInteger();
