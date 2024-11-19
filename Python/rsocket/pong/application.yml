@@ -11,7 +11,7 @@ netty:
 
 metrics:
   server:
-    port: 8000       # Port for the REST API server (metrics summary)
+    port: 8000       # Port for the REST API server (metrics summary and health)
 
 reporting:
   interval:
