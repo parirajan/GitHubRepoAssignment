@@ -1,22 +1,14 @@
-server:
-  id: 1                           # Numeric ID for the Pong Server
-  rsocketPort: 8080               # Port for the RSocket server listener
-  webPort: 8082                   # Port for PongServer's health and summary endpoints
-
-
-timeout:
-  serverIdle: 60                  # Timeout for idle server connections in seconds
-
-reporting:
-  healthInterval: 60              # Interval for health reporting in seconds
-  summaryInterval: 60             # Interval for summary metrics in seconds
+pong:
+  server:
+    port: 8080       # Port where the RSocket server listens
+    node-id: 1       # Unique node ID for the Pong server
 
 netty:
-  bossThreads: 1                  # Number of Netty boss threads
-  workerThreads: 4                # Number of Netty worker threads
-  serverBacklog: 128              # Backlog size for incoming connections
+  config:
+    use-epoll: false # Use Epoll for Linux systems (set to true if supported)
+    boss-threads: 1  # Number of Netty boss threads (handles incoming connections)
+    worker-threads: 4 # Number of Netty worker threads (handles data processing)
 
-security:
-  enableTls: false                # Whether to enable TLS for secure communication
-  keyStorePath: ""                # Path to the TLS keystore (if TLS is enabled)
-  keyStorePassword: ""            # Password for the TLS keystore (if TLS is enabled)
+reporting:
+  interval:
+    ms: 5000         # Reporting interval in milliseconds (default: 5 seconds)
