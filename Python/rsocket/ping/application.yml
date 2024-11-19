@@ -1,17 +1,17 @@
 ping:
-  nodeId: 1                      # Numeric Node ID for the Ping Client
-  paddingSize: 1024              # Size of the padded payload in bytes
-  ratePerSecond: 10              # Number of pings to send per second
-  threadCount: 4                 # Number of threads for sending pings
+  client:
+    node-id: 1                # Unique node ID for the Ping Client
+    threads: 5                # Number of threads
+    pings-per-second: 10      # Pings per second per thread
+    payload-template: ping-node-{nodeId}-thread-{threadId}-count-{count}
+    padding-size: 150         # Padding size for the payload
+  server:
+    host: localhost           # Pong Server host
+    port: 7000                # Pong Server port
 
-connection:
-  retryInterval: 5               # Initial retry interval in seconds
-  maxRetryInterval: 30           # Maximum retry interval in seconds
-  maxRetries: -1                 # Maximum retries (-1 for infinite retries)
+server:
+  port: 8000                 # REST API port for the Ping Client
 
-rsocket:
-  serverAddress: "localhost"     # Address of the PongServer
-  serverPort: 8080               # Port of the PongServer (RSocket listener)
-
-web:
-  port: 8081                     # Port for PingClient's health and summary endpoints
+reporting:
+  interval:
+    ms: 5000                 # Interval for periodic reporting in milliseconds
