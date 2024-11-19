@@ -1,5 +1,8 @@
 package com.mycompany;
 
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
 import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.core.RSocketServer;
@@ -10,12 +13,15 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 import reactor.core.publisher.Flux;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
+@EnableScheduling
 public class PongServerApplication {
 
     @Value("${pong.server.port}")
@@ -24,9 +30,17 @@ public class PongServerApplication {
     @Value("${pong.server.node-id}")
     private String serverNodeId;
 
+    @Value("${netty.config.use-epoll:false}")
+    private boolean useEpoll;
+
+    @Value("${netty.config.boss-threads:1}")
+    private int bossThreads;
+
+    @Value("${netty.config.worker-threads:4}")
+    private int workerThreads;
+
     private final AtomicInteger totalPingsReceived = new AtomicInteger();
     private final AtomicInteger totalPongsSent = new AtomicInteger();
-    private final AtomicInteger checksumFailures = new AtomicInteger();
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
@@ -35,6 +49,15 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
+            EventLoopGroup bossGroup = createEventLoopGroup(bossThreads);
+            EventLoopGroup workerGroup = createEventLoopGroup(workerThreads);
+
+            // Report Netty configuration
+            System.out.printf("Netty Configurations:%n");
+            System.out.printf("  Boss Threads: %d%n", bossThreads);
+            System.out.printf("  Worker Threads: %d%n", workerThreads);
+            System.out.printf("  Using Epoll: %b%n", useEpoll);
+
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                 .bindNow(TcpServerTransport.create(rSocketPort));
 
@@ -43,51 +66,41 @@ public class PongServerApplication {
         };
     }
 
+    private EventLoopGroup createEventLoopGroup(int threads) {
+        if (useEpoll) {
+            return new EpollEventLoopGroup(threads);
+        } else {
+            return new NioEventLoopGroup(threads);
+        }
+    }
+
     private Flux<Payload> handleRequestStream(Payload payload) {
-        totalPingsReceived.incrementAndGet(); // Increment total pings received
+        totalPingsReceived.incrementAndGet();
 
         String receivedMessage = payload.getDataUtf8();
         System.out.println("Received: " + receivedMessage);
 
-        // Parse the received payload
-        String[] parts = receivedMessage.split(",");
-        String nodeId = parts[0]; // Node ID of the client
-        String threadId = parts[1]; // Thread ID from the client
-        String payloadData = parts[2]; // Payload data
-        String clientChecksum = parts[3]; // Checksum sent by the client
-
-        // Calculate server checksum
-        String serverChecksum = calculateChecksum(payloadData);
-        boolean checksumValid = serverChecksum.equals(clientChecksum);
-
-        if (!checksumValid) {
-            checksumFailures.incrementAndGet();
-            System.err.println("Checksum mismatch for nodeId: " + nodeId + ", threadId: " + threadId);
-        }
-
-        // Create pong response
-        String responseMessage = String.format(
-            "nodeId:%s,threadId:%s,payload:%s,checksum:%s,serverId:%s",
-            nodeId, threadId, payloadData, serverChecksum, serverNodeId
-        );
+        String responseMessage = receivedMessage.replace("ping", "pong") + "-server-" + serverNodeId;
 
         System.out.println("Responding with: " + responseMessage);
 
-        totalPongsSent.incrementAndGet(); // Increment total pongs sent
+        totalPongsSent.incrementAndGet();
 
-        // Send response
         return Flux.just(responseMessage).map(DefaultPayload::create);
-    }
-
-    private String calculateChecksum(String data) {
-        return Integer.toHexString(data.hashCode());
     }
 
     public Map<String, Integer> getMetrics() {
         return Map.of(
             "totalPingsReceived", totalPingsReceived.get(),
-            "totalPongsSent", totalPongsSent.get(),
-            "checksumFailures", checksumFailures.get()
+            "totalPongsSent", totalPongsSent.get()
         );
+    }
+
+    // Periodic Reporting
+    @Scheduled(fixedRateString = "${reporting.interval.ms:5000}")
+    public void reportMetrics() {
+        System.out.println("Metrics Report:");
+        System.out.printf("  Total Pings Received: %d%n", totalPingsReceived.get());
+        System.out.printf("  Total Pongs Sent: %d%n", totalPongsSent.get());
     }
 }
