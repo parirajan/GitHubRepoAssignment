@@ -90,13 +90,13 @@ public class PingClientApplication {
         }
 
         private void processResponse(PongResponse response) {
-            long rtt = System.currentTimeMillis() - response.getTimestamp();
-            if (!response.getChecksum().equals(calculateChecksum(response.getPayload()))) {
+            long rtt = System.currentTimeMillis() - response.timestamp(); // Access timestamp() directly
+            if (!response.checksum().equals(calculateChecksum(response.payload()))) { // Use checksum() and payload()
                 checksumFailures.incrementAndGet();
-                System.err.printf("Checksum mismatch for pong from %s%n", response.getServerId());
+                System.err.printf("Checksum mismatch for pong from %s%n", response.serverId());
             } else {
                 totalPongsReceived.incrementAndGet();
-                System.out.printf("Pong from %s: RTT=%dms, Checksum=%s%n", response.getServerId(), rtt, response.getChecksum());
+                System.out.printf("Pong from %s: RTT=%dms, Checksum=%s%n", response.serverId(), rtt, response.checksum());
             }
         }
 
