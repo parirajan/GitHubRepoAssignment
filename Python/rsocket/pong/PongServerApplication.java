@@ -26,18 +26,18 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            // Start the RSocket server using DisposableServer
+            // Start RSocket server using DisposableServer
             DisposableServer server = RSocketServer.create()
                     .acceptor(SocketAcceptor.forRequestStream(this::handleRequestStream))
-                    .bind(TcpServerTransport.create(rSocketPort))
-                    .block();
+                    .bindNow(TcpServerTransport.create(rSocketPort));
 
-            if (server != null) {
-                System.out.println("RSocket server is running on port " + rSocketPort);
-                server.onDispose().block();
-            } else {
-                System.err.println("Failed to start RSocket server!");
-            }
+            System.out.println("RSocket server is running on port " + rSocketPort);
+
+            // Add shutdown hook for graceful shutdown
+            Runtime.getRuntime().addShutdownHook(new Thread(server::dispose));
+
+            // Block until the server is disposed
+            server.onDispose().block();
         };
     }
 
