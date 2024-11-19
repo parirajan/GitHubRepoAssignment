@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Hooks;
+import reactor.netty.DisposableServer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -28,16 +29,27 @@ public class PongServerApplication {
     }
 
     @Bean
-    public io.rsocket.core.RSocketServer rSocketServer(RSocketMessageHandler messageHandler) {
-        // Configure the RSocket server to use the Netty TCP transport
-        io.rsocket.core.RSocketServer server = io.rsocket.core.RSocketServer.create(messageHandler.responder());
-        server.bind(TcpServerTransport.create(rsocketPort)).block(); // Bind and block to keep the server running
-        return server;
+    public DisposableServer rSocketServer(RSocketMessageHandler messageHandler) {
+        // Bind the RSocket server and block the thread to keep the application running
+        return io.rsocket.core.RSocketServer.create(messageHandler.responder())
+                .bindNow(TcpServerTransport.create(rsocketPort));
     }
 
     @Bean
     public RSocketMessageHandler rSocketMessageHandler() {
         return new RSocketMessageHandler(); // Register the RSocket message handlers
+    }
+
+    @Bean
+    public Runnable blockMainThread(DisposableServer disposableServer) {
+        // Block the main thread to ensure the server remains active
+        return () -> {
+            try {
+                disposableServer.onDispose().block();
+            } catch (Exception e) {
+                throw new RuntimeException("Error while running PongServer", e);
+            }
+        };
     }
 
     // Component for handling RSocket requests
