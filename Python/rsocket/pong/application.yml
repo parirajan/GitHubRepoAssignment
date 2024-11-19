@@ -1,20 +1,21 @@
-ping:
-  paddingSize: 1024               # Size of the padded payload in bytes
-  ratePerSecond: 10               # Number of pings to send per second
-  threadCount: 4                  # Number of threads for sending pings
+server:
+  id: "pong-server-1"             # Unique identifier for the PongServer
+  rsocketPort: 8080               # Port for the RSocket server listener
+  webPort: 8082                   # Port for PongServer's health and summary endpoints
 
-connection:
-  retryInterval: 5                # Initial retry interval in seconds
-  maxRetryInterval: 30            # Maximum retry interval in seconds
-  maxRetries: -1                  # Maximum retries (-1 for infinite retries)
+timeout:
+  serverIdle: 60                  # Timeout for idle server connections in seconds
 
 reporting:
   healthInterval: 60              # Interval for health reporting in seconds
   summaryInterval: 60             # Interval for summary metrics in seconds
 
-rsocket:
-  serverAddress: "localhost"      # Address of the PongServer
-  serverPort: 8080                # Port of the PongServer (RSocket listener)
+netty:
+  bossThreads: 1                  # Number of Netty boss threads
+  workerThreads: 4                # Number of Netty worker threads
+  serverBacklog: 128              # Backlog size for incoming connections
 
-web:
-  port: 8081                      # Port for PingClient's health and summary endpoints
+security:
+  enableTls: false                # Whether to enable TLS for secure communication
+  keyStorePath: ""                # Path to the TLS keystore (if TLS is enabled)
+  keyStorePassword: ""            # Password for the TLS keystore (if TLS is enabled)
