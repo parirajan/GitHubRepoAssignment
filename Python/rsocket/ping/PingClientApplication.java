@@ -19,7 +19,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.CRC32;
 
@@ -41,6 +40,9 @@ public class PingClientApplication {
     @Value("${ping.client.pings-per-second:300}")
     private int pingsPerSecond;
 
+    @Value("${ping.client.padding-size:100}")
+    private int paddingSize;
+
     @Value("${ping.summary-interval-seconds:60}")
     private int summaryIntervalSeconds;
 
@@ -57,34 +59,23 @@ public class PingClientApplication {
         return args -> {
             RSocketConnector.create()
                     .connect(TcpClientTransport.create(serverHost, serverPort))
-                    .retryWhen(reactor.util.retry.Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(5)))
-                    .doOnNext(rSocket -> {
-                        System.out.println("Connected to RSocket server at " + serverHost + ":" + serverPort);
-                        startSendingPings(rSocket);
-                        startSummaryLogging();
-                    })
-                    .doOnError(e -> System.err.println("Connection failed, retrying: " + e.getMessage()))
+                    .flatMapMany(rSocket -> Flux.interval(Duration.ofMillis(1000 / (threads * pingsPerSecond)))
+                            .flatMap(i -> sendPing(rSocket)))
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe();
 
-            // Keep the main thread alive
             Thread.currentThread().join();
         };
     }
 
-    private void startSendingPings(io.rsocket.RSocket rSocket) {
-        Flux.interval(Duration.ofMillis(1000 / (threads * pingsPerSecond)))
-                .flatMap(i -> sendPing(rSocket))
-                .subscribeOn(Schedulers.boundedElastic())
-                .subscribe();
-    }
-
     private Mono<Void> sendPing(io.rsocket.RSocket rSocket) {
-        String padding = generateRandomString(32);
+        String padding = generatePadding();
         long checksum = calculateChecksum(padding);
-        String message = String.format("ping-node-%s-padding-%s-checksum-%d", clientNodeId, padding, checksum);
+        String message = "ping-node-" + clientNodeId + "-thread-" + Thread.currentThread().getId() +
+                "-count-" + System.currentTimeMillis() + "-" + padding + "-" + checksum;
 
         addTimestamp(pingsTimestamps);
+
         return rSocket.requestStream(DefaultPayload.create(message))
                 .doOnNext(response -> {
                     String responseMessage = response.getDataUtf8();
@@ -98,15 +89,8 @@ public class PingClientApplication {
                 .then();
     }
 
-    private String generateRandomString(int length) {
-        int leftLimit = 48; // '0'
-        int rightLimit = 122; // 'z'
-        Random random = new Random();
-        return random.ints(leftLimit, rightLimit + 1)
-                .filter(i -> (i <= 57 || i >= 65) && (i <= 90 || i >= 97))
-                .limit(length)
-                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
-                .toString();
+    private String generatePadding() {
+        return "X".repeat(paddingSize);
     }
 
     private long calculateChecksum(String data) {
@@ -124,30 +108,6 @@ public class PingClientApplication {
         }
     }
 
-    private void startSummaryLogging() {
-        Flux.interval(Duration.ofSeconds(summaryIntervalSeconds))
-                .doOnNext(i -> {
-                    int pingsSent = getRecentCount(pingsTimestamps);
-                    int pongsReceived = getRecentCount(pongsTimestamps);
-                    System.out.println("Client Summary (Last " + summaryIntervalSeconds + "s) - " +
-                            "Node ID: " + clientNodeId +
-                            " | Pings Sent: " + pingsSent +
-                            ", Pongs Received: " + pongsReceived);
-                })
-                .subscribe();
-    }
-
-    private int getRecentCount(List<Instant> timestamps) {
-        Instant cutoffTime = Instant.now().minusSeconds(summaryIntervalSeconds);
-        lock.lock();
-        try {
-            timestamps.removeIf(timestamp -> timestamp.isBefore(cutoffTime));
-            return timestamps.size();
-        } finally {
-            lock.unlock();
-        }
-    }
-
     @RestController
     class ClientSummaryController {
         @GetMapping("/summary")
@@ -158,11 +118,6 @@ public class PingClientApplication {
                     "Node ID: " + clientNodeId +
                     " | Pings Sent: " + pingsSent +
                     ", Pongs Received: " + pongsReceived;
-        }
-
-        @GetMapping("/health")
-        public String getHealthStatus() {
-            return "Ping Client is running. Node ID: " + clientNodeId;
         }
     }
 }
