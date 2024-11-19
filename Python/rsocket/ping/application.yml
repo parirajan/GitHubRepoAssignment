@@ -4,11 +4,6 @@ spring:
 
 server:
   port: 8082
-  reactive:
-    max-threads: 200        # Maximum threads for the reactive server
-    netty:
-      boss-threads: 2       # Threads responsible for accepting new connections
-      worker-threads: 100   # Threads responsible for processing requests
 
 ping:
   server:
@@ -20,12 +15,3 @@ ping:
     pings-per-second: 300
     padding-size: 100
   summary-interval-seconds: 60
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: summary
-logging:
-  level:
-    root: INFO
