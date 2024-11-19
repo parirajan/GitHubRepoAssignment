@@ -29,16 +29,19 @@ public class PongServerApplication {
     }
 
     @Bean
-    public RSocketMessageHandler rSocketMessageHandler() {
-        return new RSocketMessageHandler(); // Registers the RSocket endpoints
+    public io.rsocket.core.RSocketServer rSocketServer(RSocketMessageHandler messageHandler) {
+        // Bind the RSocket server to the specified port and ensure it runs continuously
+        io.rsocket.core.RSocketServer server = io.rsocket.core.RSocketServer.create(messageHandler.responder());
+        server.bindNow(new InetSocketAddress(rsocketPort));
+        return server;
     }
 
     @Bean
-    public io.rsocket.core.RSocketServer rSocketServer(RSocketMessageHandler messageHandler, RSocketStrategies strategies) {
-        return io.rsocket.core.RSocketServer.create(messageHandler.responder())
-                .bindNow(new InetSocketAddress(rsocketPort));
+    public RSocketMessageHandler rSocketMessageHandler() {
+        return new RSocketMessageHandler(); // Register the RSocket message handlers
     }
 
+    // Component for handling RSocket requests
     @Component
     public static class PingHandler {
         private final AtomicInteger totalPingsReceived = new AtomicInteger();
@@ -75,6 +78,7 @@ public class PongServerApplication {
         }
     }
 
+    // REST Controller for Health Endpoint
     @RestController
     public static class PongHealthController {
         private final PingHandler pingHandler;
@@ -83,12 +87,15 @@ public class PongServerApplication {
             this.pingHandler = pingHandler;
         }
 
-        @GetMapping("/health")
+        @GetMapping("/health") // Expose health endpoint
         public Map<String, Integer> getHealth() {
             return pingHandler.getMetrics();
         }
     }
 
+    // Record for RSocket request data
     public static record PingRequest(String nodeId, String threadId, String payload, String checksum) {}
+
+    // Record for RSocket response data
     public static record PongResponse(String serverId, String payload, String checksum, long timestamp) {}
 }
