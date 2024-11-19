@@ -12,11 +12,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.boot.web.server.WebServerInitializedEvent;
+
 import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
@@ -94,7 +96,6 @@ public class PongServerApplication {
     }
 
     public boolean isHealthy() {
-        // Example health check logic; always healthy for this example
         return true;
     }
 
@@ -104,15 +105,18 @@ public class PongServerApplication {
         System.out.printf("  Total Pings Received: %d%n", totalPingsReceived.get());
         System.out.printf("  Total Pongs Sent: %d%n", totalPongsSent.get());
     }
+
+    @EventListener(WebServerInitializedEvent.class)
+    public void logTomcatPort(WebServerInitializedEvent event) {
+        int tomcatPort = event.getWebServer().getPort();
+        System.out.printf("Tomcat server started on port %d (configured in application.yml)%n", tomcatPort);
+    }
 }
 
 @RestController
 class MetricsController {
 
     private final PongServerApplication pongServer;
-
-    @Value("${metrics.server.port}")
-    private int metricsPort;
 
     public MetricsController(PongServerApplication pongServer) {
         this.pongServer = pongServer;
