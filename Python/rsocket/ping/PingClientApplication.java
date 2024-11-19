@@ -4,7 +4,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.context.WebServerInitializedEvent;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +32,15 @@ public class PingClientApplication {
     @Bean
     public RSocketRequester.Builder rSocketRequesterBuilder() {
         return RSocketRequester.builder();
+    }
+
+    @EventListener(WebServerInitializedEvent.class)
+    public void logServerDetails(WebServerInitializedEvent event) {
+        int port = event.getWebServer().getPort();
+        System.out.printf("Tomcat server started on port %d%n", port);
+        System.out.println("Available REST Endpoints:");
+        System.out.printf("  - Summary: http://localhost:%d/summary%n", port);
+        System.out.printf("  - Health: http://localhost:%d/health%n", port);
     }
 }
 
@@ -159,4 +170,3 @@ class MetricsController {
         );
     }
 }
-
