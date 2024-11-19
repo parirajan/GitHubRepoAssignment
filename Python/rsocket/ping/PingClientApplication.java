@@ -57,15 +57,17 @@ public class PingClientApplication {
         return args -> {
             RSocketConnector.create()
                     .connect(TcpClientTransport.create(serverHost, serverPort))
+                    .retryWhen(Flux.interval(Duration.ofSeconds(5))) // Retry every 5 seconds
                     .doOnNext(rSocket -> {
                         System.out.println("Connected to RSocket server at " + serverHost + ":" + serverPort);
                         startSendingPings(rSocket);
                         startSummaryLogging();
                     })
-                    .doOnError(e -> System.err.println("Connection failed: " + e.getMessage()))
+                    .doOnError(e -> System.err.println("Connection failed, retrying: " + e.getMessage()))
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe();
 
+            // Keep the main thread alive
             Thread.currentThread().join();
         };
     }
@@ -156,6 +158,11 @@ public class PingClientApplication {
                     "Node ID: " + clientNodeId +
                     " | Pings Sent: " + pingsSent +
                     ", Pongs Received: " + pongsReceived;
+        }
+
+        @GetMapping("/health")
+        public String getHealthStatus() {
+            return "Ping Client is running. Node ID: " + clientNodeId;
         }
     }
 }
