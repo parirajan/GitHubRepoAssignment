@@ -1,21 +1,20 @@
-pong:
-  server:
-    port: 7000
-  node-id: 1
-  summary-interval-seconds: 60
+ping:
+  paddingSize: 1024               # Size of the padded payload in bytes
+  ratePerSecond: 10               # Number of pings to send per second
+  threadCount: 4                  # Number of threads for sending pings
 
-# Netty configurations for better concurrency
-server:
-  reactive:
-    max-threads: 500
-    netty:
-      boss-threads: 4
-      worker-threads: 400
+connection:
+  retryInterval: 5                # Initial retry interval in seconds
+  maxRetryInterval: 30            # Maximum retry interval in seconds
+  maxRetries: -1                  # Maximum retries (-1 for infinite retries)
 
-management:
-  server:
-    port: 8080
-  endpoints:
-    web:
-      exposure:
-        include: summary, health
+reporting:
+  healthInterval: 60              # Interval for health reporting in seconds
+  summaryInterval: 60             # Interval for summary metrics in seconds
+
+rsocket:
+  serverAddress: "localhost"      # Address of the PongServer
+  serverPort: 8080                # Port of the PongServer (RSocket listener)
+
+web:
+  port: 8081                      # Port for PingClient's health and summary endpoints
