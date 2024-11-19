@@ -57,7 +57,7 @@ public class PingClientApplication {
         return args -> {
             RSocketConnector.create()
                     .connect(TcpClientTransport.create(serverHost, serverPort))
-                    .retryWhen(Flux.interval(Duration.ofSeconds(5))) // Retry every 5 seconds
+                    .retryWhen(reactor.util.retry.Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(5)))
                     .doOnNext(rSocket -> {
                         System.out.println("Connected to RSocket server at " + serverHost + ":" + serverPort);
                         startSendingPings(rSocket);
