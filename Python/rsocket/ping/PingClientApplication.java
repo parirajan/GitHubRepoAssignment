@@ -38,13 +38,21 @@ public class PingClientApplication {
         private final AtomicInteger noResponseFailures = new AtomicInteger();
 
         private final String nodeId = "client-1";
-        private final int paddingSize = 1024;
-        private final int ratePerSecond = 10;
-        private final int threadCount = 4;
+        private final int paddingSize;
+        private final int ratePerSecond;
+        private final int threadCount;
 
-        public PingService(RSocketRequester.Builder builder) {
+        public PingService(RSocketRequester.Builder builder,
+                           @Value("${ping.paddingSize}") int paddingSize,
+                           @Value("${ping.ratePerSecond}") int ratePerSecond,
+                           @Value("${ping.threadCount}") int threadCount,
+                           @Value("${rsocket.serverAddress}") String serverAddress,
+                           @Value("${rsocket.serverPort}") int serverPort) {
             this.executorService = Executors.newScheduledThreadPool(threadCount);
-            this.rSocketRequester = builder.connectTcp("localhost", 8080).block();
+            this.paddingSize = paddingSize;
+            this.ratePerSecond = ratePerSecond;
+            this.threadCount = threadCount;
+            this.rSocketRequester = builder.connectTcp(serverAddress, serverPort).block();
         }
 
         public void startPinging() {
