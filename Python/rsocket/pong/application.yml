@@ -9,9 +9,8 @@ netty:
     boss-threads: 1  # Number of Netty boss threads (handles incoming connections)
     worker-threads: 4 # Number of Netty worker threads (handles data processing)
 
-metrics:
-  server:
-    port: 8000       # Port for the REST API server (metrics summary and health)
+server:
+  port: 8000         # Port for the REST API server (metrics summary and health)
 
 reporting:
   interval:
