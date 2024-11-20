@@ -1,9 +1,5 @@
 package com.mycompany.pongserver;
 
-import io.netty.channel.ChannelOption;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.epoll.EpollEventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.core.RSocketServer;
@@ -21,6 +17,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.netty.resources.LoopResources;
 import reactor.netty.tcp.TcpServer;
 
 import java.util.HashMap;
@@ -58,27 +55,23 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            EventLoopGroup bossGroup = createEventLoopGroup(bossThreads);
-            EventLoopGroup workerGroup = createEventLoopGroup(workerThreads);
+            // Create custom LoopResources
+            LoopResources loopResources = LoopResources.create("custom-loop", bossThreads, workerThreads, useEpoll);
 
             System.out.printf("Starting RSocket server on port %d%n", rSocketPort);
             RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
                 .bindNow(TcpServerTransport.create(
                     TcpServer.create()
-                        .runOn(bossGroup, workerGroup)                     // Custom EventLoopGroups
-                        .option(ChannelOption.SO_BACKLOG, 65535)          // Connection backlog
-                        .option(ChannelOption.SO_RCVBUF, 16 * 1024 * 1024) // Receive buffer size (16 MB)
-                        .option(ChannelOption.SO_SNDBUF, 16 * 1024 * 1024) // Send buffer size (16 MB)
-                        .option(ChannelOption.TCP_NODELAY, true)          // Disable Nagle's algorithm
-                        .option(ChannelOption.SO_KEEPALIVE, true)         // Enable TCP Keep-Alive
+                        .runOn(loopResources)                          // Use LoopResources
+                        .option(io.netty.channel.ChannelOption.SO_BACKLOG, 65535)          // Backlog for connection queue
+                        .option(io.netty.channel.ChannelOption.SO_RCVBUF, 16 * 1024 * 1024) // Receive buffer size (16MB)
+                        .option(io.netty.channel.ChannelOption.SO_SNDBUF, 16 * 1024 * 1024) // Send buffer size (16MB)
+                        .option(io.netty.channel.ChannelOption.TCP_NODELAY, true)          // Disable Nagle's algorithm
+                        .option(io.netty.channel.ChannelOption.SO_KEEPALIVE, true)         // Enable TCP Keep-Alive
                 ));
 
             System.out.println("RSocket server started.");
         };
-    }
-
-    private EventLoopGroup createEventLoopGroup(int threads) {
-        return useEpoll ? new EpollEventLoopGroup(threads) : new NioEventLoopGroup(threads);
     }
 
     private Flux<Payload> handleRequestStream(Payload payload) {
