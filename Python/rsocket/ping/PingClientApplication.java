@@ -15,6 +15,12 @@ import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.rsocket.core.RSocketClient;
+import io.rsocket.transport.netty.client.TcpClientTransport;
+import reactor.netty.tcp.TcpClient;
 
 import java.time.Duration;
 import java.util.Map;
@@ -41,6 +47,25 @@ public class PingClientApplication {
         System.out.println("Available REST Endpoints:");
         System.out.printf("  - Summary: http://localhost:%d/summary%n", port);
         System.out.printf("  - Health: http://localhost:%d/health%n", port);
+    }
+
+    
+    public void configureClient() {
+        // EventLoopGroup for the client
+        EventLoopGroup eventLoopGroup = new EpollEventLoopGroup(8); // 8 threads
+
+        // Create the RSocket client with Netty's TcpClient
+        RSocketClient.create()
+            .connect(TcpClientTransport.create(
+                TcpClient.create()
+                    .runOn(eventLoopGroup)                               // Use custom EventLoopGroup
+                    .option(ChannelOption.SO_RCVBUF, 16 * 1024 * 1024)  // Receive buffer size (16MB)
+                    .option(ChannelOption.SO_SNDBUF, 16 * 1024 * 1024)  // Send buffer size (16MB)
+                    .option(ChannelOption.TCP_NODELAY, true)            // Disable Nagle's algorithm
+                    .option(ChannelOption.SO_KEEPALIVE, true)           // Enable TCP Keep-Alive
+            ));
+        
+        System.out.println("Netty client configured with custom options.");
     }
 }
 
