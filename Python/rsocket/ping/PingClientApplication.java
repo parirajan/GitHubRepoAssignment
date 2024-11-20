@@ -18,7 +18,6 @@ import reactor.core.publisher.Flux;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
-import io.rsocket.core.RSocketClient;
 import io.rsocket.transport.netty.client.TcpClientTransport;
 import reactor.netty.tcp.TcpClient;
 
@@ -47,25 +46,6 @@ public class PingClientApplication {
         System.out.println("Available REST Endpoints:");
         System.out.printf("  - Summary: http://localhost:%d/summary%n", port);
         System.out.printf("  - Health: http://localhost:%d/health%n", port);
-    }
-
-    
-    public void configureClient() {
-        // EventLoopGroup for the client
-        EventLoopGroup eventLoopGroup = new EpollEventLoopGroup(8); // 8 threads
-
-        // Create the RSocket client with Netty's TcpClient
-        RSocketClient.create()
-            .connect(TcpClientTransport.create(
-                TcpClient.create()
-                    .runOn(eventLoopGroup)                               // Use custom EventLoopGroup
-                    .option(ChannelOption.SO_RCVBUF, 16 * 1024 * 1024)  // Receive buffer size (16MB)
-                    .option(ChannelOption.SO_SNDBUF, 16 * 1024 * 1024)  // Send buffer size (16MB)
-                    .option(ChannelOption.TCP_NODELAY, true)            // Disable Nagle's algorithm
-                    .option(ChannelOption.SO_KEEPALIVE, true)           // Enable TCP Keep-Alive
-            ));
-        
-        System.out.println("Netty client configured with custom options.");
     }
 }
 
@@ -108,7 +88,20 @@ class PingClient implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        RSocketRequester requester = requesterBuilder.dataMimeType(MimeTypeUtils.TEXT_PLAIN).tcp(host, port);
+        EventLoopGroup eventLoopGroup = new EpollEventLoopGroup(numThreads);
+
+        RSocketRequester requester = requesterBuilder.dataMimeType(MimeTypeUtils.TEXT_PLAIN)
+            .transport(TcpClientTransport.create(
+                TcpClient.create()
+                    .host(host)
+                    .port(port)
+                    .runOn(eventLoopGroup)                               // Use custom EventLoopGroup
+                    .option(ChannelOption.SO_RCVBUF, 16 * 1024 * 1024)  // Set receive buffer size
+                    .option(ChannelOption.SO_SNDBUF, 16 * 1024 * 1024)  // Set send buffer size
+                    .option(ChannelOption.TCP_NODELAY, true)            // Disable Nagle's algorithm
+                    .option(ChannelOption.SO_KEEPALIVE, true)           // Enable TCP Keep-Alive
+            ));
+
         AtomicInteger threadIdCounter = new AtomicInteger(1);
         long intervalMillis = 1000 / pingsPerSecond;
 
@@ -209,14 +202,12 @@ class MetricsController {
         return pingClient.getMetrics();
     }
 
-@GetMapping("/health")
-public Map<String, String> getHealthStatus() {
-    // Safely cast the Object to Integer and compare
-    boolean healthy = ((Integer) pingClient.getMetrics().get("totalFailures")) == 0;
-    return Map.of(
-        "status", healthy ? "UP" : "DOWN",
-        "description", healthy ? "Client is healthy" : "Client has issues"
-    );
-}
-
+    @GetMapping("/health")
+    public Map<String, String> getHealthStatus() {
+        boolean healthy = ((Integer) pingClient.getMetrics().get("totalFailures")) == 0;
+        return Map.of(
+            "status", healthy ? "UP" : "DOWN",
+            "description", healthy ? "Client is healthy" : "Client has issues"
+        );
+    }
 }
