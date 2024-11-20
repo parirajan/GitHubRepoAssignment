@@ -22,6 +22,7 @@ import io.rsocket.transport.netty.client.TcpClientTransport;
 import reactor.netty.tcp.TcpClient;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -78,6 +79,7 @@ class PingClient implements CommandLineRunner {
     private final AtomicInteger totalPingsSent = new AtomicInteger();
     private final AtomicInteger totalPongsReceived = new AtomicInteger();
     private final AtomicInteger totalFailures = new AtomicInteger();
+    private final AtomicInteger totalRTT = new AtomicInteger();
 
     private final AtomicInteger pingsSentPerSecond = new AtomicInteger();
     private final AtomicInteger pongsReceivedPerSecond = new AtomicInteger();
@@ -124,6 +126,8 @@ class PingClient implements CommandLineRunner {
             .flatMap(i -> {
                 String message = formatPayload(nodeId, threadId, count.getAndIncrement());
                 String paddedMessage = addExtraBytes(message, paddingSize);
+                Instant startTime = Instant.now(); // Record start time for RTT
+
                 System.out.println("Sending message: " + paddedMessage);
                 totalPingsSent.incrementAndGet();
                 pingsSentPerSecond.incrementAndGet();
@@ -133,9 +137,13 @@ class PingClient implements CommandLineRunner {
                     .data(paddedMessage)
                     .retrieveFlux(String.class)
                     .doOnNext(response -> {
-                        System.out.println("Received response: " + response);
+                        Instant endTime = Instant.now(); // Record end time for RTT
+                        int rtt = (int) Duration.between(startTime, endTime).toMillis(); // Calculate RTT
+
+                        System.out.printf("Received response: %s | RTT: %d ms%n", response, rtt);
                         totalPongsReceived.incrementAndGet();
                         pongsReceivedPerSecond.incrementAndGet();
+                        totalRTT.addAndGet(rtt); // Accumulate RTT
                     })
                     .doOnError(e -> {
                         System.err.println("Failed to send ping: " + e.getMessage());
@@ -162,12 +170,15 @@ class PingClient implements CommandLineRunner {
     }
 
     public Map<String, Object> getMetrics() {
+        int averageRTT = totalPongsReceived.get() == 0 ? 0 : totalRTT.get() / totalPongsReceived.get();
+
         return Map.of(
             "totalPingsSent", totalPingsSent.get(),
             "totalPongsReceived", totalPongsReceived.get(),
             "totalFailures", totalFailures.get(),
             "pingsPerSecond", pingsSentPerSecond.get(),
-            "pongsPerSecond", pongsReceivedPerSecond.get()
+            "pongsPerSecond", pongsReceivedPerSecond.get(),
+            "averageRTT", averageRTT
         );
     }
 
@@ -185,29 +196,6 @@ class PingClient implements CommandLineRunner {
         System.out.printf("  Total Failures: %d%n", totalFailures.get());
         System.out.printf("  Pings Sent Per Second: %d%n", pingsSentPerSecond.get());
         System.out.printf("  Pongs Received Per Second: %d%n", pongsReceivedPerSecond.get());
-    }
-}
-
-@RestController
-class MetricsController {
-
-    private final PingClient pingClient;
-
-    public MetricsController(PingClient pingClient) {
-        this.pingClient = pingClient;
-    }
-
-    @GetMapping("/summary")
-    public Map<String, Object> getMetricsSummary() {
-        return pingClient.getMetrics();
-    }
-
-    @GetMapping("/health")
-    public Map<String, String> getHealthStatus() {
-        boolean healthy = ((Integer) pingClient.getMetrics().get("totalFailures")) == 0;
-        return Map.of(
-            "status", healthy ? "UP" : "DOWN",
-            "description", healthy ? "Client is healthy" : "Client has issues"
-        );
-    }
-}
+        int averageRTT = totalPongsReceived.get() == 0 ? 0 : totalRTT.get() / totalPongsReceived.get();
+        System.out.printf("  Average RTT: %d ms%n", averageRTT);
+   
