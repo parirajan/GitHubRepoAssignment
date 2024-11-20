@@ -1,5 +1,6 @@
 package com.mycompany.pongserver;
 
+import io.netty.channel.ChannelOption;
 import io.rsocket.Payload;
 import io.rsocket.SocketAcceptor;
 import io.rsocket.core.RSocketServer;
@@ -55,22 +56,30 @@ public class PongServerApplication {
     @Bean
     public CommandLineRunner startRSocketServer() {
         return args -> {
-            // Create custom LoopResources
+            // Create custom LoopResources for boss and worker threads
             LoopResources loopResources = LoopResources.create("custom-loop", bossThreads, workerThreads, useEpoll);
 
-            System.out.printf("Starting RSocket server on port %d%n", rSocketPort);
-            RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
-                .bindNow(TcpServerTransport.create(
-                    TcpServer.create()
-                        .runOn(loopResources)                          // Use LoopResources
-                        .option(io.netty.channel.ChannelOption.SO_BACKLOG, 65535)          // Backlog for connection queue
-                        .option(io.netty.channel.ChannelOption.SO_RCVBUF, 16 * 1024 * 1024) // Receive buffer size (16MB)
-                        .option(io.netty.channel.ChannelOption.SO_SNDBUF, 16 * 1024 * 1024) // Send buffer size (16MB)
-                        .option(io.netty.channel.ChannelOption.TCP_NODELAY, true)          // Disable Nagle's algorithm
-                        .option(io.netty.channel.ChannelOption.SO_KEEPALIVE, true)         // Enable TCP Keep-Alive
-                ));
+            try {
+                System.out.printf("Attempting to start RSocket server on port %d%n", rSocketPort);
 
-            System.out.println("RSocket server started.");
+                RSocketServer.create(SocketAcceptor.forRequestStream(this::handleRequestStream))
+                    .bindNow(TcpServerTransport.create(
+                        TcpServer.create()
+                            .runOn(loopResources)                          // Use LoopResources for thread management
+                            .host("0.0.0.0")                               // Bind to all interfaces
+                            .port(rSocketPort)                             // Bind to specified port
+                            .option(ChannelOption.SO_BACKLOG, 65535)       // Set connection backlog
+                            .option(ChannelOption.SO_RCVBUF, 16 * 1024 * 1024) // Set receive buffer size
+                            .option(ChannelOption.SO_SNDBUF, 16 * 1024 * 1024) // Set send buffer size
+                            .option(ChannelOption.TCP_NODELAY, true)       // Disable Nagle's algorithm
+                            .option(ChannelOption.SO_KEEPALIVE, true)      // Enable TCP Keep-Alive
+                    ));
+
+                System.out.printf("RSocket server successfully started and listening on port %d%n", rSocketPort);
+            } catch (Exception e) {
+                System.err.printf("Failed to start RSocket server on port %d: %s%n", rSocketPort, e.getMessage());
+                e.printStackTrace();
+            }
         };
     }
 
