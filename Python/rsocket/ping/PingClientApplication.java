@@ -74,6 +74,9 @@ class PingClient implements CommandLineRunner {
     private final AtomicInteger totalPongsReceived = new AtomicInteger();
     private final AtomicInteger totalFailures = new AtomicInteger();
 
+    private final AtomicInteger pingsSentPerSecond = new AtomicInteger();
+    private final AtomicInteger pongsReceivedPerSecond = new AtomicInteger();
+
     public PingClient(RSocketRequester.Builder requesterBuilder) {
         this.requesterBuilder = requesterBuilder;
     }
@@ -105,6 +108,7 @@ class PingClient implements CommandLineRunner {
                 String paddedMessage = addExtraBytes(message, paddingSize);
                 System.out.println("Sending message: " + paddedMessage);
                 totalPingsSent.incrementAndGet();
+                pingsSentPerSecond.incrementAndGet();
 
                 return requester
                     .route("ping")
@@ -113,6 +117,7 @@ class PingClient implements CommandLineRunner {
                     .doOnNext(response -> {
                         System.out.println("Received response: " + response);
                         totalPongsReceived.incrementAndGet();
+                        pongsReceivedPerSecond.incrementAndGet();
                     })
                     .doOnError(e -> {
                         System.err.println("Failed to send ping: " + e.getMessage());
@@ -138,12 +143,30 @@ class PingClient implements CommandLineRunner {
         return builder.toString();
     }
 
-    public Map<String, Integer> getMetrics() {
+    public Map<String, Object> getMetrics() {
         return Map.of(
             "totalPingsSent", totalPingsSent.get(),
             "totalPongsReceived", totalPongsReceived.get(),
-            "totalFailures", totalFailures.get()
+            "totalFailures", totalFailures.get(),
+            "pingsPerSecond", pingsSentPerSecond.get(),
+            "pongsPerSecond", pongsReceivedPerSecond.get()
         );
+    }
+
+    @Scheduled(fixedRate = 1000) // Reset per-second counters every second
+    public void resetPerSecondCounters() {
+        pingsSentPerSecond.set(0);
+        pongsReceivedPerSecond.set(0);
+    }
+
+    @Scheduled(fixedRateString = "${reporting.interval.ms:5000}")
+    public void reportMetricsToConsole() {
+        System.out.println("Metrics Report:");
+        System.out.printf("  Total Pings Sent: %d%n", totalPingsSent.get());
+        System.out.printf("  Total Pongs Received: %d%n", totalPongsReceived.get());
+        System.out.printf("  Total Failures: %d%n", totalFailures.get());
+        System.out.printf("  Pings Sent Per Second: %d%n", pingsSentPerSecond.get());
+        System.out.printf("  Pongs Received Per Second: %d%n", pongsReceivedPerSecond.get());
     }
 }
 
@@ -157,7 +180,7 @@ class MetricsController {
     }
 
     @GetMapping("/summary")
-    public Map<String, Integer> getMetricsSummary() {
+    public Map<String, Object> getMetricsSummary() {
         return pingClient.getMetrics();
     }
 
