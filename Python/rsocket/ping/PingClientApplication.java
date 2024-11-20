@@ -198,4 +198,29 @@ class PingClient implements CommandLineRunner {
         System.out.printf("  Pongs Received Per Second: %d%n", pongsReceivedPerSecond.get());
         int averageRTT = totalPongsReceived.get() == 0 ? 0 : totalRTT.get() / totalPongsReceived.get();
         System.out.printf("  Average RTT: %d ms%n", averageRTT);
-   
+    }
+}
+
+@RestController
+class MetricsController {
+
+    private final PingClient pingClient;
+
+    public MetricsController(PingClient pingClient) {
+        this.pingClient = pingClient;
+    }
+
+    @GetMapping("/summary")
+    public Map<String, Object> getMetricsSummary() {
+        return pingClient.getMetrics();
+    }
+
+    @GetMapping("/health")
+    public Map<String, String> getHealthStatus() {
+        boolean healthy = ((Integer) pingClient.getMetrics().get("totalFailures")) == 0;
+        return Map.of(
+            "status", healthy ? "UP" : "DOWN",
+            "description", healthy ? "Client is healthy" : "Client has issues"
+        );
+    }
+}
