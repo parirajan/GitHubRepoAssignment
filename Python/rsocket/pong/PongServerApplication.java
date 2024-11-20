@@ -1,4 +1,4 @@
-package com.mycompany;
+package com.mycompany.pongserver;
 
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
@@ -12,7 +12,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.context.WebServerInitializedEvent;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,9 +35,6 @@ public class PongServerApplication {
     @Value("${pong.server.node-id}")
     private String serverNodeId;
 
-    @Value("${server.port}")
-    private int metricsPort;
-
     @Value("${netty.config.use-epoll:false}")
     private boolean useEpoll;
 
@@ -47,6 +46,8 @@ public class PongServerApplication {
 
     private final AtomicInteger totalPingsReceived = new AtomicInteger();
     private final AtomicInteger totalPongsSent = new AtomicInteger();
+    private final AtomicInteger pingsReceivedPerSecond = new AtomicInteger();
+    private final AtomicInteger pongsSentPerSecond = new AtomicInteger();
 
     public static void main(String[] args) {
         SpringApplication.run(PongServerApplication.class, args);
@@ -66,26 +67,13 @@ public class PongServerApplication {
         };
     }
 
-    @Bean
-    public CommandLineRunner logMetricsServerDetails() {
-        return args -> {
-            System.out.printf("Metrics server is running on port %d%n", metricsPort);
-            System.out.println("Available Metrics Endpoints:");
-            System.out.printf("  - Summary: http://localhost:%d/summary%n", metricsPort);
-            System.out.printf("  - Health: http://localhost:%d/health%n", metricsPort);
-        };
-    }
-
     private EventLoopGroup createEventLoopGroup(int threads) {
-        if (useEpoll) {
-            return new EpollEventLoopGroup(threads);
-        } else {
-            return new NioEventLoopGroup(threads);
-        }
+        return useEpoll ? new EpollEventLoopGroup(threads) : new NioEventLoopGroup(threads);
     }
 
     private Flux<Payload> handleRequestStream(Payload payload) {
         totalPingsReceived.incrementAndGet();
+        pingsReceivedPerSecond.incrementAndGet();
 
         String receivedMessage = payload.getDataUtf8();
         System.out.printf("Received: %s%n", receivedMessage);
@@ -94,20 +82,33 @@ public class PongServerApplication {
         System.out.printf("Responding with: %s%n", responseMessage);
 
         totalPongsSent.incrementAndGet();
+        pongsSentPerSecond.incrementAndGet();
 
         return Flux.just(responseMessage).map(DefaultPayload::create);
+    }
+
+    @EventListener(WebServerInitializedEvent.class)
+    public void logServerDetails(WebServerInitializedEvent event) {
+        int port = event.getWebServer().getPort();
+        System.out.printf("Tomcat server started on port %d%n", port);
+        System.out.println("Available REST Endpoints:");
+        System.out.printf("  - Summary: http://localhost:%d/summary%n", port);
+        System.out.printf("  - Health: http://localhost:%d/health%n", port);
     }
 
     public Map<String, Object> getMetrics() {
         Map<String, Object> metrics = new HashMap<>();
         metrics.put("totalPingsReceived", totalPingsReceived.get());
         metrics.put("totalPongsSent", totalPongsSent.get());
-        metrics.put("serverNodeId", serverNodeId);
+        metrics.put("pingsPerSecond", pingsReceivedPerSecond.get());
+        metrics.put("pongsPerSecond", pongsSentPerSecond.get());
         return metrics;
     }
 
-    public boolean isHealthy() {
-        return true;
+    @Scheduled(fixedRate = 1000) // Reset per-second counters every second
+    public void resetPerSecondCounters() {
+        pingsReceivedPerSecond.set(0);
+        pongsSentPerSecond.set(0);
     }
 
     @Scheduled(fixedRateString = "${reporting.interval.ms:5000}")
@@ -115,6 +116,8 @@ public class PongServerApplication {
         System.out.println("Metrics Report:");
         System.out.printf("  Total Pings Received: %d%n", totalPingsReceived.get());
         System.out.printf("  Total Pongs Sent: %d%n", totalPongsSent.get());
+        System.out.printf("  Pings Received Per Second: %d%n", pingsReceivedPerSecond.get());
+        System.out.printf("  Pongs Sent Per Second: %d%n", pongsSentPerSecond.get());
     }
 }
 
@@ -134,10 +137,6 @@ class MetricsController {
 
     @GetMapping("/health")
     public Map<String, String> getHealthStatus() {
-        boolean healthy = pongServer.isHealthy();
-        return Map.of(
-            "status", healthy ? "UP" : "DOWN",
-            "description", healthy ? "Server is healthy" : "Server has issues"
-        );
+        return Map.of("status", "UP", "description", "Server is healthy");
     }
 }
