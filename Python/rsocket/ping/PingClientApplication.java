@@ -184,12 +184,14 @@ class MetricsController {
         return pingClient.getMetrics();
     }
 
-    @GetMapping("/health")
-    public Map<String, String> getHealthStatus() {
-        boolean healthy = pingClient.getMetrics().get("totalFailures") == 0;
-        return Map.of(
-            "status", healthy ? "UP" : "DOWN",
-            "description", healthy ? "Client is healthy" : "Client has issues"
-        );
-    }
+@GetMapping("/health")
+public Map<String, String> getHealthStatus() {
+    // Safely cast the Object to Integer and compare
+    boolean healthy = ((Integer) pingClient.getMetrics().get("totalFailures")) == 0;
+    return Map.of(
+        "status", healthy ? "UP" : "DOWN",
+        "description", healthy ? "Client is healthy" : "Client has issues"
+    );
+}
+
 }
