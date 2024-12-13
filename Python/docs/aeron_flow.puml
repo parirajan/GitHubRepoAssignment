@@ -1,0 +1,60 @@
+@startuml
+title End-to-End Flow for Financial Settlement System Using Aeron
+
+skinparam participant {
+    BackgroundColor<<Publisher>> LightSkyBlue
+    BackgroundColor<<MediaDriver>> LightYellow
+    BackgroundColor<<Subscriber>> LightGreen
+    BackgroundColor<<SettlementLogic>> LightCoral
+    BackgroundColor<<Journal>> LightGray
+    BackgroundColor<<Archive>> LightPink
+    BorderColor Black
+    FontSize 14
+    FontColor Black
+}
+
+actor "Transaction Source (Bank A)" as BankA <<Publisher>>
+actor "Transaction Source (Bank B)" as BankB <<Publisher>>
+participant "Aeron Media Driver" as MediaDriver <<MediaDriver>>
+actor "Settlement Processor" as SettlementProcessor <<Subscriber>>
+participant "Settlement Logic" as SettlementLogic <<SettlementLogic>>
+participant "Settlement Journal" as Journal <<Journal>>
+participant "Aeron Archive" as Archive <<Archive>>
+actor "Reconciliation System" as Reconciliation <<Subscriber>>
+
+== Message Publication ==
+BankA -> MediaDriver : Publish Transaction (e.g., Payment Initiation)
+BankB -> MediaDriver : Publish Transaction (e.g., Payment Acknowledgment)
+MediaDriver -> Archive : Record Transaction
+MediaDriver -> SettlementProcessor : Deliver Transactions
+
+note right of MediaDriver
+  Aeron Media Driver:
+  - Handles publication and delivery.
+  - Passes transactions to the archive for recording.
+end note
+
+== Settlement Processing ==
+SettlementProcessor -> SettlementLogic : Process Transactions
+SettlementLogic -> Journal : Apply Settlement Logic and Write Settled Transactions
+
+note right of Journal
+  Settlement Journal:
+  - Stores processed transactions.
+  - Maintains durability for reconciliation or audit.
+end note
+
+== Reconciliation or Audit ==
+Reconciliation -> Archive : Request Replay (Transaction ID Range or Time Window)
+Archive -> Journal : Read Settled Transactions
+Journal -> Archive : Return Transactions for Replay
+Archive -> Reconciliation : Deliver Replay Stream
+
+note bottom
+  Replay Flow:
+  - Reconciliation or audit requests settled transactions.
+  - Archive fetches data from the journal.
+  - Transactions are republished for analysis.
+end note
+
+@enduml
