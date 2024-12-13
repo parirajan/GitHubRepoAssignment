@@ -1,0 +1,31 @@
+@startuml
+title Amazon RDS IAM Authentication Flow
+
+skinparam participant {
+    BackgroundColor<<Client>> LightSkyBlue
+    BackgroundColor<<STS>> LightYellow
+    BackgroundColor<<IAM>> LightGreen
+    BackgroundColor<<RDS>> LightCoral
+    BorderColor Black
+    FontSize 14
+    FontColor Black
+}
+
+actor "Client (EC2 Instance)" as Client <<Client>>
+participant "AWS STS" as STS <<STS>>
+participant "AWS IAM" as IAM <<IAM>>
+participant "Amazon RDS" as RDS <<RDS>>
+
+Client -> STS : Assume IAM Role\n(Role must have `rds-db:connect` permissions)
+STS --> Client : Temporary IAM Credentials\n(Access Key, Secret Key, Session Token)
+
+Client -> IAM : GenerateDBAuthToken\n(hostname, port, username)
+IAM --> Client : Signed Authentication Token\n(valid for 15 minutes)
+
+Client -> RDS : Connect using Token\n(as password)
+RDS -> IAM : Validate Authentication Token
+IAM --> RDS : Token Validation Result\n(Valid or Invalid)
+
+RDS -> Client : Connection Established (or Access Denied)
+
+@enduml
