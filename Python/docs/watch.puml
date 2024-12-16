@@ -1,0 +1,30 @@
+@startuml
+actor Seeder as U
+participant "Consul" as C
+
+box "AWS AMI Instance" #LightBlue
+    participant "Consul Template" as CT
+    participant "Script" as S
+end box
+
+participant "API" as A
+participant "Persistent Disk" as PD
+
+U -> C: Updates DataPayload JSON
+
+alt Consul Watch
+    C -> CT: Notify Change via Watch Event
+    CT -> S: Trigger Script
+end alt
+
+S -> C: Fetch Updated DataPayload JSON
+
+alt If Source Cluster
+    S -> A: Create Job with DataPayload
+    A -> S: Acknowledge Job Creation
+else Not Source Cluster
+    S -> S: Skip Job Creation
+end alt
+
+S -> PD: Store Job Metadata
+@enduml
