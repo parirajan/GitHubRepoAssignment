@@ -7,6 +7,7 @@ box "AWS AMI Instance" #LightBlue
 end box
 
 participant "API" as A
+participant "Persistent Disk" as PD
 
 U -> C: Updates DataPayload JSON
 C -> S: Notify Change via Watch Event
@@ -19,5 +20,5 @@ else Not Source Cluster
     S -> S: Skip Job Creation
 end alt
 
-S -> C: Store Job Metadata (optional)
+S -> PD: Store Job Metadata
 @enduml
