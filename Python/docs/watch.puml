@@ -11,29 +11,27 @@ skinparam node {
 }
 
 package "AWS Region: East (Rack ID 1)" as East {
-    node "Node 1" as Node1_East
-    node "Node 2" as Node2_East
-    node "Node 3" as Node3_East
+    node "Node 1 (Master Partition A)" as Node1_East
+    node "Node 2 (Replica Partition B)" as Node2_East
+    node "Node 3 (Master Partition B)" as Node3_East
 }
 
 package "AWS Region: West (Rack ID 2)" as West {
-    node "Node 4" as Node1_West
-    node "Node 5" as Node2_West
-    node "Node 6" as Node3_West
+    node "Node 4 (Replica Partition A)" as Node1_West
+    node "Node 5 (Master Partition C)" as Node2_West
+    node "Node 6 (Replica Partition C)" as Node3_West
 }
 
 rectangle "Client (East Region)" as Client_East #LightBlue
+rectangle "Client (West Region)" as Client_West #LightBlue
 
-note right of East
-Active Rack: Rack ID 1
-end note
+Client_East --> Node1_East : Write Partition A
+Client_East --> Node3_East : Write Partition B
 
-Client_East --> Node1_East : Write
-Client_East ..> Node2_East : (Potential Access)
-Client_East ..> Node3_East : (Potential Access)
+Client_West --> Node2_West : Write Partition C
 
-Node1_East ..> Node1_West : Replication
-Node2_East ..> Node2_West : Replication
-Node3_East ..> Node3_West : Replication
+Node1_East ..> Node1_West : Replica Partition A
+Node3_East ..> Node2_East : Replica Partition B
+Node2_West ..> Node3_West : Replica Partition C
 
 @enduml
