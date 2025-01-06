@@ -1,30 +1,39 @@
 @startuml
-actor Seeder as U
-participant "Consul" as C
+skinparam cluster {
+    BackgroundColor White
+    BorderColor Black
+    FontName Arial
+}
+skinparam node {
+    FontColor Black
+    FontSize 12
+    FontName Arial
+}
 
-box "AWS AMI Instance" #LightBlue
-    participant "Consul Template" as CT
-    participant "Script" as S
-end box
+package "AWS Region: East (Rack ID 1)" as East {
+    node "Node 1" as Node1_East
+    node "Node 2" as Node2_East
+    node "Node 3" as Node3_East
+}
 
-participant "API" as A
-participant "Persistent Disk" as PD
+package "AWS Region: West (Rack ID 2)" as West {
+    node "Node 4" as Node1_West
+    node "Node 5" as Node2_West
+    node "Node 6" as Node3_West
+}
 
-U -> C: Updates DataPayload JSON
+rectangle "Client (East Region)" as Client_East #LightBlue
 
-alt Consul Watch
-    C -> CT: Notify Change via Watch Event
-    CT -> S: Trigger Script
-end alt
+note right of East
+Active Rack: Rack ID 1
+end note
 
-S -> C: Fetch Updated DataPayload JSON
+Client_East --> Node1_East : Write
+Client_East ..> Node2_East : (Potential Access)
+Client_East ..> Node3_East : (Potential Access)
 
-alt If Source Cluster
-    S -> A: Create Job with DataPayload
-    A -> S: Acknowledge Job Creation
-else Not Source Cluster
-    S -> S: Skip Job Creation
-end alt
+Node1_East ..> Node1_West : Replication
+Node2_East ..> Node2_West : Replication
+Node3_East ..> Node3_West : Replication
 
-S -> PD: Store Job Metadata
 @enduml
