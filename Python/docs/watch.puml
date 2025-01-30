@@ -1,0 +1,43 @@
+@startuml
+participant "Dev Model" as DevM
+participant "S3 Staging" as S3
+participant "Consul KV Store" as Consul
+participant "Consul Seeder" as Seeder
+participant "Consul Watch (Dev)" as WatchDev
+participant "Consul Watch (QA)" as WatchQA
+participant "Consul Watch (DIT)" as WatchDIT
+participant "Download Journal (Dev)" as DownloadDev
+participant "Download Journal (QA)" as DownloadQA
+participant "Download Journal (DIT)" as DownloadDIT
+participant "Dev Execution: Journal Import (Vn)" as ExecDev
+participant "QA Execution: Journal Import (Vn-1)" as ExecQA
+participant "DIT Execution: Journal Import (Vn-2)" as ExecDIT
+
+DevM -> S3: Export Journal Version Vn
+S3 -> Seeder: New Journal (Vn) Uploaded
+Seeder -> Consul: Update journal_version/dev to Vn
+Consul -> WatchDev: Notify version update
+
+WatchDev -> DownloadDev: Trigger Download (Vn)
+DownloadDev -> S3: Fetch Journal-Vn
+DownloadDev -> ExecDev: Start Import Process
+ExecDev -> Consul: Confirm successful Dev import
+
+Consul -> Seeder: Update journal_version/qa to Vn (Promote)
+S3 -> WatchQA: QA pulls Journal-Vn-1 from S3
+Consul -> WatchQA: Notify QA version update
+
+WatchQA -> DownloadQA: Trigger Download (Vn-1)
+DownloadQA -> S3: Fetch Journal-Vn-1
+DownloadQA -> ExecQA: Start Import Process
+ExecQA -> Consul: Confirm successful QA import
+
+Consul -> Seeder: Update journal_version/dit to Vn-1 (Promote)
+S3 -> WatchDIT: DIT pulls Journal-Vn-2 from S3
+Consul -> WatchDIT: Notify DIT version update
+
+WatchDIT -> DownloadDIT: Trigger Download (Vn-2)
+DownloadDIT -> S3: Fetch Journal-Vn-2
+DownloadDIT -> ExecDIT: Start Import Process
+ExecDIT -> Consul: Confirm successful DIT import
+@enduml
