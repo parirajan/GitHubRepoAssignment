@@ -25,14 +25,24 @@ LOCAL_VERSION_FILE = f"/path/to/version-{CURRENT_DATE}.json"
 s3_client = boto3.client("s3")
 
 def get_consul_acl_token():
-    """Extract the ACL token from /etc/consul.d/acl.hcl."""
+    """Retrieve Consul ACL token from /etc/consul.d/acl.hcl."""
+    acl_file = "/etc/consul.d/acl.hcl"
+
     try:
-        with open(CONSUL_ACL_FILE, "r") as f:
-            content = f.read()
-        match = re.search(r'agent\s*=\s*"([^"]+)"', content)
-        return match.group(1) if match else None
+        with open(acl_file, "r") as f:
+            for line in f:
+                # Strip spaces and check for the token assignment
+                line = line.strip()
+                if line.startswith("agent ="):
+                    token = line.split("=")[1].strip().strip('"')
+                    if token:
+                        return token
     except FileNotFoundError:
-        return None
+        print(f"ACL file not found at {acl_file}.")
+
+    print("Error: Could not find ACL token in the file.")
+    return None  # Return None if token is missing
+
 
 def get_consul_target():
     """Fetch the target version from Consul KV using ACL authentication."""
