@@ -7,8 +7,8 @@ from datetime import datetime
 S3_BUCKET = "your-bucket-name"
 JOURNAL_DIR = "/path/to/journals"
 CLUSTER_ID = "204"  # Source Cluster ID
-TRACKER_FOLDER = "tracker/"
-JOURNAL_S3_PREFIX = "journals/"
+TRACKER_FOLDER = "tracker/"  # S3 prefix for tracker files
+JOURNAL_S3_PREFIX = "journals/"  # S3 prefix for journal files
 
 s3_client = boto3.client("s3")
 
@@ -44,8 +44,24 @@ def upload_journal_to_s3(file_path, file_name):
     print(f"Uploaded {file_name} to S3 at {s3_key} with Version ID: {version_id}")
     return version_id, timestamp, s3_key
 
+def rotate_tracker_file():
+    """Ensure tracker file is rotated daily by checking if a new one needs to be created."""
+    tracker_key = get_tracker_filename()
+    
+    # Check if today's tracker file exists, if not, create it
+    existing_tracker = fetch_tracker_from_s3(tracker_key)
+    if not existing_tracker:
+        print(f"Creating a new tracker file for today: {tracker_key}")
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=tracker_key,
+            Body=json.dumps([], indent=4),
+            ContentType="application/json"
+        )
+    return tracker_key
+
 def update_tracker(tracker_key, file_name, node_id, version_id, timestamp, s3_key):
-    """Update the source tracker file in S3 and locally with new version information."""
+    """Update the source tracker file in S3 with new version information."""
     tracker_data = fetch_tracker_from_s3(tracker_key)
 
     # Append new entry with correct file details and S3 path
@@ -57,14 +73,7 @@ def update_tracker(tracker_key, file_name, node_id, version_id, timestamp, s3_ke
         "node_id": node_id
     })
 
-    # Save tracker file locally
-    local_tracker_path = f"/tmp/{tracker_key.split('/')[-1]}"
-    with open(local_tracker_path, "w") as f:
-        json.dump(tracker_data, f, indent=4)
-
-    print(f"Updated local tracker file: {local_tracker_path}")
-
-    # Upload updated tracker back to S3
+    # Upload updated tracker directly to S3
     s3_client.put_object(
         Bucket=S3_BUCKET,
         Key=tracker_key,
@@ -76,7 +85,7 @@ def update_tracker(tracker_key, file_name, node_id, version_id, timestamp, s3_ke
 def process_journals():
     """Uploads the journal file to S3 every hour and updates the tracker."""
     today_date = datetime.now().strftime("%m-%d-%Y")
-    tracker_key = get_tracker_filename()  # Get the tracker filename for today
+    tracker_key = rotate_tracker_file()  # Ensure the tracker file is rotated daily
 
     for file_name in os.listdir(JOURNAL_DIR):
         if file_name.startswith("journal_configuration_") and today_date in file_name:
@@ -89,18 +98,7 @@ def process_journals():
             # Step 1: Upload the journal file to S3 and retrieve version ID
             version_id, timestamp, s3_key = upload_journal_to_s3(file_path, file_name)
 
-            # Step 2: Ensure tracker file exists before updating it
-            tracker_data = fetch_tracker_from_s3(tracker_key)
-            if not tracker_data:
-                print(f"Creating new tracker file: {tracker_key}")
-                s3_client.put_object(
-                    Bucket=S3_BUCKET,
-                    Key=tracker_key,
-                    Body=json.dumps([], indent=4),
-                    ContentType="application/json"
-                )
-
-            # Step 3: Update the tracker with the uploaded file details
+            # Step 2: Update the tracker with the uploaded file details
             update_tracker(tracker_key, file_name, node_id, version_id, timestamp, s3_key)
 
 if __name__ == "__main__":
