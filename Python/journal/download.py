@@ -15,8 +15,12 @@ LOCAL_STORAGE = "/path/to/journal_files"
 IMPORT_SCRIPT = "/path/to/import_script.sh"
 
 # Consul Configuration
-CONSUL_ENDPOINT = "https://url:8501/v1/kv/journal"
+CONSUL_ENDPOINT = "https://url:8501/v1/kv/journal/target_version_date_time"
 CONSUL_ACL_FILE = "/etc/consul.d/acl.hcl"
+
+# Get today's date for version tracking
+CURRENT_DATE = datetime.now().strftime('%Y-%m-%d')
+LOCAL_VERSION_FILE = f"/path/to/version-{CURRENT_DATE}.json"
 
 s3_client = boto3.client("s3")
 
@@ -30,8 +34,8 @@ def get_consul_acl_token():
     except FileNotFoundError:
         return None
 
-def get_consul_kv(key):
-    """Fetch a value from Consul KV using ACL authentication."""
+def get_consul_target():
+    """Fetch the target version from Consul KV using ACL authentication."""
     acl_token = get_consul_acl_token()
     if not acl_token:
         print("Error: No ACL token found.")
@@ -39,12 +43,12 @@ def get_consul_kv(key):
 
     headers = {"X-Consul-Token": acl_token}
     try:
-        response = requests.get(f"{CONSUL_ENDPOINT}/{key}", headers=headers, verify=False)
+        response = requests.get(CONSUL_ENDPOINT, headers=headers, verify=False)
         if response.status_code == 200:
             data = response.json()[0]["Value"]
             return json.loads(data)
         else:
-            print(f"Error fetching Consul KV {key}: {response.text}")
+            print(f"Error fetching Consul KV: {response.text}")
             return None
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to Consul: {e}")
@@ -70,6 +74,13 @@ def list_s3_journals(date):
         print(f"No journals found for {date} in S3.")
         return []
 
+def get_latest_local_version():
+    """Fetch the current local version file (if exists)."""
+    if os.path.exists(LOCAL_VERSION_FILE):
+        with open(LOCAL_VERSION_FILE, "r") as f:
+            return json.load(f)
+    return None
+
 def download_journal(s3_key):
     """Download the latest version of a journal from S3."""
     file_name = os.path.basename(s3_key)
@@ -89,32 +100,34 @@ def update_local_version(file_name):
     version_data = {"file": file_name, "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")}
 
     # Save locally
-    local_version_file = f"/path/to/version-{datetime.now().strftime('%Y-%m-%d')}.json"
-    with open(local_version_file, "w") as f:
+    with open(LOCAL_VERSION_FILE, "w") as f:
         json.dump(version_data, f, indent=4)
 
     # Upload to S3 (overwrite previous version)
     s3_client.put_object(
         Bucket=S3_BUCKET,
-        Key=f"{VERSION_FOLDER}version-{datetime.now().strftime('%Y-%m-%d')}.json",
+        Key=f"{VERSION_FOLDER}version-{CURRENT_DATE}.json",
         Body=json.dumps(version_data, indent=4),
         ContentType="application/json"
     )
 
     print(f"Updated local and S3 version file with {file_name}")
 
-def fetch_missing_journals(current_version_date, target_version_date, target_version_time):
+def fetch_missing_journals(target_version_date, target_version_time):
     """Determine missing journal files and fetch them from S3."""
-    current_date = datetime.strptime(current_version_date, "%Y-%m-%d")
-    target_date = datetime.strptime(target_version_date, "%Y-%m-%d")
+    local_version = get_latest_local_version()
+    current_version_date = local_version["file"].split("_")[-1].split(".")[0] if local_version else None
 
     missing_journals = []
+    if current_version_date:
+        current_date = datetime.strptime(current_version_date, "%Y-%m-%d")
+        target_date = datetime.strptime(target_version_date, "%Y-%m-%d")
 
-    # Process all full-day journals from current_date to (target_date - 1)
-    while current_date < target_date:
-        s3_journals = list_s3_journals(current_date.strftime("%Y-%m-%d"))
-        missing_journals.extend(s3_journals)
-        current_date += timedelta(days=1)
+        # Process all full-day journals from (current_date + 1) to (target_date - 1)
+        while current_date < target_date:
+            current_date += timedelta(days=1)
+            s3_journals = list_s3_journals(current_date.strftime("%Y-%m-%d"))
+            missing_journals.extend(s3_journals)
 
     # Process the specific version for the target_date at the target_version_time
     tracker_filename = f"{TRACKER_FOLDER}tracker-{target_version_date}.json"
@@ -133,20 +146,17 @@ def fetch_missing_journals(current_version_date, target_version_date, target_ver
 
 def process_journal_sync():
     """Sync journals based on the Consul target version."""
-    current_version_date = get_consul_kv("current_version_date")
-    target_version_info = get_consul_kv("target_version_date_time")
-
-    if not current_version_date or not target_version_info:
-        print("Error: Could not retrieve version dates from Consul.")
+    target_version_info = get_consul_target()
+    if not target_version_info:
+        print("Error: Could not retrieve target version from Consul.")
         return
 
     target_version_date = target_version_info["date"]
     target_version_time = target_version_info["time"]
 
-    print(f"Current version date: {current_version_date}")
     print(f"Target version date: {target_version_date} at {target_version_time} AM")
 
-    missing_journals = fetch_missing_journals(current_version_date, target_version_date, target_version_time)
+    missing_journals = fetch_missing_journals(target_version_date, target_version_time)
 
     if not missing_journals:
         print("No new journals to download.")
