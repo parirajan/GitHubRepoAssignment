@@ -136,6 +136,29 @@ def download_journal(s3_path, version_id=None):
     except Exception as e:
         print(f"Error downloading {file_name}: {e}")
         return None
+        
+def update_local_version(file_name):
+    """Update local and S3 version file after successful import."""
+    version_data = {
+        "file": file_name,
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    # Save the updated version locally
+    with open(LOCAL_VERSION_FILE, "w") as f:
+        json.dump(version_data, f, indent=4)
+
+    # Upload the updated version file to S3
+    version_key = f"{VERSION_FOLDER}version-{CURRENT_DATE}.json"
+    s3_client.put_object(
+        Bucket=S3_BUCKET,
+        Key=version_key,
+        Body=json.dumps(version_data, indent=4),
+        ContentType="application/json"
+    )
+
+    print(f"Updated local and S3 version file: {file_name} at {version_data['timestamp']}")
+
 
 def process_journal_sync():
     """Sync journals based on the Consul target version."""
