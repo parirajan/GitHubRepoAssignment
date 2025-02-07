@@ -24,8 +24,6 @@ LOCAL_VERSION_FILE = f"/path/to/version-{CURRENT_DATE}.json"
 
 s3_client = boto3.client("s3")
 
-import re
-
 def get_consul_acl_token():
     """Retrieve Consul ACL token from /etc/consul.d/acl.hcl."""
     acl_file = "/etc/consul.d/acl.hcl"
