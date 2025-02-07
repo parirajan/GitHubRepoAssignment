@@ -113,6 +113,21 @@ def get_latest_s3_journal(date):
     else:
         print(f"No journal found for {date} in S3.")
         return None
+        
+def download_journal(s3_path, version_id=None):
+    """Download a journal file from S3, using version ID if provided."""
+    file_name = os.path.basename(s3_path)
+    local_path = os.path.join(LOCAL_STORAGE, file_name)
+
+    print(f"Downloading {file_name} from S3 path: {s3_path} (Version: {version_id})...")
+
+    if version_id:
+        s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path, ExtraArgs={"VersionId": version_id})
+    else:
+        s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path)
+
+    print(f"Downloaded {file_name} to {local_path}")
+    return local_path
 
 def process_journal_sync():
     """Sync journals based on the Consul target version."""
