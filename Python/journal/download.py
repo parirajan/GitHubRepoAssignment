@@ -84,13 +84,23 @@ def get_s3_tracker(tracker_filename):
         print(f"Tracker file {tracker_filename} not found in S3.")
         return None
 
-def find_closest_version(tracker_data, target_time):
+def get_earliest_s3_journal():
+    """Fetch the earliest available journal in S3 (start of time)."""
+    response = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix=JOURNAL_S3_PREFIX)
+
+    if "Contents" in response:
+        earliest_journal = sorted(response["Contents"], key=lambda x: x["LastModified"])[0]
+        print(f"Earliest available journal found: {earliest_journal['Key']}")
+        return earliest_journal["Key"]
+    else:
+        print("No journal files found in S3.")
+        return None
+
 def find_closest_version(tracker_data, target_time):
     """Find the closest available journal version strictly before the target time."""
     target_dt = datetime.strptime(target_time, "%H:%M")
-
-    # Filter versions that are strictly before target_time
     valid_versions = []
+
     for entry in tracker_data:
         timestamp = entry["timestamp"]
         entry_time = datetime.strptime(timestamp.split()[-1], "%H:%M:%S")
@@ -102,38 +112,30 @@ def find_closest_version(tracker_data, target_time):
         print(f"No versions found strictly before {target_time}.")
         return None
 
-    # Sort by time and pick the latest available before target_time
     valid_versions.sort(reverse=True, key=lambda x: x[0])
-    
     return valid_versions[0][1]  # Return the latest version before target_time
 
-
-def get_latest_s3_journal(date):
-    """Fetch the latest available journal for a given date from S3."""
-    prefix = f"{JOURNAL_S3_PREFIX}{date}/"
-    response = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix=prefix)
-
-    if "Contents" in response:
-        latest_journal = sorted(response["Contents"], key=lambda x: x["LastModified"], reverse=True)[0]
-        return latest_journal["Key"]
-    else:
-        print(f"No journal found for {date} in S3.")
-        return None
-        
 def download_journal(s3_path, version_id=None):
     """Download a journal file from S3, using version ID if provided."""
+    if not s3_path:
+        print("Error: S3 path is None, skipping download.")
+        return None
+
     file_name = os.path.basename(s3_path)
     local_path = os.path.join(LOCAL_STORAGE, file_name)
 
     print(f"Downloading {file_name} from S3 path: {s3_path} (Version: {version_id})...")
 
-    if version_id:
-        s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path, ExtraArgs={"VersionId": version_id})
-    else:
-        s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path)
-
-    print(f"Downloaded {file_name} to {local_path}")
-    return local_path
+    try:
+        if version_id:
+            s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path, ExtraArgs={"VersionId": version_id})
+        else:
+            s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path)
+        print(f"Downloaded {file_name} to {local_path}")
+        return local_path
+    except Exception as e:
+        print(f"Error downloading {file_name}: {e}")
+        return None
 
 def process_journal_sync():
     """Sync journals based on the Consul target version."""
@@ -147,28 +149,29 @@ def process_journal_sync():
 
     print(f"Target version date: {target_version_date} at {target_version_time} HH:MM")
 
-    # Fetch version file (create if missing)
     current_version = get_s3_version_file()
     current_version_date = current_version["file"].split("_")[-1].split(".")[0] if current_version["file"] else None
 
     if not current_version_date:
-        print("No existing version in target. Pulling from start date.")
-        current_version_date = target_version_date
+        print("No previous version found. Fetching earliest available journal.")
+        s3_path = get_earliest_s3_journal()
+        if s3_path:
+            current_version_date = s3_path.split("_")[-1].split(".")[0]
+        else:
+            print("No journals found in S3, cannot proceed.")
+            return
 
     missing_journals = []
-
-    # Get all full-day journals from `current_version_date` to `target_version_date - 1`
     current_date = datetime.strptime(current_version_date, "%Y-%m-%d")
     target_date = datetime.strptime(target_version_date, "%Y-%m-%d")
 
     while current_date < target_date:
         current_date += timedelta(days=1)
-        s3_path = get_latest_s3_journal(current_date.strftime("%Y-%m-%d"))
+        s3_path = get_earliest_s3_journal()
         if s3_path:
             missing_journals.append((s3_path, None))
 
-    # Fetch the closest timestamped version for `target_version_date`
-    tracker_filename = f"{TRACKER_FOLDER}tracker-{target_version_date}_CLUSTERID.json"
+    tracker_filename = f"{TRACKER_FOLDER}tracker-{target_version_date}_source-cluster-204.json"
     s3_tracker = get_s3_tracker(tracker_filename)
 
     if s3_tracker:
@@ -176,16 +179,11 @@ def process_journal_sync():
         if closest_entry:
             missing_journals.append((closest_entry["s3_path"], closest_entry["version_id"]))
 
-    # Download and import missing journals
     for s3_path, version_id in missing_journals:
-        file_name = os.path.basename(s3_path)
-        print(f"Processing {file_name} (Version: {version_id})")
-
         downloaded_file = download_journal(s3_path, version_id)
-        if trigger_import(downloaded_file):
-            update_local_version(file_name)
-        else:
-            print(f"Import failed for {file_name} (Version {version_id}).")
+        if downloaded_file:
+            print(f"Importing {downloaded_file}...")
+            update_local_version(downloaded_file)
 
 if __name__ == "__main__":
     process_journal_sync()
