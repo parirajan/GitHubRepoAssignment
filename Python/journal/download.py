@@ -3,6 +3,7 @@ import json
 import boto3
 import subprocess
 import requests
+import base64
 import re
 from datetime import datetime, timedelta
 
@@ -15,32 +16,26 @@ LOCAL_STORAGE = "/path/to/journal_files"
 IMPORT_SCRIPT = "/path/to/import_script.sh"
 
 # Consul Configuration
-CONSUL_ENDPOINT = "https://url:8501/v1/kv/journal/target_version_date_time"
+CONSUL_ENDPOINT = "https://url:8501/v1/kv/version"
 CONSUL_ACL_FILE = "/etc/consul.d/acl.hcl"
-
-# Get today's date for version tracking
-CURRENT_DATE = datetime.now().strftime('%Y-%m-%d')
-LOCAL_VERSION_FILE = f"/path/to/version-{CURRENT_DATE}.json"
 
 s3_client = boto3.client("s3")
 
+# Set the latest version file dynamically
+CURRENT_DATE = datetime.now().strftime('%Y-%m-%d')
+LOCAL_VERSION_FILE = f"/path/to/version-{CURRENT_DATE}.json"
+
 def get_consul_acl_token():
     """Retrieve Consul ACL token from /etc/consul.d/acl.hcl."""
-    acl_file = "/etc/consul.d/acl.hcl"
-
     try:
-        with open(acl_file, "r") as f:
+        with open(CONSUL_ACL_FILE, "r") as f:
             for line in f:
-                # Strip spaces and check for the token assignment
                 line = line.strip()
-                match = re.search(r'"agent"\s*=\s*"([^"]+)"', line)
-                if match:
-                    return match.group(1)  # Extract and return the token
+                if line.startswith('"agent" ='):
+                    return line.split("=")[1].strip().strip('"')
     except FileNotFoundError:
-        print(f"ACL file not found at {acl_file}.")
-
-    print("Error: Could not find ACL token in the file.")
-    return None  # Return None if token is missing
+        print("ACL file not found.")
+    return None
 
 def get_consul_target():
     """Fetch and decode the target version from Consul KV."""
@@ -63,7 +58,7 @@ def get_consul_target():
     return None
 
 def get_s3_tracker(tracker_filename):
-    """Fetch the corresponding tracker file from S3 (tracker-YYYY-MM-DD.json)."""
+    """Fetch the corresponding tracker file from S3 (tracker-YYYY-MM-DD_CLUSTERID.json)."""
     try:
         response = s3_client.get_object(Bucket=S3_BUCKET, Key=tracker_filename)
         return json.loads(response["Body"].read().decode("utf-8"))
@@ -71,31 +66,34 @@ def get_s3_tracker(tracker_filename):
         print(f"Tracker file {tracker_filename} not found in S3.")
         return None
 
-def list_s3_journals(date):
-    """List all available journals for a given date in S3 (latest version)."""
-    prefix = f"{JOURNAL_S3_PREFIX}{date}/"
-    response = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix=prefix)
+def find_closest_version(tracker_data, target_time):
+    """Find the closest available journal version in the tracker."""
+    target_dt = datetime.strptime(target_time, "%H:%M")
+    available_versions = []
 
-    if "Contents" in response:
-        return [obj["Key"] for obj in response["Contents"]]
-    else:
-        print(f"No journals found for {date} in S3.")
-        return []
+    for entry in tracker_data:
+        timestamp = entry["timestamp"]
+        entry_time = datetime.strptime(timestamp.split()[-1], "%H:%M:%S")
+        available_versions.append((entry_time, entry))
 
-def get_latest_local_version():
-    """Fetch the current local version file (if exists)."""
-    if os.path.exists(LOCAL_VERSION_FILE):
-        with open(LOCAL_VERSION_FILE, "r") as f:
-            return json.load(f)
-    return None
+    if not available_versions:
+        print("No valid timestamps found in tracker.")
+        return None
 
-def download_journal(s3_key):
-    """Download the latest version of a journal from S3."""
-    file_name = os.path.basename(s3_key)
+    # Sort available versions by time difference to find the closest one
+    closest_version = min(available_versions, key=lambda x: abs(x[0] - target_dt))
+    
+    return closest_version[1]  # Return the closest entry
+
+def download_journal(s3_path, version_id):
+    """Download the closest available journal version from S3."""
+    file_name = os.path.basename(s3_path)
     local_path = os.path.join(LOCAL_STORAGE, file_name)
 
-    print(f"Downloading {file_name} from {s3_key}...")
-    s3_client.download_file(Bucket=S3_BUCKET, Key=s3_key, Filename=local_path)
+    print(f"Downloading {file_name} (Version {version_id}) from {s3_path}...")
+
+    s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path, ExtraArgs={"VersionId": version_id})
+
     return local_path
 
 def trigger_import(file_path):
@@ -121,37 +119,6 @@ def update_local_version(file_name):
 
     print(f"Updated local and S3 version file with {file_name}")
 
-def fetch_missing_journals(target_version_date, target_version_time):
-    """Determine missing journal files and fetch them from S3."""
-    local_version = get_latest_local_version()
-    current_version_date = local_version["file"].split("_")[-1].split(".")[0] if local_version else None
-
-    missing_journals = []
-    if current_version_date:
-        current_date = datetime.strptime(current_version_date, "%Y-%m-%d")
-        target_date = datetime.strptime(target_version_date, "%Y-%m-%d")
-
-        # Process all full-day journals from (current_date + 1) to (target_date - 1)
-        while current_date < target_date:
-            current_date += timedelta(days=1)
-            s3_journals = list_s3_journals(current_date.strftime("%Y-%m-%d"))
-            missing_journals.extend(s3_journals)
-
-    # Process the specific version for the target_date at the target_version_time
-    tracker_filename = f"{TRACKER_FOLDER}tracker-{target_version_date}.json"
-    s3_tracker = get_s3_tracker(tracker_filename)
-
-    if not s3_tracker:
-        print(f"Tracker file {tracker_filename} not found in S3.")
-        return missing_journals
-
-    # Find the correct version for the specified hour in the tracker
-    for entry in s3_tracker:
-        if entry["timestamp"].endswith(f"{target_version_time}:00:00"):
-            missing_journals.append(entry["s3_path"])
-
-    return missing_journals
-
 def process_journal_sync():
     """Sync journals based on the Consul target version."""
     target_version_info = get_consul_target()
@@ -162,21 +129,36 @@ def process_journal_sync():
     target_version_date = target_version_info["date"]
     target_version_time = target_version_info["time"]
 
-    print(f"Target version date: {target_version_date} at {target_version_time} AM")
+    print(f"Target version date: {target_version_date} at {target_version_time} HH:MM")
 
-    missing_journals = fetch_missing_journals(target_version_date, target_version_time)
+    # Determine tracker filename
+    tracker_filename = f"{TRACKER_FOLDER}tracker-{target_version_date}_CLUSTERID.json"
+    s3_tracker = get_s3_tracker(tracker_filename)
 
-    if not missing_journals:
-        print("No new journals to download.")
+    if not s3_tracker:
+        print(f"Tracker file {tracker_filename} not found. Exiting.")
         return
 
-    # Download and import each missing journal
-    for s3_key in missing_journals:
-        downloaded_file = download_journal(s3_key)
-        if trigger_import(downloaded_file):
-            update_local_version(os.path.basename(s3_key))
-        else:
-            print(f"Import failed for {s3_key}.")
+    # Find closest available version
+    closest_entry = find_closest_version(s3_tracker, target_version_time)
+
+    if not closest_entry:
+        print("No valid version found close to the target time.")
+        return
+
+    file_name = closest_entry["file_name"]
+    version_id = closest_entry["version_id"]
+    s3_path = closest_entry["s3_path"]
+    node_id = closest_entry["node_id"]
+
+    print(f"Closest available version found: {file_name} (Version ID: {version_id}, Node: {node_id})")
+
+    # Download and import
+    downloaded_file = download_journal(s3_path, version_id)
+    if trigger_import(downloaded_file):
+        update_local_version(file_name)
+    else:
+        print(f"Import failed for {file_name} (Version {version_id}).")
 
 if __name__ == "__main__":
     process_journal_sync()
