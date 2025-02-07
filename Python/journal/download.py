@@ -45,7 +45,7 @@ def get_consul_acl_token():
     return None  # Return None if token is missing
 
 def get_consul_target():
-    """Fetch the target version from Consul KV using ACL authentication."""
+    """Fetch and decode the target version from Consul KV."""
     acl_token = get_consul_acl_token()
     if not acl_token:
         print("Error: No ACL token found.")
@@ -55,14 +55,14 @@ def get_consul_target():
     try:
         response = requests.get(CONSUL_ENDPOINT, headers=headers, verify=False)
         if response.status_code == 200:
-            data = response.json()[0]["Value"]
-            return json.loads(data)
-        else:
-            print(f"Error fetching Consul KV: {response.text}")
-            return None
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0 and "Value" in data[0]:  # Ensure Value exists
+                decoded_value = base64.b64decode(data[0]["Value"]).decode("utf-8")
+                return json.loads(decoded_value)
+        print("Error: Consul KV response does not contain a valid JSON value.")
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to Consul: {e}")
-        return None
+    return None
 
 def get_s3_tracker(tracker_filename):
     """Fetch the corresponding tracker file from S3 (tracker-YYYY-MM-DD.json)."""
