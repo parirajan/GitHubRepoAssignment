@@ -85,22 +85,28 @@ def get_s3_tracker(tracker_filename):
         return None
 
 def find_closest_version(tracker_data, target_time):
-    """Find the closest available journal version in the tracker."""
+def find_closest_version(tracker_data, target_time):
+    """Find the closest available journal version strictly before the target time."""
     target_dt = datetime.strptime(target_time, "%H:%M")
-    available_versions = []
 
+    # Filter versions that are strictly before target_time
+    valid_versions = []
     for entry in tracker_data:
         timestamp = entry["timestamp"]
         entry_time = datetime.strptime(timestamp.split()[-1], "%H:%M:%S")
-        available_versions.append((entry_time, entry))
 
-    if not available_versions:
-        print("No valid timestamps found in tracker.")
+        if entry_time < target_dt:  # Only keep timestamps before HH:MM:00
+            valid_versions.append((entry_time, entry))
+
+    if not valid_versions:
+        print(f"No versions found strictly before {target_time}.")
         return None
 
-    closest_version = min(available_versions, key=lambda x: abs(x[0] - target_dt))
+    # Sort by time and pick the latest available before target_time
+    valid_versions.sort(reverse=True, key=lambda x: x[0])
     
-    return closest_version[1]
+    return valid_versions[0][1]  # Return the latest version before target_time
+
 
 def get_latest_s3_journal(date):
     """Fetch the latest available journal for a given date from S3."""
