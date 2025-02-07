@@ -8,6 +8,7 @@ S3_BUCKET = "your-bucket-name"
 JOURNAL_DIR = "/path/to/journals"
 CLUSTER_ID = "204"  # Change this based on the source cluster
 TRACKER_FOLDER = "tracker/"
+JOURNAL_S3_PREFIX = "journals/"
 
 s3_client = boto3.client("s3")
 
@@ -26,29 +27,34 @@ def fetch_tracker_from_s3(tracker_key):
         return []  # Return an empty list to initialize the tracker file
 
 def upload_journal_to_s3(file_path, file_name):
-    """Upload the journal file to S3 and return the version ID."""
+    """Upload the journal file to S3 under a structured prefix and return the version ID."""
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    today_date = datetime.now().strftime("%Y-%m-%d")
 
-    s3_client.upload_file(file_path, S3_BUCKET, file_name, ExtraArgs={"Metadata": {"timestamp": timestamp}})
+    # Define S3 destination path (prefix + folder by date)
+    s3_key = f"{JOURNAL_S3_PREFIX}{today_date}/{file_name}"
+
+    s3_client.upload_file(file_path, S3_BUCKET, s3_key, ExtraArgs={"Metadata": {"timestamp": timestamp}})
 
     # Fetch latest version ID after upload
-    version_info = s3_client.list_object_versions(Bucket=S3_BUCKET, Prefix=file_name)
+    version_info = s3_client.list_object_versions(Bucket=S3_BUCKET, Prefix=s3_key)
     latest_version = version_info.get("Versions", [])[0]
     version_id = latest_version["VersionId"]
 
-    print(f"Uploaded {file_name} to S3 with Version ID: {version_id}")
-    return version_id, timestamp
+    print(f"Uploaded {file_name} to S3 at {s3_key} with Version ID: {version_id}")
+    return version_id, timestamp, s3_key
 
-def update_tracker_in_s3(tracker_key, file_name, node_id, version_id, timestamp):
+def update_tracker_in_s3(tracker_key, file_name, node_id, version_id, timestamp, s3_key):
     """Update the source tracker file in S3 with new version information."""
     tracker_data = fetch_tracker_from_s3(tracker_key)
 
-    # Append new entry with correct file details
+    # Append new entry with correct file details and S3 path
     tracker_data.append({
         "timestamp": timestamp,
         "version_id": version_id,
         "file_name": file_name,
-        "node_id": node_id  # Storing the node ID in tracker
+        "s3_path": s3_key,
+        "node_id": node_id
     })
 
     # Upload updated tracker back to S3
@@ -71,10 +77,10 @@ def process_journals():
 
             # Extract Node ID from filename
             parts = file_name.split("_")
-            node_id = parts[2]  # Node ID from journal file name
+            node_id = parts[2]  # Extract Node ID from the journal file name
 
             # Step 1: Upload the journal file to S3 and retrieve version ID
-            version_id, timestamp = upload_journal_to_s3(file_path, file_name)
+            version_id, timestamp, s3_key = upload_journal_to_s3(file_path, file_name)
 
             # Step 2: Ensure tracker file exists before updating it
             if not fetch_tracker_from_s3(tracker_key):
@@ -87,7 +93,7 @@ def process_journals():
                 )
 
             # Step 3: Update the tracker with the uploaded file details
-            update_tracker_in_s3(tracker_key, file_name, node_id, version_id, timestamp)
+            update_tracker_in_s3(tracker_key, file_name, node_id, version_id, timestamp, s3_key)
 
 if __name__ == "__main__":
     process_journals()
