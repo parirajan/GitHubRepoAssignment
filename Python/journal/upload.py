@@ -6,7 +6,7 @@ from datetime import datetime
 # AWS S3 Configuration
 S3_BUCKET = "your-bucket-name"
 JOURNAL_DIR = "/path/to/journals"
-CLUSTER_ID = "204"  # Change this based on the source cluster
+CLUSTER_ID = "204"  # Source Cluster ID
 TRACKER_FOLDER = "tracker/"
 JOURNAL_S3_PREFIX = "journals/"
 
@@ -44,8 +44,8 @@ def upload_journal_to_s3(file_path, file_name):
     print(f"Uploaded {file_name} to S3 at {s3_key} with Version ID: {version_id}")
     return version_id, timestamp, s3_key
 
-def update_tracker_in_s3(tracker_key, file_name, node_id, version_id, timestamp, s3_key):
-    """Update the source tracker file in S3 with new version information."""
+def update_tracker(tracker_key, file_name, node_id, version_id, timestamp, s3_key):
+    """Update the source tracker file in S3 and locally with new version information."""
     tracker_data = fetch_tracker_from_s3(tracker_key)
 
     # Append new entry with correct file details and S3 path
@@ -56,6 +56,13 @@ def update_tracker_in_s3(tracker_key, file_name, node_id, version_id, timestamp,
         "s3_path": s3_key,
         "node_id": node_id
     })
+
+    # Save tracker file locally
+    local_tracker_path = f"/tmp/{tracker_key.split('/')[-1]}"
+    with open(local_tracker_path, "w") as f:
+        json.dump(tracker_data, f, indent=4)
+
+    print(f"Updated local tracker file: {local_tracker_path}")
 
     # Upload updated tracker back to S3
     s3_client.put_object(
@@ -83,7 +90,8 @@ def process_journals():
             version_id, timestamp, s3_key = upload_journal_to_s3(file_path, file_name)
 
             # Step 2: Ensure tracker file exists before updating it
-            if not fetch_tracker_from_s3(tracker_key):
+            tracker_data = fetch_tracker_from_s3(tracker_key)
+            if not tracker_data:
                 print(f"Creating new tracker file: {tracker_key}")
                 s3_client.put_object(
                     Bucket=S3_BUCKET,
@@ -93,7 +101,7 @@ def process_journals():
                 )
 
             # Step 3: Update the tracker with the uploaded file details
-            update_tracker_in_s3(tracker_key, file_name, node_id, version_id, timestamp, s3_key)
+            update_tracker(tracker_key, file_name, node_id, version_id, timestamp, s3_key)
 
 if __name__ == "__main__":
     process_journals()
