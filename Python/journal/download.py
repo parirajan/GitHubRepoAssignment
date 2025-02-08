@@ -27,9 +27,13 @@ LOCAL_VERSION_FILE = f"/path/to/version-{CURRENT_DATE}.json"
 LOCAL_STATUS_FILE = "/path/to/status.json"
 
 def run_import_script(file_path):
-    """Runs the external import script with the downloaded file."""
+    """Runs the compiled Python import script with the downloaded file."""
+    script_dir = os.path.dirname(IMPORT_SCRIPT)  # Get the directory of run.pyc
+    command = ["python", IMPORT_SCRIPT, file_path]  # Run with Python
+
     try:
-        result = subprocess.run([IMPORT_SCRIPT, file_path], capture_output=True, text=True)
+        result = subprocess.run(command, cwd=script_dir, capture_output=True, text=True)
+
         if result.returncode == 0:
             print(f"✅ Import script ran successfully for {file_path}.")
             return True
@@ -39,6 +43,7 @@ def run_import_script(file_path):
     except Exception as e:
         print(f"⛔ ERROR: Failed to execute import script: {e}")
         return False
+
 
 
 def get_s3_status_file():
