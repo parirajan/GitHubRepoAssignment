@@ -183,6 +183,14 @@ def process_journal_sync():
         else:
             print("No journals found in S3, cannot proceed.")
             return
+            
+    # 🔹 NEW CHECK: Stop if requested version is older than the current running version
+    if current_version_date:
+        if target_version_date < current_version_date:
+            print(
+                f"⛔ ERROR: Requested version {target_version_date} is older than the current running version {current_version_date}. Aborting import."
+            )
+            return
 
     missing_journals = []
     current_date = datetime.strptime(current_version_date, "%Y-%m-%d")
