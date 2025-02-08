@@ -42,16 +42,21 @@ def run_import_script(file_path):
 
 
 def get_s3_status_file():
-    """Fetch the latest status.json from S3 before processing."""
+    """Check if status.json exists in S3. If missing, continue execution."""
     status_key = f"{VERSION_FOLDER}status.json"
 
     try:
-        s3_client.download_file(Bucket=S3_BUCKET, Key=status_key, Filename=LOCAL_STATUS_FILE)
-        print(f"✅ Pulled latest status.json from S3: {LOCAL_STATUS_FILE}")
+        s3_client.head_object(Bucket=S3_BUCKET, Key=status_key)
+        print(f"✅ status.json found in S3.")
         return True
-    except s3_client.exceptions.NoSuchKey:
-        print(f"⚠️ ERROR: {status_key} not found in S3. Import cannot proceed.")
-        return False
+    except s3_client.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == "404":
+            print(f"⚠️ WARNING: {status_key} not found in S3. Continuing execution.")
+            return False  # Continue execution
+        else:
+            print(f"⛔ ERROR: Unexpected S3 error checking status.json - {str(e)}")
+            return False
+
 
 
 def upload_s3_status_file():
