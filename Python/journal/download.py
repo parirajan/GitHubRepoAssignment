@@ -59,18 +59,22 @@ def get_s3_status_file():
 
 
 
-def upload_s3_status_file():
-    """Upload the locally updated status.json back to S3 after import."""
+def get_s3_status_file():
+    """Check if status.json exists in S3. If missing, allow execution to continue (Day 0 handling)."""
     status_key = f"{VERSION_FOLDER}status.json"
 
-    if not os.path.exists(LOCAL_STATUS_FILE):
-        print(f"⚠️ ERROR: Local status.json missing after import. Possible corruption detected.")
-        return False
+    try:
+        s3_client.head_object(Bucket=S3_BUCKET, Key=status_key)
+        print(f"✅ status.json found in S3.")
+        return True
+    except s3_client.exceptions.ClientError as e:
+        if e.response['Error']['Code'] == "404":
+            print(f"⚠️ WARNING: {status_key} not found in S3 (Day 0). Continuing execution.")
+            return False  # Allow execution to continue
+        else:
+            print(f"⛔ ERROR: Unexpected S3 error checking status.json - {str(e)}")
+            return False
 
-    # Upload updated status.json to S3
-    s3_client.upload_file(Filename=LOCAL_STATUS_FILE, Bucket=S3_BUCKET, Key=status_key)
-    print(f"✅ Uploaded updated status.json to S3.")
-    return True
 
 
 def get_s3_version_file():
@@ -157,10 +161,13 @@ def process_journal_sync():
 
     print(f"📌 Target version date: {target_version_date} at {target_version_time} HH:MM")
 
-    # Ensure status.json is available before proceeding
-    if not get_s3_status_file():
-        print("⛔ ERROR: status.json is missing. Import cannot proceed.")
-        return
+    # Check if status.json exists in S3
+    status_exists = get_s3_status_file()
+    
+    # Allow execution on Day 0 if status.json is missing
+    if not status_exists:
+        print("⚠️ status.json is missing (Day 0). Allowing first import to proceed.")
+
 
     # Fetch current version from S3
     current_version = get_s3_version_file()
