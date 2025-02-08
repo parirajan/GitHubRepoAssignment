@@ -159,6 +159,36 @@ def update_local_version(file_name):
 
     print(f"Updated local and S3 version file: {file_name} at {version_data['timestamp']}")
 
+def get_s3_status_file():
+    """Fetch the latest status.json from S3 before processing."""
+    status_key = f"{VERSION_FOLDER}status.json"
+    local_status_file = "/path/to/status.json"
+
+    try:
+        s3_client.download_file(Bucket=S3_BUCKET, Key=status_key, Filename=local_status_file)
+        print(f"Pulled latest status.json from S3: {local_status_file}")
+        return True
+    except s3_client.exceptions.NoSuchKey:
+        print(f"ERROR: status.json not found in S3. Import cannot proceed.")
+        return False
+
+
+def upload_s3_status_file():
+    """Upload the locally updated status.json back to S3 after import."""
+    status_key = f"{VERSION_FOLDER}status.json"
+    local_status_file = "/path/to/status.json"
+
+    if not os.path.exists(local_status_file):
+        print(f"ERROR: Local status.json missing after import. Possible corruption detected.")
+        return False
+
+    # Upload updated status.json to S3
+    s3_client.upload_file(Filename=local_status_file, Bucket=S3_BUCKET, Key=status_key)
+    print(f"Uploaded updated status.json to S3.")
+    return True
+
+
+
 
 def process_journal_sync():
     """Sync journals based on the Consul target version."""
@@ -171,7 +201,12 @@ def process_journal_sync():
     target_version_time = target_version_info["time"]
 
     print(f"Target version date: {target_version_date} at {target_version_time} HH:MM")
-
+    
+    #Ensure status.json is available before proceeding
+    if not get_s3_status_file():
+        print("ERROR: status.json is missing. Import cannot proceed.")
+        return  # Stop execution if status.json is not available
+    
     current_version = get_s3_version_file()
     current_version_date = current_version["file"].split("_")[-1].split(".")[0] if current_version["file"] else None
 
@@ -184,11 +219,11 @@ def process_journal_sync():
             print("No journals found in S3, cannot proceed.")
             return
             
-    # 🔹 NEW CHECK: Stop if requested version is older than the current running version
+    #NEW CHECK: Stop if requested version is older than the current running version
     if current_version_date:
         if target_version_date < current_version_date:
             print(
-                f"⛔ ERROR: Requested version {target_version_date} is older than the current running version {current_version_date}. Aborting import."
+                f"ERROR: Requested version {target_version_date} is older than the current running version {current_version_date}. Aborting import."
             )
             return
 
@@ -215,6 +250,10 @@ def process_journal_sync():
         if downloaded_file:
             print(f"Importing {downloaded_file}...")
             update_local_version(downloaded_file)
+            #Ensure status.json is uploaded after import
+            if not upload_s3_status_file():
+                print("⛔ ERROR: status.json upload failed. System state may be corrupted.")
+                return  # Stop execution if status.json upload fails
 
 if __name__ == "__main__":
     process_journal_sync()
