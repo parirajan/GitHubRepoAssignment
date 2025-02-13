@@ -46,39 +46,42 @@ def run_import_script(file_path):
 
 
 
-def get_s3_status_file():
-    """Check if status.json exists in S3. If missing, continue execution."""
-    status_key = f"{VERSION_FOLDER}status.json"
-
-    try:
-        s3_client.head_object(Bucket=S3_BUCKET, Key=status_key)
-        print(f"✅ status.json found in S3.")
-        return True
-    except s3_client.exceptions.ClientError as e:
-        if e.response['Error']['Code'] == "404":
-            print(f"⚠️ WARNING: {status_key} not found in S3. Continuing execution.")
-            return False  # Continue execution
-        else:
-            print(f"⛔ ERROR: Unexpected S3 error checking status.json - {str(e)}")
-            return False
 
 
+
+
+
+LOCAL_STATUS_FILE = "/path/to/local/status.json"
 
 def get_s3_status_file():
-    """Check if status.json exists in S3. If missing, allow execution to continue (Day 0 handling)."""
-    status_key = f"{VERSION_FOLDER}status.json"
+    """Check if status.json exists locally and compare it with S3. Sync if needed."""
+    s3_status_key = f"{VERSION_FOLDER}status.json"
 
+    # 🔹 Step 1: Check if `status.json` exists locally
+    if os.path.exists(LOCAL_STATUS_FILE):
+        with open(LOCAL_STATUS_FILE, "r") as local_file:
+            local_status = local_file.read()
+    else:
+        local_status = None  # Local file does not exist
+
+    # 🔹 Step 2: Fetch `status.json` from S3
     try:
-        s3_client.head_object(Bucket=S3_BUCKET, Key=status_key)
-        print(f"✅ status.json found in S3.")
-        return True
-    except s3_client.exceptions.ClientError as e:
-        if e.response['Error']['Code'] == "404":
-            print(f"⚠️ WARNING: {status_key} not found in S3 (Day 0). Continuing execution.")
-            return False  # Allow execution to continue
-        else:
-            print(f"⛔ ERROR: Unexpected S3 error checking status.json - {str(e)}")
-            return False
+        s3_response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_status_key)
+        s3_status = s3_response["Body"].read().decode("utf-8")
+    except s3_client.exceptions.NoSuchKey:
+        print("⚠️ WARNING: status.json not found in S3.")
+        return False  # No status.json available in S3
+
+    # 🔹 Step 3: Compare local and S3 versions
+    if local_status and local_status == s3_status:
+        print("✅ Local and S3 status.json are identical. Proceeding with import.")
+        return True  # Local version is up to date
+    else:
+        print("🔄 Syncing status.json from S3 to local...")
+        with open(LOCAL_STATUS_FILE, "w") as local_file:
+            local_file.write(s3_status)  # ✅ Update local file
+        return True  # Proceed with import after sync
+
 
 
 
