@@ -51,10 +51,13 @@ def run_import_script(file_path):
 
 
 
+import os
+import json
+
 LOCAL_STATUS_FILE = "/path/to/local/status.json"
 
 def get_s3_status_file():
-    """Check if status.json exists locally and compare it with S3. Sync if needed."""
+    """Ensure status.json is synchronized between local and S3 before proceeding."""
     s3_status_key = f"{VERSION_FOLDER}status.json"
 
     # 🔹 Step 1: Check if `status.json` exists locally
@@ -64,24 +67,35 @@ def get_s3_status_file():
     else:
         local_status = None  # Local file does not exist
 
-    # 🔹 Step 2: Fetch `status.json` from S3
+    # 🔹 Step 2: Try fetching `status.json` from S3
     try:
         s3_response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_status_key)
         s3_status = s3_response["Body"].read().decode("utf-8")
+        s3_status_exists = True
     except s3_client.exceptions.NoSuchKey:
-        print("⚠️ WARNING: status.json not found in S3.")
-        return False  # No status.json available in S3
+        print("⚠️ WARNING: status.json not found in S3. Assuming Day 0.")
+        s3_status = None
+        s3_status_exists = False
 
-    # 🔹 Step 3: Compare local and S3 versions
+    # 🔹 Step 3: If no local or S3 status.json (Day 0), allow first import
+    if not local_status and not s3_status_exists:
+        print("⚠️ No local or S3 status.json found. Allowing first import (Day 0).")
+        return True  # ✅ Allow import on Day 0
+
+    # 🔹 Step 4: Compare local and S3 versions
     if local_status and local_status == s3_status:
         print("✅ Local and S3 status.json are identical. Proceeding with import.")
-        return True  # Local version is up to date
-    else:
+        return True  # ✅ Local status is up to date
+
+    # 🔹 Step 5: If they differ, sync the latest version from S3
+    if s3_status:
         print("🔄 Syncing status.json from S3 to local...")
         with open(LOCAL_STATUS_FILE, "w") as local_file:
-            local_file.write(s3_status)  # ✅ Update local file
-        return True  # Proceed with import after sync
+            local_file.write(s3_status)  # ✅ Update local file with S3 version
+        return True  # ✅ Proceed after sync
 
+    print("⛔ ERROR: Could not verify status.json. Aborting import.")
+    return False
 
 
 
