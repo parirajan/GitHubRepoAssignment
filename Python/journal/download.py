@@ -88,7 +88,7 @@ def get_s3_version_file():
 
     return version_data
 
-def update_local_version(file_name, s3_version_id):
+def update_local_version(file_name, s3_version_id=None):
     """Update the version.json file after successful import, keeping only the last 50 entries."""
     version_key = f"{VERSION_FOLDER}version.json"
     version_data = get_s3_version_file()  # Fetch the latest data
@@ -97,7 +97,7 @@ def update_local_version(file_name, s3_version_id):
     new_entry = {
         "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
         "file": file_name,
-        "s3_version_id": s3_version_id
+        "s3_version_id": s3_version_id if s3_version_id else "N/A"  # Handle cases where version_id is missing
     }
 
     # Append the new entry
