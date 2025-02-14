@@ -90,15 +90,22 @@ def get_s3_version_file():
 
 
 def update_local_version(file_name, s3_version_id=None):
-    """Update the version.json file after successful import, keeping only the last 50 entries."""
+    """Update version.json after successful import, keeping only the last 50 entries."""
     version_key = f"{VERSION_FOLDER}version.json"
-    version_data = get_s3_version_file()  # Fetch the latest data
+    version_data = get_s3_version_file()  # Fetch latest data
 
+    # Debugging: Print received values before updating
+    print(f"Updating version.json with File: {file_name}, S3 Version ID: {s3_version_id}")
+
+    # Ensure version_id is correct
+    if not s3_version_id or s3_version_id == "N/A":
+        print(f"WARNING: S3 Version ID is missing for {file_name}. This should not happen!")
+    
     # Create a new version entry
     new_entry = {
         "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
         "file": file_name,
-        "s3_version_id": s3_version_id if s3_version_id else "N/A"  # Handle cases where version_id is missing
+        "s3_version_id": s3_version_id if s3_version_id else "N/A"  # Handle missing version_id
     }
 
     # Append the new entry
@@ -106,7 +113,7 @@ def update_local_version(file_name, s3_version_id=None):
 
     # Keep only the last 50 entries
     if len(version_data) > 50:
-        version_data = version_data[-50:]  # Remove older entries
+        version_data = version_data[-50:]
 
     # Save locally before uploading
     with open(LOCAL_VERSION_FILE, "w") as f:
@@ -120,8 +127,7 @@ def update_local_version(file_name, s3_version_id=None):
         ContentType="application/json"
     )
 
-    print(f"Updated version.json in S3 with {file_name} and S3 version ID: {s3_version_id}")
-
+    print(f"SUCCESS: Updated version.json in S3 with {file_name} and S3 Version ID: {s3_version_id}")
 
 def get_s3_tracker(tracker_filename):
     """Fetch the corresponding tracker file from S3."""
@@ -171,15 +177,19 @@ def find_closest_version(tracker_data, target_time):
         timestamp = entry["timestamp"]
         entry_time = datetime.strptime(timestamp.split()[-1], "%H:%M:%S")
 
-        if entry_time < target_dt:
+        if entry_time < target_dt:  # Only pick timestamps before the target time
             valid_versions.append((entry_time, entry))
 
     if not valid_versions:
         print(f"No versions found strictly before {target_time}.")
         return None
 
-    valid_versions.sort(reverse=True, key=lambda x: x[0])
-    return valid_versions[0][1]
+    valid_versions.sort(reverse=True, key=lambda x: x[0])  # Sort descending by time
+    selected_entry = valid_versions[0][1]  # Select the latest valid entry
+
+    # Debugging: Print the selected version
+    print(f"Closest Version Selected: {selected_entry['version_id']} at {selected_entry['timestamp']}")
+    return selected_entry  # Return full entry including `version_id`
 
 
 def download_journal(s3_path, version_id):
@@ -286,16 +296,35 @@ def process_journal_sync():
         if closest_entry:
             missing_journals.append((closest_entry["s3_path"], closest_entry["version_id"]))
 
-    # Step 11: Download missing journals & capture the correct `s3_version_id`
-    downloaded_files = []
-    journal_version_map = {}  # Store mapping of file name → version ID
+# Step 11: Download missing journals & capture the correct `s3_version_id`
+downloaded_files = []
+journal_version_map = {}  # Store mapping of file name → version ID
 
-    for s3_path, version_id in missing_journals:
-        if s3_path:
-            local_file = download_journal(s3_path, version_id)
-            if local_file:
-                downloaded_files.append(local_file)
-                journal_version_map[local_file] = version_id  # Map file to correct version ID
+for s3_path, version_id in missing_journals:
+    if s3_path:
+        local_file = download_journal(s3_path, version_id)
+        if local_file:
+            downloaded_files.append(local_file)
+            journal_version_map[local_file] = version_id  # Map file → version_id
+
+# Debugging: Print downloaded files and their S3 version IDs
+print("DEBUG: Downloaded files and their S3 version IDs:")
+for file, version in journal_version_map.items():
+    print(f" - {file}: Version ID {version}")
+
+# Ensure import runs once for all files
+if downloaded_files:
+    print(f"Importing batch of {len(downloaded_files)} files...")
+
+    if run_import_script(downloaded_files):  # Run import once
+        for downloaded_file in downloaded_files:
+            # Pass correct version_id
+            update_local_version(downloaded_file, journal_version_map.get(downloaded_file, "N/A"))
+        
+        # Upload status.json after import
+        if not upload_s3_status_file():
+            print("ERROR: status.json upload failed. System state may be corrupted.")
+            return
 
     # Step 12: Run import job and update version.json **only after successful import**
     if downloaded_files:
