@@ -277,6 +277,9 @@ def process_journal_sync():
     tracker_filename = f"tracker_{target_version_date}_{source_cluster_id}.json"
     s3_tracker = get_s3_tracker(tracker_filename)
 
+    # Ensure closest_entry is always defined
+    closest_entry = None
+
     if s3_tracker:
         closest_entry = find_closest_version(s3_tracker, target_version_time)
         if closest_entry:
