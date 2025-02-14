@@ -1,184 +1,91 @@
 import os
 import json
-import boto3
 import subprocess
-import requests
 import base64
-import re
+import requests
 from datetime import datetime, timedelta
+import boto3
+import re
+import botocore.exceptions
 
 # AWS S3 Configuration
-S3_BUCKET = "your-bucket-name"
-TRACKER_FOLDER = "tracker/"  # S3 prefix for source trackers
-VERSION_FOLDER = "version/"  # S3 prefix for target versions
-JOURNAL_S3_PREFIX = "journals/"  # S3 prefix for journal files
-LOCAL_STORAGE = "/path/to/journal_files"
-IMPORT_SCRIPT = "/path/to/import_script.sh"
+S3_BUCKET = "s3buckettest"
+TRACKER_FOLDER = "sp/206/tracker/"
+VERSION_FOLDER = "sp/106/version/"
+JOURNAL_S3_PREFIX = "sp/206/journals/"
+LOCAL_STORAGE = "/persistent/data/journal/import/"
+IMPORT_SCRIPT = "/opt/ibm/safer_payments/ccm/run.pyc"
+LOCAL_FOLDER = "/opt/ibm/safer_payments/ccm/"
 
 # Consul Configuration
-CONSUL_ENDPOINT = "https://url:8501/v1/kv/version"
+CONSUL_ENDPOINT = "https://localhost:8501/v1/kv/config/infra-fraud-sp,aws/exec.version"
 CONSUL_ACL_FILE = "/etc/consul.d/acl.hcl"
+
+# Set the latest version file dynamically
+source_cluster_id = 206
+CURRENT_DATE = datetime.now().strftime('%Y-%m-%d')
+LOCAL_VERSION_FILE = f"{LOCAL_FOLDER}version-{CURRENT_DATE}.json"
 
 s3_client = boto3.client("s3")
 
-# Generate current date dynamically for version tracking
-CURRENT_DATE = datetime.now().strftime('%Y-%m-%d')
-LOCAL_VERSION_FILE = f"/path/to/version-{CURRENT_DATE}.json"
-LOCAL_STATUS_FILE = "/path/to/status.json"
 
-def run_import_script(file_path):
-    """Runs the compiled Python import script with the downloaded file."""
-    script_dir = os.path.dirname(IMPORT_SCRIPT)  # Get the directory of run.pyc
-    command = ["python", IMPORT_SCRIPT, file_path]  # Run with Python
-
+# Fetch a JSON file from S3
+def fetch_s3_json(s3_bucket, s3_key):
     try:
-        result = subprocess.run(command, cwd=script_dir, capture_output=True, text=True)
-
-        if result.returncode == 0:
-            print(f"✅ Import script ran successfully for {file_path}.")
-            return True
-        else:
-            print(f"⛔ ERROR: Import script failed for {file_path}.\n{result.stderr}")
-            return False
-    except Exception as e:
-        print(f"⛔ ERROR: Failed to execute import script: {e}")
-        return False
-
-
-
-
-
-
-
-
-import os
-import json
-
-LOCAL_STATUS_FILE = "/path/to/local/status.json"
-
-def get_s3_status_file():
-    """Ensure status.json is synchronized between local and S3 before proceeding."""
-    s3_status_key = f"{VERSION_FOLDER}status.json"
-
-    # 🔹 Step 1: Check if `status.json` exists locally
-    if os.path.exists(LOCAL_STATUS_FILE):
-        with open(LOCAL_STATUS_FILE, "r") as local_file:
-            local_status = local_file.read()
-    else:
-        local_status = None  # Local file does not exist
-
-    # 🔹 Step 2: Try fetching `status.json` from S3
-    try:
-        s3_response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_status_key)
-        s3_status = s3_response["Body"].read().decode("utf-8")
-        s3_status_exists = True
-    except s3_client.exceptions.NoSuchKey:
-        print("⚠️ WARNING: status.json not found in S3. Assuming Day 0.")
-        s3_status = None
-        s3_status_exists = False
-
-    # 🔹 Step 3: If no local or S3 status.json (Day 0), allow first import
-    if not local_status and not s3_status_exists:
-        print("⚠️ No local or S3 status.json found. Allowing first import (Day 0).")
-        return True  # ✅ Allow import on Day 0
-
-    # 🔹 Step 4: Compare local and S3 versions
-    if local_status and local_status == s3_status:
-        print("✅ Local and S3 status.json are identical. Proceeding with import.")
-        return True  # ✅ Local status is up to date
-
-    # 🔹 Step 5: If they differ, sync the latest version from S3
-    if s3_status:
-        print("🔄 Syncing status.json from S3 to local...")
-        with open(LOCAL_STATUS_FILE, "w") as local_file:
-            local_file.write(s3_status)  # ✅ Update local file with S3 version
-        return True  # ✅ Proceed after sync
-
-    print("⛔ ERROR: Could not verify status.json. Aborting import.")
-    return False
-
-
-
-import os
-import json
-
-LOCAL_VERSION_FILE = "/path/to/local/version.json"
-
-def get_s3_version_file():
-    """Ensure version.json is synchronized between local and S3 before proceeding."""
-    s3_version_key = f"{VERSION_FOLDER}version.json"
-
-    # 🔹 Step 1: Check if `version.json` exists locally
-    if os.path.exists(LOCAL_VERSION_FILE):
-        with open(LOCAL_VERSION_FILE, "r") as local_file:
-            local_version = local_file.read()
-    else:
-        local_version = None  # Local file does not exist
-
-    # 🔹 Step 2: Try fetching `version.json` from S3
-    try:
-        s3_response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_version_key)
-        s3_version = s3_response["Body"].read().decode("utf-8")
-        s3_version_exists = True
-    except s3_client.exceptions.NoSuchKey:
-        print("⚠️ WARNING: version.json not found in S3. Assuming Day 0.")
-        s3_version = None
-        s3_version_exists = False
-
-    # 🔹 Step 3: If no local or S3 version.json (Day 0), allow first execution
-    if not local_version and not s3_version_exists:
-        print("⚠️ No local or S3 version.json found. Allowing first execution (Day 0).")
-        return {}  # ✅ Return empty dictionary to allow execution
-
-    # 🔹 Step 4: Compare local and S3 versions
-    if local_version and local_version == s3_version:
-        print("✅ Local and S3 version.json are identical. Proceeding with execution.")
-        return json.loads(local_version)  # ✅ Local version is up to date
-
-    # 🔹 Step 5: If they differ, sync the latest version from S3
-    if s3_version:
-        print("🔄 Syncing version.json from S3 to local...")
-        with open(LOCAL_VERSION_FILE, "w") as local_file:
-            local_file.write(s3_version)  # ✅ Update local file with S3 version
-        return json.loads(s3_version)  # ✅ Return the latest version from S3
-
-    print("⛔ ERROR: Could not verify version.json. Aborting execution.")
-    return None  # Return None to indicate failure
-
-
-
-def get_s3_tracker(tracker_filename):
-    """Fetch the corresponding tracker file from S3 (tracker-YYYY-MM-DD_CLUSTERID.json)."""
-    try:
-        response = s3_client.get_object(Bucket=S3_BUCKET, Key=tracker_filename)
+        response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
         return json.loads(response["Body"].read().decode("utf-8"))
     except s3_client.exceptions.NoSuchKey:
-        print(f"Tracker file {tracker_filename} not found in S3.")
+        print(f"File {s3_key} not found in S3.")
         return None
 
 
+def get_s3_version_file():
+    return fetch_s3_json(S3_BUCKET, f"{VERSION_FOLDER}version-{CURRENT_DATE}.json")
+
+
+def get_s3_tracker(tracker_filename):
+    return fetch_s3_json(S3_BUCKET, f"{TRACKER_FOLDER}{tracker_filename}")
+
+
+# Fetch the earliest or latest journal file from S3
+def fetch_s3_journal(date=None, earliest=False):
+    prefix = f"{JOURNAL_S3_PREFIX}{date}/" if date else JOURNAL_S3_PREFIX
+    response = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix=prefix)
+
+    if "Contents" in response:
+        sorted_journals = sorted(response["Contents"], key=lambda x: x["LastModified"], reverse=not earliest)
+        journal = sorted_journals[0]
+        print(f"Found journal: {journal['Key']}")
+        return journal["Key"]
+
+    print(f"No journal files found for {date if date else 'all time'} in S3.")
+    return None
+
+
+def get_earliest_s3_journal():
+    return fetch_s3_journal(earliest=True)
+
+
+def get_latest_s3_journal(date):
+    return fetch_s3_journal(date=date, earliest=False)
+
+
 def find_closest_version(tracker_data, target_time):
-    """Find the closest available journal version strictly before the target time."""
     target_dt = datetime.strptime(target_time, "%H:%M")
-    valid_versions = []
 
-    for entry in tracker_data:
-        timestamp = entry["timestamp"]
-        entry_time = datetime.strptime(timestamp.split()[-1], "%H:%M:%S")
-
-        if entry_time < target_dt:
-            valid_versions.append((entry_time, entry))
+    valid_versions = [
+        (datetime.strptime(entry["timestamp"].split()[-1], "%H:%M:%S"), entry)
+        for entry in tracker_data if datetime.strptime(entry["timestamp"].split()[-1], "%H:%M:%S") < target_dt
+    ]
 
     if not valid_versions:
         print(f"No versions found strictly before {target_time}.")
         return None
 
-    valid_versions.sort(reverse=True, key=lambda x: x[0])
-    return valid_versions[0][1]
+    return max(valid_versions, key=lambda x: x[0])[1]  # Return latest before target_time
 
 
-def download_journal(s3_path, version_id=None):
-    """Download a journal file from S3, using version ID if provided."""
+def download_journal(s3_path, version_id):
     if not s3_path:
         print("Error: S3 path is None, skipping download.")
         return None
@@ -189,53 +96,92 @@ def download_journal(s3_path, version_id=None):
     print(f"Downloading {file_name} from S3 path: {s3_path} (Version: {version_id})...")
 
     try:
-        if version_id:
-            s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path, ExtraArgs={"VersionId": version_id})
-        else:
-            s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path)
+        extra_args = {"VersionId": version_id} if version_id else {}
+        s3_client.download_file(Bucket=S3_BUCKET, Key=s3_path, Filename=local_path, ExtraArgs=extra_args)
+
         print(f"Downloaded {file_name} to {local_path}")
         return local_path
+    except botocore.exceptions.ClientError as e:
+        print(f"AWS ClientError: {e}")
+    except botocore.exceptions.EndpointConnectionError:
+        print(f"Network Error: Failed to connect to AWS S3 endpoint.")
     except Exception as e:
         print(f"Error downloading {file_name}: {e}")
-        return None
+
+    return None
 
 
+def run_import_script(file_paths):
+    if not file_paths:
+        print("No files to import. Skipping import script.")
+        return False
+
+    if isinstance(file_paths, str):
+        file_paths = [file_paths]
+
+    script_dir = os.path.dirname(IMPORT_SCRIPT)
+    command = ["python", IMPORT_SCRIPT] + file_paths
+
+    try:
+        print(f"Running import script for {len(file_paths)} files...")
+        result = subprocess.run(command, cwd=script_dir, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print(f"Import script ran successfully for batch of {len(file_paths)} files.")
+            return True
+        else:
+            print(f"ERROR: Import script failed.\n{result.stderr}")
+            return False
+    except Exception as e:
+        print(f"ERROR: Failed to execute import script: {e}")
+        return False
+
+
+# Process Journal Sync
 def process_journal_sync():
-    """Sync journals based on the Consul target version, enforcing strict import order."""
     target_version_info = get_consul_target()
     if not target_version_info:
-        print("⛔ ERROR: Could not retrieve target version from Consul.")
+        print("Error: Could not retrieve target version from Consul.")
         return
 
     target_version_date = target_version_info["date"]
     target_version_time = target_version_info["time"]
 
-    print(f"📌 Target version date: {target_version_date} at {target_version_time} HH:MM")
+    print(f"Target version date: {target_version_date} at {target_version_time} HH:MM")
 
-    # Check if status.json exists in S3
-    status_exists = get_s3_status_file()
-    
-    # Allow execution on Day 0 if status.json is missing
-    if not status_exists:
-        print("⚠️ status.json is missing (Day 0). Allowing first import to proceed.")
+    if not get_s3_version_file():
+        print("ERROR: status.json is missing or corrupted. Aborting import.")
+        return
 
-
-    # Fetch current version from S3
     current_version = get_s3_version_file()
-    current_version_date = (
-        current_version["file"].split("_")[-1].split(".")[0]
-        if current_version["file"]
-        else None
-    )
-
-    if current_version_date:
-        if target_version_date < current_version_date:
-            print(f"⛔ ERROR: Requested version {target_version_date} is older than the current running version {current_version_date}. Aborting import.")
-            return
+    if current_version and current_version.get("file"):
+        current_version_date = current_version["file"].split("_")[-1].split(".")[0]
+    else:
+        current_version_date = None
 
     missing_journals = []
 
-    tracker_filename = f"{TRACKER_FOLDER}tracker-{target_version_date}_source-cluster-204.json"
+    if not current_version_date:
+        print("No previous version found. Fetching latest available journal.")
+        earliest_s3_path = get_earliest_s3_journal()
+
+        if earliest_s3_path:
+            current_version_date = earliest_s3_path.split("_")[-1].split(".")[0]
+            missing_journals.append((earliest_s3_path, None))
+        else:
+            print("No journals found in S3, cannot proceed.")
+            return
+
+    current_date = datetime.strptime(current_version_date, "%Y-%m-%d")
+    target_date = datetime.strptime(target_version_date, "%Y-%m-%d")
+
+    while current_date < target_date:
+        s3_path = get_latest_s3_journal(current_date.strftime("%Y-%m-%d"))
+        if s3_path:
+            missing_journals.append((s3_path, None))
+        current_date += timedelta(days=1)
+
+    tracker_filename = f"tracker_{target_version_date}_{source_cluster_id}.json"
     s3_tracker = get_s3_tracker(tracker_filename)
 
     if s3_tracker:
@@ -243,18 +189,13 @@ def process_journal_sync():
         if closest_entry:
             missing_journals.append((closest_entry["s3_path"], closest_entry["version_id"]))
 
-    for s3_path, version_id in missing_journals:
-        downloaded_file = download_journal(s3_path, version_id)
-        if downloaded_file:
-            print(f"📌 Importing {downloaded_file}...")
-            if trigger_import(downloaded_file):
-                update_local_version(downloaded_file)  # ✅ Update version.json
+    downloaded_files = [download_journal(s3_path, version_id) for s3_path, version_id in missing_journals if s3_path]
 
-                # Ensure status.json is uploaded after import
-                if not upload_s3_status_file():
-                    print("⛔ ERROR: status.json upload failed. System state may be corrupted.")
-                    return
+    if downloaded_files:
+        print(f"Importing batch of {len(downloaded_files)} files...")
 
+        if run_import_script(downloaded_files):
+            for downloaded_file in downloaded_files:
+                update_local_version(downloaded_file)
 
-if __name__ == "__main__":
-    process_journal_sync()
+    print("Journal sync and import process completed successfully.")
