@@ -72,7 +72,7 @@ def get_consul_target():
 
 def get_s3_version_file():
     """Fetch the latest version.json from S3, or create a new one if missing."""
-    version_key = f"{VERSION_FOLDER}version.json"
+    version_key = f"{VERSION_FOLDER}version.json"  # Ensure single version file
 
     try:
         response = s3_client.get_object(Bucket=S3_BUCKET, Key=version_key)
@@ -285,8 +285,16 @@ def process_journal_sync():
         if closest_entry:
             missing_journals.append((closest_entry["s3_path"], closest_entry["version_id"]))
 
-    # Step 11: Download missing journals
-    downloaded_files = [download_journal(s3_path, version_id) for s3_path, version_id in missing_journals if s3_path]
+    # Step 11: Download missing journals & capture the correct `s3_version_id`
+    downloaded_files = []
+    journal_version_map = {}  # Store mapping of file name → version ID
+
+    for s3_path, version_id in missing_journals:
+        if s3_path:
+            local_file = download_journal(s3_path, version_id)
+            if local_file:
+                downloaded_files.append(local_file)
+                journal_version_map[local_file] = version_id  # Map file to correct version ID
 
     # Step 12: Run import job and update version.json **only after successful import**
     if downloaded_files:
@@ -299,6 +307,6 @@ def process_journal_sync():
 
             # Step 12.2: Update version.json after a successful import
             for downloaded_file in downloaded_files:
-                update_local_version(downloaded_file, closest_entry["version_id"] if closest_entry else None)
+                update_local_version(downloaded_file, journal_version_map.get(downloaded_file, None))
 
     print("Journal sync and import process completed successfully.")
