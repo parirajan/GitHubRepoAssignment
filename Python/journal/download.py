@@ -99,23 +99,52 @@ def get_s3_status_file():
 
 
 
-def get_s3_version_file():
-    """Fetch or create an empty version file in S3 if not available."""
-    version_key = f"{VERSION_FOLDER}version-{CURRENT_DATE}.json"
+import os
+import json
 
+LOCAL_VERSION_FILE = "/path/to/local/version.json"
+
+def get_s3_version_file():
+    """Ensure version.json is synchronized between local and S3 before proceeding."""
+    s3_version_key = f"{VERSION_FOLDER}version.json"
+
+    # 🔹 Step 1: Check if `version.json` exists locally
+    if os.path.exists(LOCAL_VERSION_FILE):
+        with open(LOCAL_VERSION_FILE, "r") as local_file:
+            local_version = local_file.read()
+    else:
+        local_version = None  # Local file does not exist
+
+    # 🔹 Step 2: Try fetching `version.json` from S3
     try:
-        response = s3_client.get_object(Bucket=S3_BUCKET, Key=version_key)
-        return json.loads(response["Body"].read().decode("utf-8"))
+        s3_response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_version_key)
+        s3_version = s3_response["Body"].read().decode("utf-8")
+        s3_version_exists = True
     except s3_client.exceptions.NoSuchKey:
-        print(f"Version file {version_key} not found in S3. Creating a new one.")
-        empty_version = {"file": None, "timestamp": None}
-        s3_client.put_object(
-            Bucket=S3_BUCKET,
-            Key=version_key,
-            Body=json.dumps(empty_version, indent=4),
-            ContentType="application/json"
-        )
-        return empty_version
+        print("⚠️ WARNING: version.json not found in S3. Assuming Day 0.")
+        s3_version = None
+        s3_version_exists = False
+
+    # 🔹 Step 3: If no local or S3 version.json (Day 0), allow first execution
+    if not local_version and not s3_version_exists:
+        print("⚠️ No local or S3 version.json found. Allowing first execution (Day 0).")
+        return {}  # ✅ Return empty dictionary to allow execution
+
+    # 🔹 Step 4: Compare local and S3 versions
+    if local_version and local_version == s3_version:
+        print("✅ Local and S3 version.json are identical. Proceeding with execution.")
+        return json.loads(local_version)  # ✅ Local version is up to date
+
+    # 🔹 Step 5: If they differ, sync the latest version from S3
+    if s3_version:
+        print("🔄 Syncing version.json from S3 to local...")
+        with open(LOCAL_VERSION_FILE, "w") as local_file:
+            local_file.write(s3_version)  # ✅ Update local file with S3 version
+        return json.loads(s3_version)  # ✅ Return the latest version from S3
+
+    print("⛔ ERROR: Could not verify version.json. Aborting execution.")
+    return None  # Return None to indicate failure
+
 
 
 def get_s3_tracker(tracker_filename):
