@@ -208,6 +208,7 @@ def download_journal(s3_path, version_id):
 def process_journal_sync():
     """Sync journals based on the target version from Consul and manage versioning."""
     
+    # Step 1: Retrieve the target version from Consul KV
     target_version_info = get_consul_target()
     if not target_version_info:
         print("Error: Could not retrieve target version from Consul.")
@@ -218,22 +219,27 @@ def process_journal_sync():
 
     print(f"Target version date: {target_version_date} at {target_version_time} HH:MM")
 
-    # Step 1: Fetch the latest version.json from S3
+    # Step 2: Fetch the latest status.json from S3 **before proceeding**
+    if not get_s3_status_file():
+        print("ERROR: status.json is missing or corrupted. Aborting import.")
+        return  # Stop execution if status.json is not found or is invalid
+
+    # Step 3: Fetch the latest version.json from S3
     s3_version_data = get_s3_version_file()
     
-    # Step 2: Check if a local version.json exists
+    # Step 4: Check if a local version.json exists
     if os.path.exists(LOCAL_VERSION_FILE):
         with open(LOCAL_VERSION_FILE, "r") as f:
             local_version_data = json.load(f)
     else:
         local_version_data = None
 
-    # Step 3: If S3 version is missing (Day 0), allow first import
+    # Step 5: If S3 version is missing (Day 0), allow first import
     if not s3_version_data and not local_version_data:
         print("No previous version found in S3 or locally. Allowing first import.")
         current_version_date = None  # Proceed with importing from the beginning
 
-    # Step 4: If both exist, check for corruption (S3 should not be behind local)
+    # Step 6: If both exist, check for corruption (S3 should not be behind local)
     elif s3_version_data and local_version_data:
         s3_latest_timestamp = s3_version_data[-1]["timestamp"]
         local_latest_timestamp = local_version_data[-1]["timestamp"]
@@ -242,7 +248,7 @@ def process_journal_sync():
             print("ERROR: S3 version.json is older than the local version. Manual intervention required.")
             return  # Stop execution
 
-    # Step 5: Determine the current version date
+    # Step 7: Determine the current version date
     if s3_version_data:
         current_version_date = s3_version_data[-1]["file"].split("_")[-1].split(".")[0]  # Extract date from filename
     else:
@@ -250,14 +256,14 @@ def process_journal_sync():
 
     missing_journals = []
 
-    # Step 6: If no previous version, start with the earliest journal available in S3
+    # Step 8: If no previous version, start with the earliest journal available in S3
     if not current_version_date:
         earliest_s3_path = get_earliest_s3_journal()
         if earliest_s3_path:
             current_version_date = earliest_s3_path.split("_")[-1].split(".")[0]
             missing_journals.append((earliest_s3_path, None))
 
-    # Step 7: Loop through missing journal files from current_version_date → target_version_date
+    # Step 9: Loop through missing journal files from current_version_date → target_version_date
     current_date = datetime.strptime(current_version_date, "%Y-%m-%d") if current_version_date else None
     target_date = datetime.strptime(target_version_date, "%Y-%m-%d")
 
@@ -267,7 +273,7 @@ def process_journal_sync():
             missing_journals.append((s3_path, None))
         current_date += timedelta(days=1)
 
-    # Step 8: Fetch the closest version from tracker
+    # Step 10: Fetch the closest version from tracker
     tracker_filename = f"tracker_{target_version_date}_{source_cluster_id}.json"
     s3_tracker = get_s3_tracker(tracker_filename)
 
@@ -276,19 +282,19 @@ def process_journal_sync():
         if closest_entry:
             missing_journals.append((closest_entry["s3_path"], closest_entry["version_id"]))
 
-    # Step 9: Download missing journals
+    # Step 11: Download missing journals
     downloaded_files = [download_journal(s3_path, version_id) for s3_path, version_id in missing_journals if s3_path]
 
-    # Step 10: Run import job and update version.json **only after successful import**
+    # Step 12: Run import job and update version.json **only after successful import**
     if downloaded_files:
         print(f"Importing batch of {len(downloaded_files)} files...")
 
         if run_import_script(downloaded_files):  # Only update version.json if import succeeds
-            # Step 10.1: Upload status.json to S3 **after successful import**
+            # Step 12.1: Upload status.json to S3 **after successful import**
             if not upload_s3_status_file():
                 print("WARNING: Failed to upload status.json to S3. Manual check required.")
 
-            # Step 10.2: Update version.json after a successful import
+            # Step 12.2: Update version.json after a successful import
             for downloaded_file in downloaded_files:
                 update_local_version(downloaded_file, closest_entry["version_id"] if closest_entry else None)
 
