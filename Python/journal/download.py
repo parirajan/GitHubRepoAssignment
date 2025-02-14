@@ -28,6 +28,46 @@ LOCAL_VERSION_FILE = f"{LOCAL_FOLDER}version-{CURRENT_DATE}.json"
 
 s3_client = boto3.client("s3")
 
+def get_consul_acl_token():
+    """Retrieve the Consul ACL token from the ACL configuration file."""
+    acl_file = CONSUL_ACL_FILE
+
+    try:
+        with open(acl_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                match = re.search(r'agent\s*=\s*"([^"]+)"', line)
+                if match:
+                    return match.group(1)  # Extract and return the token
+    except FileNotFoundError:
+        print(f"ACL file not found at {acl_file}.")
+    
+    print("Error: Could not find ACL token in the file.")
+    return None  # Return None if token is missing
+
+
+def get_consul_target():
+    """Fetch and decode the target version from Consul KV."""
+    acl_token = get_consul_acl_token()
+    if not acl_token:
+        print("Error: No ACL token found.")
+        return None
+
+    headers = {"X-Consul-Token": acl_token}
+    try:
+        response = requests.get(CONSUL_ENDPOINT, headers=headers, verify=False)
+
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0 and "Value" in data[0]:
+                decoded_value = base64.b64decode(data[0]["Value"]).decode("utf-8")
+                return json.loads(decoded_value)
+
+            print("Error: Consul KV response does not contain a valid JSON value.")
+    except requests.exceptions.RequestException as e:
+        print(f"Error connecting to Consul: {e}")
+
+    return None
 
 # Fetch a JSON file from S3
 def fetch_s3_json(s3_bucket, s3_key):
