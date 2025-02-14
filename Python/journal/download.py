@@ -88,6 +88,7 @@ def get_s3_version_file():
 
     return version_data
 
+
 def update_local_version(file_name, s3_version_id=None):
     """Update the version.json file after successful import, keeping only the last 50 entries."""
     version_key = f"{VERSION_FOLDER}version.json"
