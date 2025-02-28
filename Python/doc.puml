@@ -1,0 +1,84 @@
+@startuml
+participant "Spring JMS (CachingConnectionFactory)" as SpringJMS
+participant "JMS Client (Jakarta API)" as Client
+participant "AWS NLB (Load Balancer)" as NLB
+participant "IBM MQ Queue Manager" as MQ
+participant "JMS Connection Pool" as ConnPool
+participant "Worker Threads" as Threads
+participant "RemoteReconnectThread" as Reconnect
+participant "MQ Network Transport Layer" as Transport
+
+== Step 1: Connection Initialization with Spring JMS Wrapper ==
+
+Client -> SpringJMS: Request Connection from CachingConnectionFactory
+SpringJMS -> ConnPool: Check for Cached Connection
+alt Connection Available in Cache
+    SpringJMS -> Client: Return Cached Connection
+else No Cached Connection
+    ConnPool -> NLB: Open New TCP Connection (Port 1414)
+    NLB -> MQ: Route Connection to Available MQ Node
+    MQ -> NLB: ACK Connection Established
+    NLB -> ConnPool: ACK New Connection
+    ConnPool -> SpringJMS: Store in Cache
+    SpringJMS -> Client: Return Connection Handle
+end
+
+== Step 2: Message Production (Send) ==
+
+Client -> Threads: Create Worker Thread for Sending
+Threads -> SpringJMS: Borrow Connection from Cache
+SpringJMS -> ConnPool: Retrieve Active Connection
+Threads -> MQ: Send Message (JMS PUT)
+MQ -> Threads: Acknowledge Message Stored
+Threads -> SpringJMS: Return Connection to Cache
+
+== Step 3: Message Consumption (Receive) ==
+
+Client -> Threads: Start Consumer Worker Thread
+Threads -> SpringJMS: Borrow Cached Connection
+SpringJMS -> ConnPool: Retrieve Active Connection
+Threads -> MQ: Poll for New Message (JMS GET)
+MQ -> Threads: Deliver Message from Queue
+Threads -> SpringJMS: Return Connection to Cache
+
+== Step 4: Failure Scenario - Queue Manager Restart ==
+
+MQ -> MQ: Queue Manager Restarts (Rehydration)
+MQ -> NLB: Terminates All Existing Connections
+NLB -X Client: No Immediate TCP RST Sent (AWS NLB Behavior)
+Client -> Transport: Send Keep-Alive Packet (Still Thinks Connection is Active)
+Transport -X MQ: No Response from Queue Manager
+Transport -> Client: No Immediate Failure Detected
+
+Threads -> SpringJMS: Attempt to Borrow Cached Connection
+SpringJMS -> ConnPool: Retrieve Connection from Cache
+ConnPool -> Transport: TCP Connection is Stale
+Transport -X ConnPool: No Response (Dead Connection)
+
+Threads -> Reconnect: Enter WAITING State (Blocking)
+Reconnect -> ConnPool: Retry Connection Attempt (After Timeout)
+ConnPool -> NLB: Open New TCP Connection (Port 1414)
+NLB -> MQ: Route Connection to New Active Queue Manager
+MQ -> NLB: ACK New Connection
+NLB -> ConnPool: ACK New Connection
+Reconnect -> SpringJMS: Refresh Cached Connection
+SpringJMS -> Client: Release Reconnect Latch
+Client -> Threads: Resume Processing
+
+== Step 5: Recovery and Message Flow Resumption ==
+
+Threads -> SpringJMS: Borrow Connection from Cache
+SpringJMS -> ConnPool: Retrieve Fresh Connection
+ConnPool -> MQ: Establish New Session
+MQ -> Threads: Send ACK for New Session
+
+Threads -> MQ: Poll for Messages (JMS GET)
+MQ -> Threads: Deliver Messages from Queue
+Threads -> SpringJMS: Return Connection to Cache
+
+Client -> Client: Clear Previous Stale Connection State
+Client -> Threads: Resume Normal Processing
+Threads -> MQ: Message Flow Continues
+MQ -> Threads: Acknowledge Messages
+
+@enduml
