@@ -1,3 +1,5 @@
+package com.example.client;
+
 import com.aerospike.client.*;
 import com.aerospike.client.policy.*;
 import com.example.avro.Pacs008Message;
@@ -13,7 +15,6 @@ public class Pacs008AerospikeClient {
     public Pacs008AerospikeClient(String host, int port, int threadPoolSize) {
         ClientPolicy policy = new ClientPolicy();
         policy.failIfNotConnected = true;
-        policy.tlsPolicy = new TlsPolicy();
 
         this.client = new AerospikeClient(policy, host, port);
         this.executor = Executors.newFixedThreadPool(threadPoolSize);
@@ -23,7 +24,9 @@ public class Pacs008AerospikeClient {
         for (int i = 0; i < messageCount; i++) {
             executor.submit(() -> {
                 try {
-                    storeMessage(Pacs008Generator.generate());
+                    storeMessage(new Pacs008Message("id" + System.nanoTime(), "2025-03-04",
+                        "inst" + System.nanoTime(), "e2e" + System.nanoTime(), 100.0,
+                        "USD", "BANK1", "BANK2", "Debtor", "Creditor"));
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
