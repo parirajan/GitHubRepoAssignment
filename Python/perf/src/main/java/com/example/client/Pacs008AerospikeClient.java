@@ -5,6 +5,9 @@ import com.aerospike.client.policy.*;
 import com.example.avro.Pacs008Message;
 import com.example.model.Pacs008Generator;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -12,8 +15,8 @@ import java.util.concurrent.TimeUnit;
 public class Pacs008AerospikeClient {
     private final AerospikeClient client;
     private final ExecutorService executor;
-    private static final String NAMESPACE = "payments";
-    private static final String SET_NAME = "pacs008";
+    private static String NAMESPACE;
+    private static String SET_NAME;
 
     public Pacs008AerospikeClient(String host, int port, int threadPoolSize) {
         ClientPolicy policy = new ClientPolicy();
@@ -60,11 +63,32 @@ public class Pacs008AerospikeClient {
         }
     }
 
+    private static Properties loadProperties() {
+        Properties properties = new Properties();
+        try (InputStream input = Pacs008AerospikeClient.class.getClassLoader().getResourceAsStream("application.properties")) {
+            if (input == null) {
+                throw new RuntimeException("Configuration file application.properties not found");
+            }
+            properties.load(input);
+        } catch (IOException ex) {
+            throw new RuntimeException("Error loading application.properties", ex);
+        }
+        return properties;
+    }
+
     public static void main(String[] args) {
-        String aerospikeHost = "192.168.1.100";
-        int aerospikePort = 3000;
-        int threadPoolSize = 10;
-        int messageCount = 10000;
+        Properties properties = loadProperties();
+
+        String aerospikeHost = properties.getProperty("aerospike.host", "127.0.0.1");
+        int aerospikePort = Integer.parseInt(properties.getProperty("aerospike.port", "3000"));
+        NAMESPACE = properties.getProperty("aerospike.namespace", "payments");
+        SET_NAME = properties.getProperty("aerospike.set", "pacs008");
+        int threadPoolSize = Integer.parseInt(properties.getProperty("aerospike.threadPoolSize", "10"));
+        int messageCount = Integer.parseInt(properties.getProperty("aerospike.messageCount", "10000"));
+
+        System.out.println("Connecting to Aerospike at " + aerospikeHost + ":" + aerospikePort);
+        System.out.println("Using namespace: " + NAMESPACE + ", set: " + SET_NAME);
+        System.out.println("Thread Pool Size: " + threadPoolSize + ", Message Count: " + messageCount);
 
         Pacs008AerospikeClient client = new Pacs008AerospikeClient(aerospikeHost, aerospikePort, threadPoolSize);
         client.pushMessages(messageCount);
