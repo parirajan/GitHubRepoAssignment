@@ -13,6 +13,7 @@ public class AerospikeConfig {
     private static AerospikeClient client;
     private static String namespace;
     private static String setName;
+    private static String binName;
     private static boolean useTLS;
 
     static {
@@ -31,25 +32,25 @@ public class AerospikeConfig {
             int port = Integer.parseInt(properties.getProperty("aerospike.port", "3000"));
             namespace = properties.getProperty("aerospike.namespace", "payments");
             setName = properties.getProperty("aerospike.set", "pacs008");
+            binName = properties.getProperty("aerospike.bin", "content");
             useTLS = Boolean.parseBoolean(properties.getProperty("aerospike.tls.enabled", "false"));
 
-            // Read authentication details (if enabled)
+            // Read authentication method (PKI or standard user/pass)
+            String authMethod = properties.getProperty("aerospike.auth.method", "none");
             String user = properties.getProperty("aerospike.auth.user", "");
-            String password = properties.getProperty("aerospike.auth.password", "");
-            
+
             // Read Rack Awareness settings
-            int rackId = Integer.parseInt(properties.getProperty("aerospike.rackId", "1")); // Default to rack 1
+            int rackId = Integer.parseInt(properties.getProperty("aerospike.rackId", "1"));
             boolean rackAware = Boolean.parseBoolean(properties.getProperty("aerospike.rackAware", "true"));
 
             ClientPolicy policy = new ClientPolicy();
-            policy.failIfNotConnected = true; // Prevents connection if Aerospike is unreachable
+            policy.failIfNotConnected = true;
             policy.rackAware = rackAware;
-            policy.rackId = rackId; // Sets the preferred rack ID
+            policy.rackId = rackId;
 
-            if (!user.isEmpty() && !password.isEmpty()) {
-                policy.user = user;
-                policy.password = password;
-                System.out.println("Aerospike authentication enabled.");
+            if ("pki".equalsIgnoreCase(authMethod) && !user.isEmpty()) {
+                policy.user = user; // No password needed for PKI
+                System.out.println("Using PKI Authentication for Aerospike.");
             }
 
             if (useTLS) {
@@ -60,7 +61,6 @@ public class AerospikeConfig {
             client = new AerospikeClient(policy, new Host(host, port));
             System.out.println("Aerospike Client Connected to " + host + ":" + port);
             System.out.println("Rack Awareness Enabled: " + rackAware + ", Preferred Rack ID: " + rackId);
-
         } catch (IOException e) {
             throw new RuntimeException("Failed to load Aerospike configuration", e);
         }
@@ -76,6 +76,10 @@ public class AerospikeConfig {
 
     public static String getSetName() {
         return setName;
+    }
+
+    public static String getBinName() {
+        return binName;
     }
 
     public static void closeClient() {
