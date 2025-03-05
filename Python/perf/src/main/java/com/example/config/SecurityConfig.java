@@ -25,12 +25,12 @@ public class SecurityConfig {
             properties.load(input);
         }
 
-        // Read values from application.properties
+        // Read TLS settings from properties
         tlsEnabled = Boolean.parseBoolean(properties.getProperty("aerospike.tls.enabled", "false"));
-        String keystorePath = properties.getProperty("aerospike.tls.keystore.path", "src/main/resources/keystore.jks");
-        String keystorePassword = properties.getProperty("aerospike.tls.keystore.password", "changeit");
-        String truststorePath = properties.getProperty("aerospike.tls.truststore.path", "src/main/resources/truststore.jks");
-        String truststorePassword = properties.getProperty("aerospike.tls.truststore.password", "changeit");
+        String keystorePath = properties.getProperty("aerospike.tls.keystore.path", "");
+        String keystorePassword = properties.getProperty("aerospike.tls.keystore.password", "");
+        String truststorePath = properties.getProperty("aerospike.tls.truststore.path", "");
+        String truststorePassword = properties.getProperty("aerospike.tls.truststore.password", "");
 
         if (!tlsEnabled) {
             System.out.println("TLS is disabled, skipping TLS configuration.");
