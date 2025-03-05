@@ -4,10 +4,12 @@ import com.aerospike.client.policy.TlsPolicy;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.KeyStore;
+import java.util.Properties;
 import javax.net.ssl.*;
 
 public class SecurityConfig {
     private static TlsPolicy tlsPolicy;
+    private static boolean tlsEnabled;
 
     static {
         try {
@@ -18,10 +20,24 @@ public class SecurityConfig {
     }
 
     private static void loadSecurityConfig() throws Exception {
-        String keystorePath = "src/main/resources/keystore.jks";
-        String keystorePassword = "changeit";
-        String truststorePath = "src/main/resources/truststore.jks";
-        String truststorePassword = "changeit";
+        Properties properties = new Properties();
+        try (FileInputStream input = new FileInputStream("src/main/resources/application.properties")) {
+            properties.load(input);
+        }
+
+        // Read values from application.properties
+        tlsEnabled = Boolean.parseBoolean(properties.getProperty("aerospike.tls.enabled", "false"));
+        String keystorePath = properties.getProperty("aerospike.tls.keystore.path", "src/main/resources/keystore.jks");
+        String keystorePassword = properties.getProperty("aerospike.tls.keystore.password", "changeit");
+        String truststorePath = properties.getProperty("aerospike.tls.truststore.path", "src/main/resources/truststore.jks");
+        String truststorePassword = properties.getProperty("aerospike.tls.truststore.password", "changeit");
+
+        if (!tlsEnabled) {
+            System.out.println("TLS is disabled, skipping TLS configuration.");
+            return;
+        }
+
+        System.out.println("Configuring TLS Security...");
 
         KeyStore keyStore = KeyStore.getInstance("JKS");
         keyStore.load(new FileInputStream(keystorePath), keystorePassword.toCharArray());
@@ -40,9 +56,15 @@ public class SecurityConfig {
 
         tlsPolicy = new TlsPolicy();
         tlsPolicy.context = sslContext;
+
+        System.out.println("TLS Security Configured Successfully.");
     }
 
     public static TlsPolicy getTlsPolicy() {
         return tlsPolicy;
+    }
+
+    public static boolean isTlsEnabled() {
+        return tlsEnabled;
     }
 }
