@@ -2,6 +2,7 @@ package com.example.config;
 
 import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.Host;
+import com.aerospike.client.policy.AuthMode;
 import com.aerospike.client.policy.ClientPolicy;
 import com.aerospike.client.policy.TlsPolicy;
 
@@ -35,6 +36,9 @@ public class AerospikeConfig {
             binName = properties.getProperty("aerospike.bin", "content");
             useTLS = Boolean.parseBoolean(properties.getProperty("aerospike.tls.enabled", "false"));
 
+            // Read TLS Name
+            String tlsName = properties.getProperty("aerospike.tls.name", "");
+
             // Read authentication method (PKI or standard user/pass)
             String authMethod = properties.getProperty("aerospike.auth.method", "none");
             String user = properties.getProperty("aerospike.auth.user", "");
@@ -49,7 +53,8 @@ public class AerospikeConfig {
             policy.rackId = rackId;
 
             if ("pki".equalsIgnoreCase(authMethod) && !user.isEmpty()) {
-                policy.user = user; // No password needed for PKI
+                policy.authMode = AuthMode.PKI;  // Use PKI Authentication
+                policy.user = user; // CN must match Aerospike user
                 System.out.println("Using PKI Authentication for Aerospike.");
             }
 
@@ -58,7 +63,16 @@ public class AerospikeConfig {
                 System.out.println("Aerospike TLS Security Enabled.");
             }
 
-            client = new AerospikeClient(policy, new Host(host, port));
+            // Define host with TLS Name if TLS is enabled
+            Host[] hosts;
+            if (useTLS && !tlsName.isEmpty()) {
+                hosts = new Host[] { new Host(host, tlsName, port) };
+                System.out.println("Connecting to Aerospike with TLS Name: " + tlsName);
+            } else {
+                hosts = new Host[] { new Host(host, port) };
+            }
+
+            client = new AerospikeClient(policy, hosts);
             System.out.println("Aerospike Client Connected to " + host + ":" + port);
             System.out.println("Rack Awareness Enabled: " + rackAware + ", Preferred Rack ID: " + rackId);
         } catch (IOException e) {
