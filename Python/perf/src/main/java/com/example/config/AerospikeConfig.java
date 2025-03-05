@@ -33,15 +33,33 @@ public class AerospikeConfig {
             setName = properties.getProperty("aerospike.set", "pacs008");
             useTLS = Boolean.parseBoolean(properties.getProperty("aerospike.tls.enabled", "false"));
 
+            // Read authentication details (if enabled)
+            String user = properties.getProperty("aerospike.auth.user", "");
+            String password = properties.getProperty("aerospike.auth.password", "");
+            
+            // Read Rack Awareness settings
+            int rackId = Integer.parseInt(properties.getProperty("aerospike.rackId", "1")); // Default to rack 1
+            boolean rackAware = Boolean.parseBoolean(properties.getProperty("aerospike.rackAware", "true"));
+
             ClientPolicy policy = new ClientPolicy();
-            policy.failIfNotConnected = true;
+            policy.failIfNotConnected = true; // Prevents connection if Aerospike is unreachable
+            policy.rackAware = rackAware;
+            policy.rackId = rackId; // Sets the preferred rack ID
+
+            if (!user.isEmpty() && !password.isEmpty()) {
+                policy.user = user;
+                policy.password = password;
+                System.out.println("Aerospike authentication enabled.");
+            }
 
             if (useTLS) {
                 policy.tlsPolicy = SecurityConfig.getTlsPolicy();
+                System.out.println("Aerospike TLS Security Enabled.");
             }
 
             client = new AerospikeClient(policy, new Host(host, port));
             System.out.println("Aerospike Client Connected to " + host + ":" + port);
+            System.out.println("Rack Awareness Enabled: " + rackAware + ", Preferred Rack ID: " + rackId);
 
         } catch (IOException e) {
             throw new RuntimeException("Failed to load Aerospike configuration", e);
