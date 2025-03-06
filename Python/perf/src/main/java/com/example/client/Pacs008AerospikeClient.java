@@ -7,6 +7,7 @@ import com.aerospike.client.policy.WritePolicy;
 import com.example.avro.Pacs008Message;
 import com.example.config.AerospikeConfig;
 import com.example.model.Pacs008Generator;
+import com.example.utils.AvroUtils;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,14 +48,27 @@ public class Pacs008AerospikeClient {
     }
 
     private void storeMessage(Pacs008Message message) {
-        Key key = new Key(NAMESPACE, SET_NAME, message.getMessageId());
-        Bin binContent = new Bin(BIN_NAME, AvroUtils.serializeToAvro(message));
+        try {
+            // ✅ Debugging logs
+            System.out.println("🔍 Message Before Serialization: " + message);
 
-        WritePolicy writePolicy = new WritePolicy();
-        writePolicy.commitLevel = WritePolicy.CommitLevel.COMMIT_ALL;
+            if (message.getMessageId() == null) {
+                System.err.println("❌ Error: messageId is null!");
+                return;
+            }
 
-        client.put(writePolicy, key, binContent);
-        System.out.println("✅ Stored Message ID: " + message.getMessageId());
+            Key key = new Key(NAMESPACE, SET_NAME, message.getMessageId());
+            Bin binContent = new Bin(BIN_NAME, AvroUtils.serializeToAvro(message));
+
+            WritePolicy writePolicy = new WritePolicy();
+            writePolicy.sendKey = true; // ✅ Ensure key is properly stored
+
+            client.put(writePolicy, key, binContent);
+            System.out.println("✅ Stored Message ID: " + message.getMessageId());
+        } catch (Exception e) {
+            System.err.println("❌ Failed to store message: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     public void shutdown() {
