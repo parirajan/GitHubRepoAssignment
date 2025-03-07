@@ -22,15 +22,15 @@ public class Pacs008Generator {
         String creditorName = "Creditor_" + random.nextInt(1000);
 
         // ✅ Ensure no null values are passed
-        if (messageId == null || messageId.isEmpty()) messageId = "DEFAULT_MSG_ID";
-        if (creationDate == null || creationDate.isEmpty()) creationDate = "1970-01-01T00:00:00";
-        if (instructionId == null || instructionId.isEmpty()) instructionId = "INST_DEFAULT";
-        if (endToEndId == null || endToEndId.isEmpty()) endToEndId = "E2E_DEFAULT";
-        if (currency == null || currency.isEmpty()) currency = "USD";
-        if (instructingAgent == null || instructingAgent.isEmpty()) instructingAgent = "BANK000";
-        if (instructedAgent == null || instructedAgent.isEmpty()) instructedAgent = "BANK999";
-        if (debtorName == null || debtorName.isEmpty()) debtorName = "Default_Debtor";
-        if (creditorName == null || creditorName.isEmpty()) creditorName = "Default_Creditor";
+        messageId = (messageId == null || messageId.isEmpty()) ? "DEFAULT_MSG_ID" : messageId;
+        creationDate = (creationDate == null || creationDate.isEmpty()) ? "1970-01-01T00:00:00" : creationDate;
+        instructionId = (instructionId == null || instructionId.isEmpty()) ? "INST_DEFAULT" : instructionId;
+        endToEndId = (endToEndId == null || endToEndId.isEmpty()) ? "E2E_DEFAULT" : endToEndId;
+        currency = (currency == null || currency.isEmpty()) ? "USD" : currency;
+        instructingAgent = (instructingAgent == null || instructingAgent.isEmpty()) ? "BANK000" : instructingAgent;
+        instructedAgent = (instructedAgent == null || instructedAgent.isEmpty()) ? "BANK999" : instructedAgent;
+        debtorName = (debtorName == null || debtorName.isEmpty()) ? "Default_Debtor" : debtorName;
+        creditorName = (creditorName == null || creditorName.isEmpty()) ? "Default_Creditor" : creditorName;
 
         return new Pacs008Message(messageId, creationDate, instructionId, endToEndId,
                 amount, currency, instructingAgent, instructedAgent, debtorName, creditorName);
