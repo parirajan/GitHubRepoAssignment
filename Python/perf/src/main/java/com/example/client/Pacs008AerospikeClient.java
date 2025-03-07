@@ -25,7 +25,10 @@ public class Pacs008AerospikeClient {
         // Load namespace, set, and bin properties from AerospikeConfig
         NAMESPACE = AerospikeConfig.getNamespace();
         SET_NAME = AerospikeConfig.getSetName();
-        BIN_NAME = AerospikeConfig.getBinName();
+
+        // Ensure bin name is ≤ 15 characters
+        String binFromConfig = AerospikeConfig.getBinName();
+        BIN_NAME = (binFromConfig.length() > 15) ? binFromConfig.substring(0, 15) : binFromConfig;
     }
 
     public Pacs008AerospikeClient(int threadPoolSize) {
@@ -41,7 +44,7 @@ public class Pacs008AerospikeClient {
                     Pacs008Message message = Pacs008Generator.generate();
                     storeMessage(message);
                 } catch (Exception e) {
-                    System.err.println("Error while pushing message:");
+                    System.err.println("Error while pushing message: " + e.getMessage());
                     e.printStackTrace();
                 }
             });
@@ -53,43 +56,9 @@ public class Pacs008AerospikeClient {
             // Debugging logs before serialization
             System.out.println("Message Before Serialization: " + message);
 
-            // Ensure messageId is valid and not null
+            // Ensure messageId is valid
             if (message.getMessageId() == null || message.getMessageId().isEmpty()) {
-                System.err.println("Error: messageId is null or empty!");
-                return;
-            }
-
-            // Ensure all other required fields are valid
-            if (message.getCreationDate() == null || message.getCreationDate().isEmpty()) {
-                System.err.println("Error: creationDate is null or empty!");
-                return;
-            }
-            if (message.getInstructionId() == null || message.getInstructionId().isEmpty()) {
-                System.err.println("Error: instructionId is null or empty!");
-                return;
-            }
-            if (message.getEndToEndId() == null || message.getEndToEndId().isEmpty()) {
-                System.err.println("Error: endToEndId is null or empty!");
-                return;
-            }
-            if (message.getCurrency() == null || message.getCurrency().isEmpty()) {
-                System.err.println("Error: currency is null or empty!");
-                return;
-            }
-            if (message.getInstructingAgent() == null || message.getInstructingAgent().isEmpty()) {
-                System.err.println("Error: instructingAgent is null or empty!");
-                return;
-            }
-            if (message.getInstructedAgent() == null || message.getInstructedAgent().isEmpty()) {
-                System.err.println("Error: instructedAgent is null or empty!");
-                return;
-            }
-            if (message.getDebtorName() == null || message.getDebtorName().isEmpty()) {
-                System.err.println("Error: debtorName is null or empty!");
-                return;
-            }
-            if (message.getCreditorName() == null || message.getCreditorName().isEmpty()) {
-                System.err.println("Error: creditorName is null or empty!");
+                System.err.println("Error: messageId is null or empty! Skipping record.");
                 return;
             }
 
