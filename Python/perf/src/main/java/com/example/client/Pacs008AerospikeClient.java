@@ -3,6 +3,7 @@ package com.example.client;
 import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
+import com.aerospike.client.Value;
 import com.aerospike.client.policy.WritePolicy;
 import com.example.avro.Pacs008Message;
 import com.example.config.AerospikeConfig;
@@ -92,8 +93,8 @@ public class Pacs008AerospikeClient {
                 return;
             }
 
-            // Fix Key constructor issue (Ensure key value is String)
-            Key key = new Key(NAMESPACE, SET_NAME, message.getMessageId());
+            // Fix Key constructor issue (Ensure key value is properly converted)
+            Key key = new Key(NAMESPACE, SET_NAME, Value.get(message.getMessageId()));
 
             // Serialize message to Avro format
             byte[] serializedData = AvroUtils.serializeToAvro(message);
