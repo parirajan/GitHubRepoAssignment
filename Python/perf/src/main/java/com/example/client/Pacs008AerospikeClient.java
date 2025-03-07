@@ -40,7 +40,7 @@ public class Pacs008AerospikeClient {
                     Pacs008Message message = Pacs008Generator.generate();
                     storeMessage(message);
                 } catch (Exception e) {
-                    System.err.println("❌ Error while pushing message:");
+                    System.err.println("Error while pushing message:");
                     e.printStackTrace();
                 }
             });
@@ -49,44 +49,44 @@ public class Pacs008AerospikeClient {
 
     private void storeMessage(Pacs008Message message) {
         try {
-            // ✅ Debugging logs
-            System.out.println("🔍 Message Before Serialization: " + message);
+            // Debugging logs before serialization
+            System.out.println("Message Before Serialization: " + message);
 
-            // ✅ Check for null values
+            // Check for null fields
             if (message.getMessageId() == null) {
-                System.err.println("❌ Error: messageId is null!");
+                System.err.println("Error: messageId is null!");
                 return;
             }
             if (message.getCreationDate() == null) {
-                System.err.println("❌ Error: creationDate is null!");
+                System.err.println("Error: creationDate is null!");
                 return;
             }
             if (message.getInstructionId() == null) {
-                System.err.println("❌ Error: instructionId is null!");
+                System.err.println("Error: instructionId is null!");
                 return;
             }
             if (message.getEndToEndId() == null) {
-                System.err.println("❌ Error: endToEndId is null!");
+                System.err.println("Error: endToEndId is null!");
                 return;
             }
             if (message.getCurrency() == null) {
-                System.err.println("❌ Error: currency is null!");
+                System.err.println("Error: currency is null!");
                 return;
             }
             if (message.getInstructingAgent() == null) {
-                System.err.println("❌ Error: instructingAgent is null!");
+                System.err.println("Error: instructingAgent is null!");
                 return;
             }
             if (message.getInstructedAgent() == null) {
-                System.err.println("❌ Error: instructedAgent is null!");
+                System.err.println("Error: instructedAgent is null!");
                 return;
             }
             if (message.getDebtorName() == null) {
-                System.err.println("❌ Error: debtorName is null!");
+                System.err.println("Error: debtorName is null!");
                 return;
             }
             if (message.getCreditorName() == null) {
-                System.err.println("❌ Error: creditorName is null!");
+                System.err.println("Error: creditorName is null!");
                 return;
             }
 
@@ -94,12 +94,12 @@ public class Pacs008AerospikeClient {
             Bin binContent = new Bin(BIN_NAME, AvroUtils.serializeToAvro(message));
 
             WritePolicy writePolicy = new WritePolicy();
-            writePolicy.sendKey = true; // ✅ Ensure key is properly stored
+            writePolicy.sendKey = true; // Ensure key is properly stored
 
             client.put(writePolicy, key, binContent);
-            System.out.println("✅ Stored Message ID: " + message.getMessageId());
+            System.out.println("Stored Message ID: " + message.getMessageId());
         } catch (Exception e) {
-            System.err.println("❌ Failed to store message: " + e.getMessage());
+            System.err.println("Failed to store message: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -108,7 +108,7 @@ public class Pacs008AerospikeClient {
         try {
             executor.shutdown();
             if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-                System.err.println("❌ Executor did not terminate in the allotted time.");
+                System.err.println("Executor did not terminate in the allotted time.");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -119,8 +119,8 @@ public class Pacs008AerospikeClient {
         int threadPoolSize = 10;
         int messageCount = 10000;
 
-        System.out.println("✅ Using Aerospike Client from AerospikeConfig");
-        System.out.println("✅ Namespace: " + NAMESPACE + ", Set: " + SET_NAME + ", Bin: " + BIN_NAME);
+        System.out.println("Using Aerospike Client from AerospikeConfig");
+        System.out.println("Namespace: " + NAMESPACE + ", Set: " + SET_NAME + ", Bin: " + BIN_NAME);
 
         Pacs008AerospikeClient client = new Pacs008AerospikeClient(threadPoolSize);
         client.pushMessages(messageCount);
