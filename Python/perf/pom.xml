@@ -11,6 +11,25 @@
             </configuration>
         </plugin>
 
+        <!-- Avro Maven Plugin for Generating Java Classes from Schema -->
+        <plugin>
+            <groupId>org.apache.avro</groupId>
+            <artifactId>avro-maven-plugin</artifactId>
+            <version>1.11.1</version>
+            <executions>
+                <execution>
+                    <phase>generate-sources</phase>
+                    <goals>
+                        <goal>schema</goal>
+                    </goals>
+                    <configuration>
+                        <sourceDirectory>${project.basedir}/src/main/resources/schemas</sourceDirectory>
+                        <outputDirectory>${project.build.directory}/generated-sources</outputDirectory>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+
         <!-- Maven Shade Plugin to Package the JAR Properly -->
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
@@ -23,11 +42,39 @@
                         <goal>shade</goal>
                     </goals>
                     <configuration>
+                        <relocations>
+                            <relocation>
+                                <pattern>org.apache.avro</pattern>
+                                <shadedPattern>shaded.org.apache.avro</shadedPattern>
+                            </relocation>
+                        </relocations>
                         <transformers>
                             <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                 <mainClass>com.example.client.Pacs008AerospikeClient</mainClass>
                             </transformer>
                         </transformers>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+
+        <!-- Ensure All Dependencies Are Packaged -->
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-dependency-plugin</artifactId>
+            <version>3.1.2</version>
+            <executions>
+                <execution>
+                    <id>copy-dependencies</id>
+                    <phase>package</phase>
+                    <goals>
+                        <goal>copy-dependencies</goal>
+                    </goals>
+                    <configuration>
+                        <outputDirectory>${project.build.directory}/libs</outputDirectory>
+                        <overWriteReleases>false</overWriteReleases>
+                        <overWriteSnapshots>false</overWriteSnapshots>
+                        <overWriteIfNewer=true/>
                     </configuration>
                 </execution>
             </executions>
