@@ -21,7 +21,7 @@ public class Pacs008Generator {
         String debtorName = "Debtor_" + random.nextInt(1000);
         String creditorName = "Creditor_" + random.nextInt(1000);
 
-        // ✅ Ensure no null values are passed
+        // Ensure all fields are properly initialized
         messageId = (messageId == null || messageId.isEmpty()) ? "DEFAULT_MSG_ID" : messageId;
         creationDate = (creationDate == null || creationDate.isEmpty()) ? "1970-01-01T00:00:00" : creationDate;
         instructionId = (instructionId == null || instructionId.isEmpty()) ? "INST_DEFAULT" : instructionId;
