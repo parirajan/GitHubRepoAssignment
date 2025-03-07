@@ -52,8 +52,41 @@ public class Pacs008AerospikeClient {
             // ✅ Debugging logs
             System.out.println("🔍 Message Before Serialization: " + message);
 
+            // ✅ Check for null values
             if (message.getMessageId() == null) {
                 System.err.println("❌ Error: messageId is null!");
+                return;
+            }
+            if (message.getCreationDate() == null) {
+                System.err.println("❌ Error: creationDate is null!");
+                return;
+            }
+            if (message.getInstructionId() == null) {
+                System.err.println("❌ Error: instructionId is null!");
+                return;
+            }
+            if (message.getEndToEndId() == null) {
+                System.err.println("❌ Error: endToEndId is null!");
+                return;
+            }
+            if (message.getCurrency() == null) {
+                System.err.println("❌ Error: currency is null!");
+                return;
+            }
+            if (message.getInstructingAgent() == null) {
+                System.err.println("❌ Error: instructingAgent is null!");
+                return;
+            }
+            if (message.getInstructedAgent() == null) {
+                System.err.println("❌ Error: instructedAgent is null!");
+                return;
+            }
+            if (message.getDebtorName() == null) {
+                System.err.println("❌ Error: debtorName is null!");
+                return;
+            }
+            if (message.getCreditorName() == null) {
+                System.err.println("❌ Error: creditorName is null!");
                 return;
             }
 
