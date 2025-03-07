@@ -1,0 +1,17 @@
+{
+  "namespace": "com.example.avro",
+  "type": "record",
+  "name": "Pacs008Message",
+  "fields": [
+    {"name": "messageId", "type": "string"},
+    {"name": "creationDate", "type": "string"},
+    {"name": "instructionId", "type": "string"},
+    {"name": "endToEndId", "type": "string"},
+    {"name": "amount", "type": "double"},
+    {"name": "currency", "type": "string"},
+    {"name": "instructingAgent", "type": "string"},
+    {"name": "instructedAgent", "type": "string"},
+    {"name": "debtorName", "type": "string"},
+    {"name": "creditorName", "type": "string"}
+  ]
+}
