@@ -5,7 +5,9 @@ import com.aerospike.client.Host;
 import com.aerospike.client.Log;
 import com.aerospike.client.policy.AuthMode;
 import com.aerospike.client.policy.ClientPolicy;
+import com.aerospike.client.policy.ReadPolicy;
 import com.aerospike.client.policy.TlsPolicy;
+import com.aerospike.client.policy.WritePolicy;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -49,7 +51,7 @@ public class AerospikeConfig {
             String authMethod = properties.getProperty("aerospike.auth.method", "none");
             String user = properties.getProperty("aerospike.auth.user", "");
 
-            // Enable Aerospike debug logs
+            // Enable Aerospike client debug logs
             Log.setCallback(new AerospikeLogCallback());
             Log.setLevel(Log.Level.INFO);
 
@@ -60,42 +62,37 @@ public class AerospikeConfig {
             logger.info(" - TLS Name: {}", tlsName);
             logger.info(" - Authentication Mode: {}", authMethod);
 
-            // Initialize Client Policy
+            // ✅ Initialize Client Policy with max connections
             ClientPolicy policy = new ClientPolicy();
             policy.failIfNotConnected = true;
-            policy.timeout = 10000; // Increase timeout
+            policy.timeout = 10000;  // Increase connection timeout
             policy.authMode = "pki".equalsIgnoreCase(authMethod) ? AuthMode.PKI : AuthMode.INTERNAL;
+            policy.user = user;
 
-            // ✅ Performance tuning
+            // ✅ Performance Tuning: Connection Pooling
             policy.maxConnsPerNode = 500;  // Increase max connections
             policy.minConnsPerNode = 50;   // Maintain some idle connections
-            policy.readPolicyDefault.totalTimeout = 5000;
-            policy.writePolicyDefault.totalTimeout = 5000;
-            
+
             // ✅ Define Read Policy
             ReadPolicy readPolicy = new ReadPolicy();
             readPolicy.totalTimeout = 5000;
             readPolicy.maxRetries = 3;  // ✅ Move maxRetries here
             readPolicy.sleepBetweenRetries = 100; // ✅ Move sleepBetweenRetries here
-    
+
             // ✅ Define Write Policy
             WritePolicy writePolicy = new WritePolicy();
             writePolicy.totalTimeout = 5000;
             writePolicy.maxRetries = 3;  // ✅ Set retries here
             writePolicy.sleepBetweenRetries = 100; // ✅ Set retry delay
-    
-            // Apply policies to client
-            clientPolicy.readPolicyDefault = readPolicy;
-            clientPolicy.writePolicyDefault = writePolicy;
 
             // Apply policies to client
-            clientPolicy.readPolicyDefault = readPolicy;
-            clientPolicy.writePolicyDefault = writePolicy;
+            policy.readPolicyDefault = readPolicy;
+            policy.writePolicyDefault = writePolicy;
 
             if (useTLS) {
                 TlsPolicy tlsPolicy = new TlsPolicy();
 
-                // Recommended ciphers
+                // Add recommended ciphers for better security
                 String[] ciphers = {
                         "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
                         "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
