@@ -6,6 +6,9 @@ import com.aerospike.client.Log;
 import com.aerospike.client.policy.AuthMode;
 import com.aerospike.client.policy.ClientPolicy;
 import com.aerospike.client.policy.TlsPolicy;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,6 +18,7 @@ import java.util.List;
 import java.util.Properties;
 
 public class AerospikeConfig {
+    private static final Logger logger = LogManager.getLogger(AerospikeConfig.class);
     private static AerospikeClient client;
     private static String namespace;
     private static String setName;
@@ -45,28 +49,36 @@ public class AerospikeConfig {
             String authMethod = properties.getProperty("aerospike.auth.method", "none");
             String user = properties.getProperty("aerospike.auth.user", "");
 
-            // Enable Aerospike client debug logs
+            // Enable Aerospike debug logs
             Log.setCallback(new AerospikeLogCallback());
-            Log.setLevel(Log.Level.DEBUG);
+            Log.setLevel(Log.Level.INFO);
 
-            System.out.println("Connecting to Aerospike with:");
-            System.out.println(" - Host: " + host);
-            System.out.println(" - Port: " + port);
-            System.out.println(" - TLS Enabled: " + useTLS);
-            System.out.println(" - TLS Name: " + tlsName);
-            System.out.println(" - Authentication Mode: " + authMethod);
+            logger.info("Connecting to Aerospike...");
+            logger.info(" - Host: {}", host);
+            logger.info(" - Port: {}", port);
+            logger.info(" - TLS Enabled: {}", useTLS);
+            logger.info(" - TLS Name: {}", tlsName);
+            logger.info(" - Authentication Mode: {}", authMethod);
 
             // Initialize Client Policy
             ClientPolicy policy = new ClientPolicy();
             policy.failIfNotConnected = true;
-            policy.timeout = 10000;  // Increase timeout
+            policy.timeout = 10000; // Increase timeout
             policy.authMode = "pki".equalsIgnoreCase(authMethod) ? AuthMode.PKI : AuthMode.INTERNAL;
             policy.user = user;
+
+            // ✅ Performance tuning
+            policy.maxConnsPerNode = 500;  // Increase max connections
+            policy.minConnsPerNode = 50;   // Maintain some idle connections
+            policy.readPolicyDefault.totalTimeout = 5000;
+            policy.writePolicyDefault.totalTimeout = 5000;
+            policy.maxRetries = 3;
+            policy.sleepBetweenRetries = 100;
 
             if (useTLS) {
                 TlsPolicy tlsPolicy = new TlsPolicy();
 
-                // Add recommended ciphers for better security
+                // Recommended ciphers
                 String[] ciphers = {
                         "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
                         "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
@@ -76,25 +88,25 @@ public class AerospikeConfig {
                 tlsPolicy.ciphers = ciphers;
 
                 policy.tlsPolicy = tlsPolicy;
-                System.out.println("Aerospike TLS Security Enabled.");
+                logger.info("Aerospike TLS Security Enabled.");
                 printCiphers(ciphers);
             }
 
-            // Define host with TLS Name if TLS is enabled
+            // ✅ Define host with TLS Name if TLS is enabled
             Host[] hosts;
             if (useTLS && !tlsName.isEmpty()) {
                 hosts = new Host[] { new Host(host, tlsName, port) };
-                System.out.println("Using TLS Name for Connection: " + tlsName);
+                logger.info("Using TLS Name for Connection: {}", tlsName);
             } else {
                 hosts = new Host[] { new Host(host, port) };
             }
 
             try {
                 client = new AerospikeClient(policy, hosts);
-                System.out.println("✅ Successfully connected to Aerospike!");
+                logger.info("✅ Successfully connected to Aerospike!");
             } catch (Exception e) {
-                System.err.println("❌ ERROR: Unable to connect to Aerospike");
-                e.printStackTrace();
+                logger.error("❌ ERROR: Unable to connect to Aerospike", e);
+                throw new RuntimeException("Failed to initialize Aerospike client", e);
             }
         } catch (IOException e) {
             throw new RuntimeException("Failed to load Aerospike configuration", e);
@@ -120,21 +132,22 @@ public class AerospikeConfig {
     public static void closeClient() {
         if (client != null) {
             client.close();
+            logger.info("Aerospike client connection closed.");
         }
     }
 
     private static void printCiphers(String[] ciphers) {
-        System.out.println("Available Cipher Suites:");
+        logger.info("Available Cipher Suites:");
         List<String> selectedCiphers = Arrays.asList(ciphers);
 
         try {
             String[] allCiphers = SSLContext.getDefault().getSocketFactory().getSupportedCipherSuites();
             for (String cipher : allCiphers) {
-                String indicator = selectedCiphers.contains(cipher) ? "x" : " ";
-                System.out.println(" [" + indicator + "] " + cipher);
+                String indicator = selectedCiphers.contains(cipher) ? "✔" : " ";
+                logger.info(" [{}] {}", indicator, cipher);
             }
         } catch (NoSuchAlgorithmException e) {
-            System.out.println("Failed to get default SSL context.");
+            logger.warn("Failed to get default SSL context.");
         }
     }
 }
