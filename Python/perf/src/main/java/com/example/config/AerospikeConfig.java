@@ -65,15 +65,32 @@ public class AerospikeConfig {
             policy.failIfNotConnected = true;
             policy.timeout = 10000; // Increase timeout
             policy.authMode = "pki".equalsIgnoreCase(authMethod) ? AuthMode.PKI : AuthMode.INTERNAL;
-            policy.user = user;
 
             // ✅ Performance tuning
             policy.maxConnsPerNode = 500;  // Increase max connections
             policy.minConnsPerNode = 50;   // Maintain some idle connections
             policy.readPolicyDefault.totalTimeout = 5000;
             policy.writePolicyDefault.totalTimeout = 5000;
-            policy.maxRetries = 3;
-            policy.sleepBetweenRetries = 100;
+            
+            // ✅ Define Read Policy
+            ReadPolicy readPolicy = new ReadPolicy();
+            readPolicy.totalTimeout = 5000;
+            readPolicy.maxRetries = 3;  // ✅ Move maxRetries here
+            readPolicy.sleepBetweenRetries = 100; // ✅ Move sleepBetweenRetries here
+    
+            // ✅ Define Write Policy
+            WritePolicy writePolicy = new WritePolicy();
+            writePolicy.totalTimeout = 5000;
+            writePolicy.maxRetries = 3;  // ✅ Set retries here
+            writePolicy.sleepBetweenRetries = 100; // ✅ Set retry delay
+    
+            // Apply policies to client
+            clientPolicy.readPolicyDefault = readPolicy;
+            clientPolicy.writePolicyDefault = writePolicy;
+
+            // Apply policies to client
+            clientPolicy.readPolicyDefault = readPolicy;
+            clientPolicy.writePolicyDefault = writePolicy;
 
             if (useTLS) {
                 TlsPolicy tlsPolicy = new TlsPolicy();
