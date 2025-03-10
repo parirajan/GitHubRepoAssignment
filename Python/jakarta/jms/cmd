@@ -1,0 +1,12 @@
+curl -X POST "https://localhost:8161/api/message/jms.queue.MyQueue" \
+     --cert client-cert.cer \
+     --key client-keystore.jks \
+     --cacert broker-cert.cer \
+     -H "Content-Type: text/plain" \
+     -d "Secure JMS message from REST"
+
+
+curl -X GET "https://localhost:8161/api/message/jms.queue.MyQueue?type=consumer" \
+     --cert client-cert.cer \
+     --key client-keystore.jks \
+     --cacert broker-cert.cer
