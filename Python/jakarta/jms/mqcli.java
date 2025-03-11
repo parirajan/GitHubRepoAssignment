@@ -2,6 +2,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
+import javax.jms.JMSException;
 import com.sun.net.httpserver.HttpServer;
 
 public class MqHttpServer {
@@ -14,25 +15,39 @@ public class MqHttpServer {
         );
 
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        
+        // Fix: Wrap in try-catch to handle JMSException
         server.createContext("/send", exchange -> {
             String response;
             if ("POST".equals(exchange.getRequestMethod())) {
                 byte[] requestBody = exchange.getRequestBody().readAllBytes();
                 String message = new String(requestBody);
-                mqClient.sendMessage(message);
-                response = "Message Sent: " + message;
+                try {
+                    mqClient.sendMessage(message);
+                    response = "Message Sent: " + message;
+                    exchange.sendResponseHeaders(200, response.length());
+                } catch (JMSException e) {
+                    response = "Error sending message: " + e.getMessage();
+                    exchange.sendResponseHeaders(500, response.length());
+                }
             } else {
                 response = "Use POST to send messages";
+                exchange.sendResponseHeaders(405, response.length()); // 405 Method Not Allowed
             }
-            exchange.sendResponseHeaders(200, response.length());
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(response.getBytes());
             }
         });
 
         server.createContext("/receive", exchange -> {
-            String response = mqClient.receiveMessage();
-            exchange.sendResponseHeaders(200, response.length());
+            String response;
+            try {
+                response = mqClient.receiveMessage();
+                exchange.sendResponseHeaders(200, response.length());
+            } catch (JMSException e) {
+                response = "Error receiving message: " + e.getMessage();
+                exchange.sendResponseHeaders(500, response.length());
+            }
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(response.getBytes());
             }
