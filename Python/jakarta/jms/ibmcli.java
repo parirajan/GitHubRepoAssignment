@@ -1,67 +1,73 @@
+package com.example.mq;
+
 import com.ibm.mq.jms.MQQueueConnectionFactory;
-import jakarta.jms.*;
+import com.ibm.msg.client.wmq.common.CommonConstants;
+import javax.jms.*;
 
-import javax.net.ssl.SSLContext;
-import java.io.FileInputStream;
-import java.security.KeyStore;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.TrustManagerFactory;
-
-public class IbmMqClient {
+public class IbmMqClient implements JmsClient {
     private Connection connection;
     private Session session;
     private Queue queue;
 
-    public IbmMqClient(String host, int port, String queueManager, String channel, String queueName, 
-                       String keystorePath, String keystorePassword) throws Exception {
-        
-        MQQueueConnectionFactory factory = new MQQueueConnectionFactory();
-        factory.setHostName(host);
-        factory.setPort(port);
-        factory.setQueueManager(queueManager);
-        factory.setChannel(channel);
-        factory.setTransportType(com.ibm.msg.client.wmq.common.CommonConstants.WMQ_CM_CLIENT);
-        
-        // Set SSL Context
-        SSLContext sslContext = createSSLContext(keystorePath, keystorePassword);
-        factory.setSSLCipherSuite("TLS_RSA_WITH_AES_256_CBC_SHA");
-        factory.setSSLContext(sslContext);
+    public IbmMqClient(String host, int port, String queueManager, String channel, String queueName) throws JMSException {
+        try {
+            MQQueueConnectionFactory factory = new MQQueueConnectionFactory();
+            factory.setHostName(host);
+            factory.setPort(port);
+            factory.setQueueManager(queueManager);
+            factory.setChannel(channel);
+            factory.setTransportType(CommonConstants.WMQ_CM_CLIENT);
 
-        ConnectionFactory connectionFactory = factory;
-        connection = connectionFactory.createConnection();  // No username/password required
-        session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        queue = session.createQueue(queueName);
-        connection.start();
+            connection = factory.createConnection(); // No username/password needed
+            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            queue = session.createQueue(queueName);
+            connection.start();
+            System.out.println("Connected to IBM MQ successfully.");
+        } catch (JMSException e) {
+            System.err.println("Failed to connect to IBM MQ: " + e.getMessage());
+            throw e; // Re-throwing so calling code can handle it
+        }
     }
 
-    private SSLContext createSSLContext(String keystorePath, String keystorePassword) throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("JKS");
-        keyStore.load(new FileInputStream(keystorePath), keystorePassword.toCharArray());
-
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keyStore, keystorePassword.toCharArray());
-
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(keyStore);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-        return sslContext;
-    }
-
+    @Override
     public void sendMessage(String messageText) throws JMSException {
-        MessageProducer producer = session.createProducer(queue);
-        TextMessage message = session.createTextMessage(messageText);
-        producer.send(message);
+        try {
+            MessageProducer producer = session.createProducer(queue);
+            TextMessage message = session.createTextMessage(messageText);
+            producer.send(message);
+            System.out.println("Message sent to IBM MQ: " + messageText);
+        } catch (JMSException e) {
+            System.err.println("Error sending message to IBM MQ: " + e.getMessage());
+            throw e;
+        }
     }
 
+    @Override
     public String receiveMessage() throws JMSException {
-        MessageConsumer consumer = session.createConsumer(queue);
-        Message message = consumer.receive(5000);
-        return (message instanceof TextMessage) ? ((TextMessage) message).getText() : "No message received";
+        try {
+            MessageConsumer consumer = session.createConsumer(queue);
+            Message message = consumer.receive(5000); // Wait up to 5 seconds for a message
+            if (message instanceof TextMessage) {
+                String receivedText = ((TextMessage) message).getText();
+                System.out.println("Received message from IBM MQ: " + receivedText);
+                return receivedText;
+            }
+            return "No message received";
+        } catch (JMSException e) {
+            System.err.println("Error receiving message from IBM MQ: " + e.getMessage());
+            throw e;
+        }
     }
 
+    @Override
     public void close() throws JMSException {
-        connection.close();
+        try {
+            if (session != null) session.close();
+            if (connection != null) connection.close();
+            System.out.println("IBM MQ connection closed.");
+        } catch (JMSException e) {
+            System.err.println("Error closing IBM MQ connection: " + e.getMessage());
+            throw e;
+        }
     }
 }
