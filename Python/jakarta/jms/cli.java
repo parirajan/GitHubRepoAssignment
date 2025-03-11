@@ -1,54 +1,32 @@
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import jakarta.jms.*;
-import jakarta.naming.InitialContext;
-import jakarta.naming.NamingException;
-import java.util.Properties;
 
-public class SecureJMSClient {
-    public static void main(String[] args) {
-        try {
-            // Set system properties for SSL authentication
-            System.setProperty("javax.net.ssl.keyStore", "client-keystore.jks");
-            System.setProperty("javax.net.ssl.keyStorePassword", "changeit");
-            System.setProperty("javax.net.ssl.trustStore", "client-truststore.jks");
-            System.setProperty("javax.net.ssl.trustStorePassword", "changeit");
+public class ActiveMqClient {
+    private Connection connection;
+    private Session session;
+    private Queue queue;
 
-            // Set JNDI properties for JMS connection
-            Properties props = new Properties();
-            props.setProperty("java.naming.factory.initial", "org.apache.activemq.jndi.ActiveMQInitialContextFactory");
-            props.setProperty("connectionFactoryNames", "ConnectionFactory");
-            props.setProperty("queue.MyQueue", "jms.queue.MyQueue");
-            props.setProperty("java.naming.provider.url", "ssl://localhost:61617"); // Use SSL URL
+    public ActiveMqClient(String brokerUrl, String queueName) throws JMSException {
+        ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(brokerUrl);
+        connection = factory.createConnection();  // No username/password required
+        session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        queue = session.createQueue(queueName);
+        connection.start();
+    }
 
-            InitialContext ctx = new InitialContext(props);
+    public void sendMessage(String messageText) throws JMSException {
+        MessageProducer producer = session.createProducer(queue);
+        TextMessage message = session.createTextMessage(messageText);
+        producer.send(message);
+    }
 
-            // Lookup JMS connection factory and queue
-            ConnectionFactory connectionFactory = (ConnectionFactory) ctx.lookup("ConnectionFactory");
-            Queue queue = (Queue) ctx.lookup("MyQueue");
+    public String receiveMessage() throws JMSException {
+        MessageConsumer consumer = session.createConsumer(queue);
+        Message message = consumer.receive(5000);
+        return (message instanceof TextMessage) ? ((TextMessage) message).getText() : "No message received";
+    }
 
-            // Create connection, session, producer, and consumer
-            try (Connection connection = connectionFactory.createConnection();
-                 Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE)) {
-
-                MessageProducer producer = session.createProducer(queue);
-                MessageConsumer consumer = session.createConsumer(queue);
-
-                connection.start();
-
-                // Send a message
-                TextMessage message = session.createTextMessage("Secure Hello, JMS Jakarta!");
-                producer.send(message);
-                System.out.println("Sent: " + message.getText());
-
-                // Receive a message
-                Message receivedMessage = consumer.receive(5000);
-                if (receivedMessage instanceof TextMessage) {
-                    System.out.println("Received: " + ((TextMessage) receivedMessage).getText());
-                } else {
-                    System.out.println("No message received.");
-                }
-            }
-        } catch (NamingException | JMSException e) {
-            e.printStackTrace();
-        }
+    public void close() throws JMSException {
+        connection.close();
     }
 }
