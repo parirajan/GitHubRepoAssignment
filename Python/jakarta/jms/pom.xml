@@ -1,7 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    
+
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.example</groupId>
@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>JMS Client</name>
-    <description>Standalone Jakarta JMS client for IBM MQ and ActiveMQ</description>
+    <description>Standalone Java JMS client for IBM MQ and ActiveMQ</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -18,11 +18,12 @@
     </properties>
 
     <dependencies>
-        <!-- Jakarta JMS API -->
+        <!-- Use javax.jms API (not jakarta.jms) -->
         <dependency>
-            <groupId>jakarta.jms</groupId>
-            <artifactId>jakarta.jms-api</artifactId>
-            <version>3.0.0</version>
+            <groupId>javax.jms</groupId>
+            <artifactId>javax.jms-api</artifactId>
+            <version>1.1-rev-1</version>
+            <scope>provided</scope>
         </dependency>
 
         <!-- IBM MQ JMS Client -->
@@ -35,26 +36,18 @@
         <!-- ActiveMQ Artemis JMS Client -->
         <dependency>
             <groupId>org.apache.activemq</groupId>
-            <artifactId>artemis-jakarta-client</artifactId>
+            <artifactId>artemis-jms-client</artifactId>
             <version>2.31.0</version>
         </dependency>
 
-        <!-- Java HTTP Server (Only required for Java 8 and below) -->
-        <dependency>
-            <groupId>com.sun.net.httpserver</groupId>
-            <artifactId>httpserver</artifactId>
-            <version>20070405</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- SLF4J API (for logging, optional) -->
+        <!-- SLF4J API for logging -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>2.0.9</version>
         </dependency>
 
-        <!-- SLF4J Simple Logger (for logging, optional) -->
+        <!-- SLF4J Simple Logger -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
@@ -62,41 +55,50 @@
         </dependency>
     </dependencies>
 
-<build>
-    <plugins>
-        <!-- Maven Shade Plugin to create a runnable JAR and exclude signature files -->
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-shade-plugin</artifactId>
-            <version>3.3.0</version>
-            <executions>
-                <execution>
-                    <phase>package</phase>
-                    <goals>
-                        <goal>shade</goal>
-                    </goals>
-                    <configuration>
-                        <transformers>
-                            <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                <mainClass>com.example.mq.MqHttpServer</mainClass>
-                            </transformer>
-                        </transformers>
-                        <filters>
-                            <filter>
-                                <!-- Exclude signature files to prevent SecurityException -->
-                                <excludes>
-                                    <exclude>META-INF/*.SF</exclude>
-                                    <exclude>META-INF/*.DSA</exclude>
-                                    <exclude>META-INF/*.RSA</exclude>
-                                </excludes>
-                            </filter>
-                        </filters>
-                    </configuration>
-                </execution>
-            </executions>
-        </plugin>
-    </plugins>
-</build>
+    <build>
+        <plugins>
+            <!-- Maven Compiler Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.1</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                </configuration>
+            </plugin>
 
-
+            <!-- Maven Shade Plugin for a runnable JAR -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.example.mq.MqHttpServer</mainClass>
+                                </transformer>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <!-- Exclude signature files to prevent SecurityException -->
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
