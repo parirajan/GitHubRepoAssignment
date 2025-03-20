@@ -1,62 +1,48 @@
-# SaferPayments Cluster Promotion Process
+# SaferPayments CAB Approval Process for Model Promotion  
 
 ## **Overview**  
-The SaferPayments platform follows a structured approach to generating, promoting, and securing models and configurations across different environments. This document outlines the process for cluster promotion, role assignments, and security considerations.
+The Change Advisory Board (CAB) approval process ensures controlled and auditable promotion of models from Challenger to Champion status within the SaferPayments platform. This document outlines the steps required for CAB approval and role elevation before executing the **Go Live** action.
 
 ---
 
-## **1. Cluster Transition and Configuration Generation**  
+## **1. CAB Approval Workflow**  
 
-### **Development Cluster (ID-208 - devsandbox-model)**
-- The **Cluster ID-208 (devsandbox-model)** will serve as the **source cluster** for generating configurations and models.
-- All **source journals** will be created within this cluster.
-- The models and configurations will be iteratively refined within **ID-208** until they are ready for promotion.
-
-### **Production Cluster (ID-280 - Prod-model)**
-- Once the models and configurations are validated, they will be promoted from **Cluster ID-208** to **Cluster ID-280 (Prod-model)**.
-- After **Cluster ID-280** is **live**, the **export functionality** in **Cluster ID-208** will be **disabled (removed)** to ensure production integrity.
-
----
-
-## **2. Role Assignments and Access Management**  
-
-### **During Development Phase**
-- The **Modeler** and **Modeler Manager** roles will be assigned to individual users within **Cluster ID-208**.
-- These roles will have **full access** to perform necessary tasks such as model creation, query execution, and model promotions.
-
-### **Production Transition and Access Control**
-Once the promotion reaches the **production boundary (Cluster ID-280)**, access will be governed by a **Change Advisory Board (CAB) approval process**:
-
-#### **Modeler Role**
-- The **Modeler** role will have **CAB-approved standing access**.
-- **Security policies and procedures** should be followed to validate access requirements.
-
-#### **Modeler Manager Role**
-- The **Modeler Manager** role will require **CAB-approved access** on a case-by-case basis.
-- The **CAB request** must be **raised and approved** before access elevation.
-- Once CAB approval is granted, an **FID process** is initiated to update the user's role to **Modeler Manager**.
-- The **FID process** ensures controlled, auditable, and time-bound access elevation.
+| Step | Action | Description |
+|------|--------|------------|
+| **1** | **Compare Challenger and Champion** | Using the **UI or API**, compare the **Challenger** model against the **Champion** model by utilizing the **Compare Revision** option. |
+| **2** | **Review Audit Trail** | The system displays an **audit trail** of all changes made to the model. This includes modifications, enhancements, and key differences between the Challenger and Champion versions. |
+| **3** | **Generate Go-Live Report** | When the **Go Live** option is selected, the system generates a **detailed report** summarizing all changes made. |
+| **4** | **Create CAB Approval Request** | The generated **Go Live Report** serves as the basis for the CAB request. This document must be submitted for review and approval. |
+| **5** | **FedIdentity Role Elevation** | Once CAB approval is granted, the **FedIdentity (FID) process** is initiated to elevate the Modeler Manager’s role, enabling them to execute the **Go Live** action. |
+| **6** | **Execute Go Live** | After the **Modeler Manager** receives the elevated role, they can finalize the promotion by executing the **Go Live** operation within the SaferPayments platform. |
 
 ---
 
-## **3. Summary of Cluster Transition and Role Management**  
+## **2. Detailed Steps for CAB Request**  
 
-| Stage                | Cluster ID  | Actions | Access Control |
-|----------------------|------------|---------|----------------|
-| **Development**      | **ID-208 (devsandbox-model)** | Generate configurations, create models, run queries, and investigations | Modeler & Modeler Manager roles assigned to individual users with **full access** |
-| **Promotion**        | **ID-208 → ID-280** | Promote models and journals to production | Managed via CAB approval |
-| **Production (Live)** | **ID-280 (Prod-model)** | Models and configurations are live, export functionality from **ID-208 is disabled** | - **Modeler:** CAB-approved standing access <br> - **Modeler Manager:** Requires **CAB request & FID process** for elevation |
+### **Step 1: Comparing Challenger and Champion Models**
+- Navigate to the **SaferPayments UI** or use the **API**.
+- Select the **Compare Revision** option.
+- The system will highlight **all differences** between the Challenger and Champion models.
+- Review the differences to ensure correctness before proceeding.
 
----
+### **Step 2: Reviewing the Audit Trail**
+- Access the **Audit Trail** section to view:
+  - Changes made to the model.
+  - User actions associated with modifications.
+  - Timestamps of updates.
+  - Any rollback or override actions performed.
 
-## **4. Security and Compliance Considerations**
-- All access provisioning must comply with **security policies and procedures**.
-- The **CAB request process** must be **documented and reviewed** periodically.
-- **FID process logs** should be retained for audit and compliance tracking.
-- Regular **access reviews** should be conducted to ensure **least privilege access** is maintained.
+### **Step 3: Generating the Go Live Report**
+- When selecting **Go Live**, the system generates a **Change Report** detailing:
+  - Key model modifications.
+  - Impact analysis.
+  - Performance metrics (if applicable).
+  - Compliance and security considerations.
 
----
+### **Step 4: Submitting CAB Approval Request**
+- Use the **Go Live Report** to create a CAB request.
+- Submit the request for review and approval before proceeding.
 
-## **Conclusion**
-This document outlines the structured approach to managing model transitions from **Cluster ID-208** to **Cluster ID-280**, ensuring a controlled and secure production rollout. The CAB process and FID-based access elevation ensure security and compliance while allowing necessary operational flexibility.
-
+### **Step 5: FedIdentity Role Elevation for Modeler Manager**
+- After CA
