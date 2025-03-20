@@ -1,0 +1,42 @@
+1. Modeler Role
+
+Description
+The Modeler role is responsible for creating and managing models, running predefined queries, and conducting investigations within the SaferPayments platform.
+
+Permissions
+Users assigned the Modeler role will have the ability to:
+
+Create mandatory objects as required for model execution.
+Create models for fraud detection, risk assessment, or other analytical purposes.
+Run existing queries to analyze data and extract insights.
+Conduct investigations by utilizing available query and model outputs.
+Restrictions
+Cannot promote models to production (Champion).
+Cannot modify system-level configurations.
+Cannot create new queries or reports.
+2. Modeler Manager Role
+
+Description
+The Modeler Manager role has elevated permissions compared to the Modeler role. In addition to modeling tasks, this role is responsible for managing model lifecycle transitions and generating analytical reports.
+
+Permissions
+Users assigned the Modeler Manager role will have the ability to:
+
+Promote Challenger models to Champion and transition them to live status.
+Deploy models to production, making them active in the SaferPayments platform.
+Create queries to extract new insights beyond predefined queries.
+Generate reports to assess performance, compliance, and fraud trends.
+Restrictions
+Cannot modify underlying system configurations.
+Cannot override security policies enforced at the platform level.
+Role Comparison Table
+
+Feature / Action	Modeler	Modeler Manager
+Create mandatory elements	✅	✅
+Create models	✅	✅
+Run existing queries	✅	✅
+Conduct investigations	✅	✅
+Promote challenger models to champion	❌	✅
+Deploy models to production (Go Live)	❌	✅
+Create new queries	❌	✅
+Generate reports	❌	✅
