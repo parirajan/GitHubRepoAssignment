@@ -1,61 +1,62 @@
-# SaferPayments Roles and Permissions
+# SaferPayments Cluster Promotion Process
 
-## Overview  
-SaferPayments provides role-based access control to ensure that users can perform their designated tasks while maintaining security and compliance. Below are the defined roles and their corresponding permissions.
-
----
-
-## 1. Modeler Role  
-
-### Description  
-The **Modeler** role is responsible for creating and managing models, running predefined queries, and conducting investigations within the SaferPayments platform.
-
-### Permissions  
-Users assigned the **Modeler** role will have the ability to:  
-- **Create mandatory** objects as required for model execution.  
-- **Create models** for fraud detection, risk assessment, or other analytical purposes.  
-- **Run existing queries** to analyze data and extract insights.  
-- **Conduct investigations** by utilizing available query and model outputs.  
-
-### Restrictions  
-- Cannot promote models to production (Champion).  
-- Cannot modify system-level configurations.  
-- Cannot create new queries or reports.  
+## **Overview**  
+The SaferPayments platform follows a structured approach to generating, promoting, and securing models and configurations across different environments. This document outlines the process for cluster promotion, role assignments, and security considerations.
 
 ---
 
-## 2. Modeler Manager Role  
+## **1. Cluster Transition and Configuration Generation**  
 
-### Description  
-The **Modeler Manager** role has elevated permissions compared to the Modeler role. In addition to modeling tasks, this role is responsible for managing model lifecycle transitions and generating analytical reports.
+### **Development Cluster (ID-208 - devsandbox-model)**
+- The **Cluster ID-208 (devsandbox-model)** will serve as the **source cluster** for generating configurations and models.
+- All **source journals** will be created within this cluster.
+- The models and configurations will be iteratively refined within **ID-208** until they are ready for promotion.
 
-### Permissions  
-Users assigned the **Modeler Manager** role will have the ability to:  
-- **Promote Challenger models to Champion** and transition them to live status.  
-- **Deploy models to production**, making them active in the SaferPayments platform.  
-- **Create queries** to extract new insights beyond predefined queries.  
-- **Generate reports** to assess performance, compliance, and fraud trends.  
-
-### Restrictions  
-- Cannot modify underlying system configurations.  
-- Cannot override security policies enforced at the platform level.  
+### **Production Cluster (ID-280 - Prod-model)**
+- Once the models and configurations are validated, they will be promoted from **Cluster ID-208** to **Cluster ID-280 (Prod-model)**.
+- After **Cluster ID-280** is **live**, the **export functionality** in **Cluster ID-208** will be **disabled (removed)** to ensure production integrity.
 
 ---
 
-## Role Comparison Table  
+## **2. Role Assignments and Access Management**  
 
-| Feature / Action                          | Modeler | Modeler Manager |
-|------------------------------------------|---------|----------------|
-| Create mandatory elements               | ✅      | ✅              |
-| Create models                            | ✅      | ✅              |
-| Run existing queries                     | ✅      | ✅              |
-| Conduct investigations                   | ✅      | ✅              |
-| Promote challenger models to champion    | ❌      | ✅              |
-| Deploy models to production (Go Live)    | ❌      | ✅              |
-| Create new queries                        | ❌      | ✅              |
-| Generate reports                          | ❌      | ✅              |
+### **During Development Phase**
+- The **Modeler** and **Modeler Manager** roles will be assigned to individual users within **Cluster ID-208**.
+- These roles will have **full access** to perform necessary tasks such as model creation, query execution, and model promotions.
+
+### **Production Transition and Access Control**
+Once the promotion reaches the **production boundary (Cluster ID-280)**, access will be governed by a **Change Advisory Board (CAB) approval process**:
+
+#### **Modeler Role**
+- The **Modeler** role will have **CAB-approved standing access**.
+- **Security policies and procedures** should be followed to validate access requirements.
+
+#### **Modeler Manager Role**
+- The **Modeler Manager** role will require **CAB-approved access** on a case-by-case basis.
+- The **CAB request** must be **raised and approved** before access elevation.
+- Once CAB approval is granted, an **FID process** is initiated to update the user's role to **Modeler Manager**.
+- The **FID process** ensures controlled, auditable, and time-bound access elevation.
 
 ---
 
-## Conclusion  
-These role definitions ensure that modeling and fraud analysis activities are carried out efficiently while maintaining a structured workflow for model promotion and deployment. Assigning the correct roles ensures appropriate segregation of duties, preventing unauthorized changes to production models.
+## **3. Summary of Cluster Transition and Role Management**  
+
+| Stage                | Cluster ID  | Actions | Access Control |
+|----------------------|------------|---------|----------------|
+| **Development**      | **ID-208 (devsandbox-model)** | Generate configurations, create models, run queries, and investigations | Modeler & Modeler Manager roles assigned to individual users with **full access** |
+| **Promotion**        | **ID-208 → ID-280** | Promote models and journals to production | Managed via CAB approval |
+| **Production (Live)** | **ID-280 (Prod-model)** | Models and configurations are live, export functionality from **ID-208 is disabled** | - **Modeler:** CAB-approved standing access <br> - **Modeler Manager:** Requires **CAB request & FID process** for elevation |
+
+---
+
+## **4. Security and Compliance Considerations**
+- All access provisioning must comply with **security policies and procedures**.
+- The **CAB request process** must be **documented and reviewed** periodically.
+- **FID process logs** should be retained for audit and compliance tracking.
+- Regular **access reviews** should be conducted to ensure **least privilege access** is maintained.
+
+---
+
+## **Conclusion**
+This document outlines the structured approach to managing model transitions from **Cluster ID-208** to **Cluster ID-280**, ensuring a controlled and secure production rollout. The CAB process and FID-based access elevation ensure security and compliance while allowing necessary operational flexibility.
+
