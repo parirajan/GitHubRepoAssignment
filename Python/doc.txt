@@ -1,0 +1,119 @@
+1. Functional Testing (Automated & Manual)
+Export Side:
+
+Journal completeness: Ensure all actions/events are captured and no gaps exist in the journal sequence.
+Ordering: Verify journal entries are exported in the correct timestamped order.
+File correctness: Validate the structure and schema of exported journal files.
+Retry/resume support: Test how the export process handles partial failures or retries.
+Import Side (Consul Watch Triggered):
+
+Correct KV update: Ensure that the date/time or journal ID update is done atomically.
+Trigger validation: Confirm that the import script is triggered once and only once per update.
+Sequencing: Test that journals are imported in the correct sequence and that older journals are skipped/prevented.
+Idempotency: Confirm that re-running the same journal doesn’t cause duplicates or state corruption.
+2. End-to-End Integration Testing
+Set up a source and target cluster pair in a non-prod environment:
+
+Perform full export → S3 → KV update → Import and verify data consistency and state replication between clusters.
+Inject delays/failures (e.g., kill import process mid-way) to see how it resumes or reports errors.
+3. Regression Testing
+After major changes to the export/import scripts or API endpoints, validate that existing journal sequences are still valid and functional.
+Ensure journal format/version is backward compatible if needed.
+4. Data Integrity Testing
+Checksum verification: Store checksums/hashes of journal files and verify post-transfer to S3 and before import.
+Corruption testing: Deliberately corrupt a journal file and confirm that the import process halts gracefully with meaningful errors.
+5. Negative Testing
+Missing/malformed KV data in Consul.
+Broken S3 paths or missing journal files.
+API failures on the target cluster during import.
+Out-of-sequence journal file injection attempts.
+6. Performance Testing
+Load testing: Simulate a large volume of journal entries and evaluate:
+Export performance
+Import script execution time
+Consul watch performance under frequent updates
+7. Security Testing
+S3 access controls (correct IAM permissions)
+Consul KV ACLs
+Authentication for API calls during import
+Tamper detection (was the journal altered after export?)
+8. Observability Testing
+Are logs meaningful and actionable (both for export and import)?
+Are metrics available for:
+Number of exported/imported entries
+Failures and retries
+Duration per journal processing
+Are alerts triggered if import fails or stalls?
+9. Roll-forward Testing
+Since rollback is not possible, test scenarios where you miss one journal import and the next one is applied:
+How is consistency affected?
+Does the system detect and report skipped imports?
+10. Disaster Recovery Testing
+Backup of S3 journal exports.
+Replay of past journals in a fresh cluster (simulated DR restore).
+Manual re-trigger from Consul in case of failure recovery.
+
+
+
+1. One-Time Setup
+
+These are mostly infrastructure, configuration, and foundational tests you set up once:
+
+Infrastructure Setup
+S3 bucket creation with correct IAM roles and policies
+Consul KV structure definition (e.g., keys for journal date/time)
+Consul watch configuration on the target cluster
+CI/CD pipelines for export/import scripts
+Logging and monitoring setup (CloudWatch, ELK, Prometheus, etc.)
+Initial Test Automation Setup
+Unit & integration tests for:
+Export script
+Import script
+API contract validation (both source & target)
+Golden path end-to-end (E2E) automation with known data
+Schema validation tests for journal files
+Idempotency & retry test automation
+2. Ongoing Automation (Scheduled or Triggered)
+
+These activities happen on a schedule or in response to events, and should be tested continuously.
+
+Export Cluster (Source)
+Scheduled Export Script Execution (e.g., every 5 mins/hour)
+Journal file upload to S3
+Logging of export events (success/failure)
+Target Cluster
+Consul KV update process (could be part of the export script)
+Consul watch mechanism that triggers import
+Import script execution:
+Reads journal file from S3
+Makes API calls to apply changes
+Logs success or failure
+Automated Validations
+File checksum or hash verification post-upload
+File presence and format validation in S3
+Consul KV verification post-update
+Metrics/telemetry collection per journal
+3. After Each Import Action (Per Journal)
+
+These validations should run immediately after each import completes, automated as part of the import script or triggered pipeline:
+
+Post-Import Validations
+Journal integrity check:
+All entries applied successfully
+No partial or skipped entries
+API response auditing:
+Log and alert on any failed API calls
+State verification:
+Compare expected vs actual state if possible (hash-based or subset sampling)
+Idempotency test (optional):
+Optionally re-import the same journal in a test-only dry-run mode to verify no side effects
+Logging and alerting:
+Alert on failure, missing data, or suspicious anomalies (e.g., skipped journal dates)
+KV cleanup or archival marking (if needed)
+Bonus: Automation Infrastructure
+
+CI/CD pipeline for:
+Deploying and testing export/import scripts
+Simulating real-world failures or retries
+Synthetic test journal generation:
+For load and regression testing in lower environments
