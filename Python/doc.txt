@@ -1,83 +1,59 @@
-# Safer Payments Journal Export/Import Automation – Testing Plan
+# Safer Payments Journal Promotion – Automation Breakdown
 
-This document outlines the various tests required for ensuring the correctness, safety, and observability of the journal export/import process in Safer Payments.
-
----
-
-## 1. Functional Testing
-
-### Export Side
-- Ensure all actions/events are exported (journal completeness).
-- Validate timestamp-based ordering of entries.
-- Verify schema/structure of exported journal files.
-- Test retry/resume logic on failure.
-
-### Import Side (Triggered via Consul Watch)
-- Ensure Consul KV is updated atomically.
-- Validate Consul watch triggers import only once.
-- Confirm sequential import (no older journal replays).
-- Check import idempotency.
+This document classifies all automation tasks for the Safer Payments journal export/import mechanism into One-Time Setup, Ongoing Automation, and Post-Import Validations.
 
 ---
 
-## 2. End-to-End Integration Testing
-- Deploy source and target clusters.
-- Automate the full journal promotion pipeline:
-  - Export → S3 → Consul KV Update → Import
-- Simulate mid-process failures and validate recovery.
+## 1. One-Time Setup
+
+### Infrastructure
+- Create S3 bucket with proper IAM access
+- Configure Consul KV structure
+- Define Consul watch on target cluster
+- Set up CI/CD pipelines for export and import scripts
+- Configure centralized logging and alerting
+
+### Initial Testing Setup
+- Unit and integration tests for scripts and API contracts
+- Golden path E2E tests
+- Schema validation tests
+- Idempotency and retry test cases
 
 ---
 
-## 3. Regression Testing
-- After changes to scripts or APIs, re-test older journal versions.
-- Validate backward compatibility of journal format.
+## 2. Ongoing Automation
+
+### Export Cluster (Source)
+- Scheduled export job to generate and upload journals
+- Logging and error handling
+- Update Consul KV with latest journal metadata
+
+### Target Cluster (Import Side)
+- Consul watch triggers import script
+- Script reads journal from S3 and calls API sequentially
+- Import metrics and result logging
+
+### Continuous Validations
+- File presence and format checks in S3
+- Checksum validation
+- Consul KV correctness
+- Metrics and alerts (success/failure, latency, etc.)
 
 ---
 
-## 4. Data Integrity Testing
-- Validate checksums before and after upload/import.
-- Simulate corrupted files and check graceful error handling.
+## 3. Post-Import Validation (Per Journal)
+
+- Ensure all entries were applied correctly
+- API response audit
+- Validate system state (subset sampling or hash comparison)
+- Optional dry-run reimport to validate idempotency
+- Logging and alert generation on failures
+- Optional: Archive or clean up processed KV entries
 
 ---
 
-## 5. Negative Testing
-- Missing/malformed Consul KV entries.
-- Broken/missing journal files in S3.
-- API errors on target during import.
-- Out-of-sequence journal injection.
+## Optional Automation Infrastructure
 
----
-
-## 6. Performance Testing
-- Export/import large volumes and measure:
-  - Latency
-  - Throughput
-  - Script execution time
-
----
-
-## 7. Security Testing
-- IAM policies for S3 access
-- Consul KV ACLs
-- API authentication and authorization
-- Journal tampering detection
-
----
-
-## 8. Observability Testing
-- Log accuracy and completeness
-- Metrics for journal progress, errors, and retries
-- Alerts for failures, delays, and anomalies
-
----
-
-## 9. Roll-forward Testing
-- Simulate missed journal imports
-- Ensure system detects and reports skipped versions
-
----
-
-## 10. Disaster Recovery Testing
-- Replay older journals on a clean cluster
-- Re-trigger imports manually from Consul
-- Ensure export journals are archived with versioning
+- CI/CD workflow for promotion pipelines
+- Terraform scripts for repeatable infra provisioning
+- Synthetic journal generation for testing
