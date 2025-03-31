@@ -1,0 +1,7 @@
+cert_duration_days: 365
+ca_common_name: "Vault Root CA"
+server_common_name: "vault.service.local"
+subject_alt_names:
+  - DNS:vault.service.local
+  - DNS:localhost
+  - IP:127.0.0.1
