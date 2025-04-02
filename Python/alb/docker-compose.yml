@@ -1,0 +1,53 @@
+version: '3.8'
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    environment:
+      - SERVICES=elbv2
+      - DEFAULT_REGION=us-east-1
+      - DATA_DIR=/tmp/localstack/data
+    ports:
+      - "4566:4566"
+    volumes:
+      - "./localstack:/tmp/localstack"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/health"]
+      interval: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command: ["start-dev"]
+    ports:
+      - "8080:8080"
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: nginx
+    ports:
+      - "8081:80"
+    volumes:
+      - "./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
+      - "./nginx/html:/usr/share/nginx/html:ro"
+
+  alb-setup:
+    image: amazon/aws-cli:latest
+    container_name: alb-setup
+    depends_on:
+      - localstack
+      - keycloak
+      - nginx
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    entrypoint: ["/bin/sh", "/scripts/setup-alb.sh"]
+    volumes:
+      - "./scripts:/scripts"
