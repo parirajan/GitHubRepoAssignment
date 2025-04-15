@@ -1,0 +1,40 @@
+@startuml
+title BOM-Driven Deployment Lifecycle
+
+actor DevOps
+actor Security
+actor Auditor
+
+rectangle "Pipeline A: IAM/KMS Infra" as PipelineA
+rectangle "Pipeline B: App Infra" as PipelineB
+rectangle "iBOM Segment A" as iBOMA
+rectangle "iBOM Segment B" as iBOMB
+rectangle "BOM Reconciler" as Reconciler
+rectangle "Unified iBOM" as UnifiediBOM
+rectangle "PBOM Generator" as PBOMGen
+rectangle "Promotion Gate" as Gate
+rectangle "Security Scanner" as Scanner
+rectangle "S3 Storage / Audit Trail" as Storage
+rectangle "CMDB Update" as CMDB
+
+DevOps --> PipelineA
+DevOps --> PipelineB
+
+PipelineA --> iBOMA
+PipelineB --> iBOMB
+
+iBOMA --> Reconciler
+iBOMB --> Reconciler
+
+Reconciler --> UnifiediBOM
+UnifiediBOM --> PBOMGen
+
+PBOMGen --> Gate
+PBOMGen --> Scanner
+PBOMGen --> Storage
+PBOMGen --> CMDB
+
+Security --> Scanner
+Auditor --> Storage
+
+@enduml
