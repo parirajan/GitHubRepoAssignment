@@ -1,10 +1,10 @@
 import requests
 import csv
 
-# === CONFIGURE THESE ===
-OKTA_DOMAIN = "https://your-okta-domain.okta.com"
-API_TOKEN = "your-okta-api-token"
-NAMESPACE_LABEL = "Salesforce"  # 👈 App Label you're treating as a namespace
+# === CONFIGURATION ===
+OKTA_DOMAIN = "https://your-okta-domain.okta.com"  # Replace with your Okta org URL
+API_TOKEN = "your-okta-api-token"  # Replace with your API token
+NAMESPACE_LABEL = "Salesforce"  # The App Label you're treating as the namespace
 
 HEADERS = {
     "Authorization": f"SSWS {API_TOKEN}",
@@ -53,14 +53,14 @@ def export_to_csv(data, filename):
 def main():
     app = find_app_by_label(NAMESPACE_LABEL)
     if not app:
-        print(f"❌ App with label '{NAMESPACE_LABEL}' not found.")
+        print(f"App with label '{NAMESPACE_LABEL}' not found.")
         return
 
     app_id = app["id"]
-    print(f"✅ Found app '{NAMESPACE_LABEL}' with ID: {app_id}")
+    print(f"Found app '{NAMESPACE_LABEL}' with ID: {app_id}")
 
     groups = list_groups_assigned_to_app(app_id)
-    print(f"🔍 Found {len(groups)} groups assigned to '{NAMESPACE_LABEL}'")
+    print(f"Found {len(groups)} groups assigned to '{NAMESPACE_LABEL}'")
 
     result_rows = []
 
@@ -80,7 +80,7 @@ def main():
             })
 
     export_to_csv(result_rows, "namespace_group_users.csv")
-    print("✅ Export complete: namespace_group_users.csv")
+    print("Export complete: namespace_group_users.csv")
 
 if __name__ == "__main__":
     main()
