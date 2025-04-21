@@ -4,7 +4,7 @@ import csv
 # === CONFIGURE THESE ===
 OKTA_DOMAIN = "https://your-okta-domain.okta.com"
 API_TOKEN = "your-okta-api-token"
-NAMESPACE_LABEL = "Salesforce"  # 👈 This is your app label namespace
+NAMESPACE_LABEL = "Salesforce"  # 👈 App Label you're treating as a namespace
 
 HEADERS = {
     "Authorization": f"SSWS {API_TOKEN}",
@@ -22,8 +22,18 @@ def find_app_by_label(label):
             return app
     return None
 
-def list_users_assigned_to_app(app_id):
-    url = f"{OKTA_DOMAIN}/api/v1/apps/{app_id}/users"
+def list_groups_assigned_to_app(app_id):
+    url = f"{OKTA_DOMAIN}/api/v1/apps/{app_id}/groups"
+    groups = []
+    while url:
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        groups.extend(response.json())
+        url = response.links.get("next", {}).get("url")
+    return groups
+
+def list_users_in_group(group_id):
+    url = f"{OKTA_DOMAIN}/api/v1/groups/{group_id}/users"
     users = []
     while url:
         response = requests.get(url, headers=HEADERS)
@@ -32,15 +42,11 @@ def list_users_assigned_to_app(app_id):
         url = response.links.get("next", {}).get("url")
     return users
 
-def list_user_groups(user_id):
-    url = f"{OKTA_DOMAIN}/api/v1/users/{user_id}/groups"
-    response = requests.get(url, headers=HEADERS)
-    response.raise_for_status()
-    return response.json()
-
 def export_to_csv(data, filename):
     with open(filename, mode="w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["app_label", "user_login", "first_name", "last_name", "group_name"])
+        writer = csv.DictWriter(f, fieldnames=[
+            "app_label", "group_name", "user_login", "first_name", "last_name"
+        ])
         writer.writeheader()
         writer.writerows(data)
 
@@ -53,39 +59,28 @@ def main():
     app_id = app["id"]
     print(f"✅ Found app '{NAMESPACE_LABEL}' with ID: {app_id}")
 
-    users = list_users_assigned_to_app(app_id)
-    print(f"🔍 Found {len(users)} users assigned to '{NAMESPACE_LABEL}'")
+    groups = list_groups_assigned_to_app(app_id)
+    print(f"🔍 Found {len(groups)} groups assigned to '{NAMESPACE_LABEL}'")
 
     result_rows = []
 
-    for user_entry in users:
-        user = user_entry.get("user", {})
-        profile = user.get("profile", {})
-        user_id = user.get("id")
-        login = profile.get("login")
-        first = profile.get("firstName", "")
-        last = profile.get("lastName", "")
+    for group in groups:
+        group_name = group["profile"]["name"]
+        group_id = group["id"]
+        users = list_users_in_group(group_id)
 
-        groups = list_user_groups(user_id)
-        if not groups:
+        for user in users:
+            profile = user["profile"]
             result_rows.append({
                 "app_label": NAMESPACE_LABEL,
-                "user_login": login,
-                "first_name": first,
-                "last_name": last,
-                "group_name": ""
-            })
-        for group in groups:
-            result_rows.append({
-                "app_label": NAMESPACE_LABEL,
-                "user_login": login,
-                "first_name": first,
-                "last_name": last,
-                "group_name": group["profile"].get("name", "")
+                "group_name": group_name,
+                "user_login": profile.get("login"),
+                "first_name": profile.get("firstName", ""),
+                "last_name": profile.get("lastName", "")
             })
 
-    export_to_csv(result_rows, "namespace_app_users_groups.csv")
-    print("✅ Export complete: namespace_app_users_groups.csv")
+    export_to_csv(result_rows, "namespace_group_users.csv")
+    print("✅ Export complete: namespace_group_users.csv")
 
 if __name__ == "__main__":
     main()
