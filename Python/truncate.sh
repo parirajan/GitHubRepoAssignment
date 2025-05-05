@@ -5,13 +5,25 @@
 # -----------------------
 NAMESPACE="test"
 SET="demo"
-CHUNK_TARGET=1000000         # How many objects per truncate chunk
-AGE_DAYS=7                   # Age cutoff in days (objects older than this)
+CHUNK_TARGET=1000000         # Target ~1 million objects per truncate
+AGE_DAYS=7                   # Age cutoff in days
 DEFQ_THRESHOLD=500           # Defrag queue threshold
 SLEEP_SEC=5                  # Sleep between truncates
 LOG_DIR="./logs"             # Log directory
 
-# Create log dir if needed
+# ---------------------------------
+# PKI / TLS Authentication Template
+# ---------------------------------
+ASADM_CMD="asadm --tls-enable \
+--tls-name aerospike-server \
+--tls-certfile /etc/aerospike/certs/client.crt \
+--tls-keyfile /etc/aerospike/certs/client.key \
+--tls-ca-file /etc/aerospike/certs/ca.crt \
+-h aerospike-cluster.example.com -p 4333 -e"
+
+# ---> Edit the above line with your cert/key/ca and Aerospike server hostname/IP + port
+
+# Create log dir
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/truncate_${NAMESPACE}_${SET}_$(date +%Y%m%d_%H%M%S).log"
 
@@ -23,6 +35,11 @@ function log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
 
+function aerospike_command() {
+    local COMMAND=$1
+    $ASADM_CMD "asinfo -v '$COMMAND'" >> "$LOG_FILE" 2>&1
+}
+
 function truncate_run() {
     local BEFORE_NS=$1
     local MODE=$2
@@ -31,7 +48,7 @@ function truncate_run() {
         log "[DRY RUN] Would truncate before-ns=$BEFORE_NS"
     else
         log "[PROD RUN] Truncating before-ns=$BEFORE_NS"
-        asinfo -v "truncate:namespace=$NAMESPACE;set=$SET;before-ns=$BEFORE_NS" >> "$LOG_FILE" 2>&1
+        aerospike_command "truncate:namespace=$NAMESPACE;set=$SET;before-ns=$BEFORE_NS"
     fi
 }
 
@@ -46,7 +63,8 @@ log "==== Starting Truncation ===="
 log "Namespace: $NAMESPACE, Set: $SET, Age Cutoff: $AGE_DAYS days, Chunk Size: $CHUNK_TARGET"
 
 # Get histogram
-HIST_OUTPUT=$(asinfo -v "hist-dump:namespace=$NAMESPACE;type=object-age")
+HIST_OUTPUT=$($ASADM_CMD "asinfo -v 'hist-dump:namespace=$NAMESPACE;type=object-age'" | grep histogram)
+
 declare -A HISTOGRAM
 IFS=';' read -ra BUCKETS <<< "$HIST_OUTPUT"
 
@@ -101,8 +119,8 @@ for (( BUCKET=$MAX_BUCKET; BUCKET>=$MIN_BUCKET; BUCKET-- )); do
             truncate_run $BEFORE_NS "DRY"
             truncate_run $BEFORE_NS "PROD"
 
-            # Defrag pressure check
-            DEFQ=$(asinfo -v "get-stats:context=namespace;id=$NAMESPACE" | grep -Po 'defrag_q=\K\d+')
+            # Defrag queue check
+            DEFQ=$($ASADM_CMD "asinfo -v 'get-stats:context=namespace;id=$NAMESPACE'" | grep -Po 'defrag_q=\K\d+')
             if (( DEFQ > DEFQ_THRESHOLD )); then
                 log "    Defrag queue high ($DEFQ) → sleeping extra..."
                 sleep $((SLEEP_SEC * 5))
