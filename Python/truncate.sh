@@ -21,7 +21,7 @@ ASADM_CMD="asadm --tls-enable \
 --tls-ca-file /etc/aerospike/certs/ca.crt \
 -h aerospike-cluster.example.com -p 4333 -e"
 
-# ---> Edit the above line with your cert/key/ca and Aerospike server hostname/IP + port
+# ---> Edit above for your environment
 
 # Create log dir
 mkdir -p "$LOG_DIR"
@@ -41,14 +41,14 @@ function aerospike_command() {
 }
 
 function truncate_run() {
-    local BEFORE_NS=$1
+    local LUT_NS=$1
     local MODE=$2
 
     if [[ "$MODE" == "DRY" ]]; then
-        log "[DRY RUN] Would truncate before-ns=$BEFORE_NS"
+        log "[DRY RUN] Would truncate lut=$LUT_NS"
     else
-        log "[PROD RUN] Truncating before-ns=$BEFORE_NS"
-        aerospike_command "truncate:namespace=$NAMESPACE;set=$SET;before-ns=$BEFORE_NS"
+        log "[PROD RUN] Truncating lut=$LUT_NS"
+        aerospike_command "truncate:namespace=$NAMESPACE;set=$SET;lut=$LUT_NS"
     fi
 }
 
@@ -96,10 +96,10 @@ for (( BUCKET=$MAX_BUCKET; BUCKET>=$MIN_BUCKET; BUCKET-- )); do
     if (( COUNT <= CHUNK_TARGET )); then
         # Small bucket
         AGE_NS=$((AGE_SEC * 1000000000))
-        BEFORE_NS=$((NOW_NS - AGE_NS))
+        LUT_NS=$((NOW_NS - AGE_NS))
 
-        truncate_run $BEFORE_NS "DRY"
-        truncate_run $BEFORE_NS "PROD"
+        truncate_run $LUT_NS "DRY"
+        truncate_run $LUT_NS "PROD"
 
         sleep $SLEEP_SEC
     else
@@ -112,12 +112,12 @@ for (( BUCKET=$MAX_BUCKET; BUCKET>=$MIN_BUCKET; BUCKET-- )); do
         for (( SLICE=0; SLICE<SLICES; SLICE++ )); do
             SLICE_AGE_SEC=$((AGE_SEC + (SLICE * SLICE_WINDOW_SEC)))
             SLICE_AGE_NS=$((SLICE_AGE_SEC * 1000000000))
-            BEFORE_NS=$((NOW_NS - SLICE_AGE_NS))
+            LUT_NS=$((NOW_NS - SLICE_AGE_NS))
 
-            log "    [Chunk $((SLICE+1))/$SLICES] before-ns=${BEFORE_NS}"
+            log "    [Chunk $((SLICE+1))/$SLICES] lut=${LUT_NS}"
 
-            truncate_run $BEFORE_NS "DRY"
-            truncate_run $BEFORE_NS "PROD"
+            truncate_run $LUT_NS "DRY"
+            truncate_run $LUT_NS "PROD"
 
             # Defrag queue check
             DEFQ=$($ASADM_CMD "asinfo -v 'get-stats:context=namespace;id=$NAMESPACE'" | grep -Po 'defrag_q=\K\d+')
