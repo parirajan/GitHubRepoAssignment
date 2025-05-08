@@ -5,22 +5,34 @@ import random
 import string
 from datetime import datetime, timedelta
 
-# === Multiple Nodes ===
+# List of node URLs (replace these with real URLs)
 nodes = [
     "http://node1-url-here",
     "http://node2-url-here",
     "http://node3-url-here"
 ]
-node_index = 0  # Start from first node
+node_index = 0
 
-# Load payload keys from file (inputs.txt) and remove duplicates
-def load_keys(filename):
-    with open(filename, "r") as f:
-        keys = f.readlines()
-    keys = [k.strip() for k in keys if k.strip()]
-    return list(set(keys))
-
-payload_keys = load_keys("inputs.txt")
+# Payload keys 
+payload_keys = [
+    "IntrBkSttlmAmt",
+    "SP_MessageTypeID",
+    "SP_FraudFlag",
+    "MsgId",
+    "CredDttm",
+    "DbtrAcct_Id_IBAN",
+    "DbtrAcct_Id_Othr_Id",
+    "OrgnlMsgId",
+    "Non_ISO_Transaction_Receive_Dtm",
+    "UltmtDbtr_Nm",
+    "Dbtr_Pty_PstlAdr_Room",
+    "Cdtr_Pty_PstlAdr_StrtNm",
+    "Non_ISO_API_Version",
+    "Non_ISO_Transaction_type_cd",
+    "Non_ISO_fraud_screen_data_array",
+    "Non_ISO_proprietary_rejection_cd_array",
+    "Non_ISO_receiver_response_cd"
+]
 
 def random_string(length=8):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
@@ -39,25 +51,22 @@ def random_array():
 
 def generate_payload():
     payload = {}
-    for key in payload_keys:
-        key_lower = key.lower()
 
-        if "amt" in key_lower or "amount" in key_lower:
+    for key in payload_keys:
+        if "Amt" in key or "Amount" in key:
             payload[key] = random_float()
-        elif "dtm" in key_lower or "dt" in key_lower or "date" in key_lower:
+        elif "Dtm" in key or "Dt" in key or "Date" in key:
             payload[key] = random_datetime()
-        elif "id" in key_lower or "msgid" in key_lower:
+        elif "Id" in key or "ID" in key or "MsgId" in key:
             payload[key] = str(uuid.uuid4())
-        elif "nm" in key_lower or "name" in key_lower:
+        elif "Nm" in key or "Name" in key:
             payload[key] = random_string(10)
-        elif "cd" in key_lower or "code" in key_lower:
+        elif "Cd" in key or "Code" in key:
             payload[key] = random_string(5)
-        elif "room" in key_lower or "adr" in key_lower or "addr" in key_lower or "line" in key_lower:
+        elif "Room" in key or "Adr" in key or "Addr" in key or "Line" in key:
             payload[key] = random_string(12)
-        elif "array" in key_lower:
+        elif "array" in key.lower():
             payload[key] = random_array()
-        elif "flag" in key_lower:
-            payload[key] = random_boolean()
         else:
             payload[key] = random_string(8)
 
@@ -74,9 +83,9 @@ def send_request():
 
     payload = generate_payload()
 
-    # Pick next node (round robin)
+    # Select next node (round robin)
     url = nodes[node_index]
-    node_index = (node_index + 1) % len(nodes)  # Move to next, wrap around if needed
+    node_index = (node_index + 1) % len(nodes)
 
     response = requests.post(url, json=payload, headers=headers)
     return url, response.status_code, response.text
