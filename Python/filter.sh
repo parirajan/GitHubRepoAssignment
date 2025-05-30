@@ -1,39 +1,41 @@
 #!/bin/bash
 
-# Usage: ./filter_by_streamtypes.sh message loadFileJob mandator input.json > filtered.json
+# Usage:
+# ./filter_by_streamtypes.sh message loadFileJob mandator input.json > filtered.json
 
-# Collect stream types from all args except last (input file)
-input_file="${@: -1}"                    # last argument is the input file
-stream_types=("${@:1:$#-1}")             # everything but the last argument
+input_file="${@: -1}"                    # last argument is input file
+stream_types=("${@:1:$#-1}")             # all except last arg
 
-# Build AWK array initializer from stream_types
-awk_array_init=""
-
-for stream in "${stream_types[@]}"; do
-  awk_array_init+="valid_streams[\"$stream\"] = 1; "
+# Pass each stream type as a separate -v var
+awk_args=""
+for i in "${!stream_types[@]}"; do
+  awk_args+=" -v s$i=\"${stream_types[$i]}\""
 done
 
-awk -v array_init="$awk_array_init" '
+awk $awk_args '
 BEGIN {
-  eval(array_init);  # Initialize valid_streams array from shell
+  # Initialize valid streamType list
+  for (i = 0; i < 100; i++) {
+    if (("s" i) in ENVIRON) {
+      valid_streams[ENVIRON["s" i]] = 1
+    } else {
+      break
+    }
+  }
 }
 
 /"streamType"/ && /"uid"/ {
-  # Extract streamType
   match($0, /"streamType"[[:space:]]*:[[:space:]]*"[^"]+"/, st)
   match($0, /"uid"[[:space:]]*:[[:space:]]*[0-9]+/, uidmatch)
 
   if (st[0] != "" && uidmatch[0] != "") {
-    # Clean up streamType
     split(st[0], a, ":")
     gsub(/"/, "", a[2])
     stream = gensub(/^[ \t]+/, "", "g", a[2])
 
-    # Extract UID
     split(uidmatch[0], b, ":")
     uid = gensub(/^[ \t]+/, "", "g", b[2]) + 0
 
-    # Check against streamType list
     key = stream "_" uid
 
     if (stream in valid_streams) {
@@ -41,10 +43,10 @@ BEGIN {
         seen[key] = 1
         print
       }
-      next  # suppress repeated streamType+uid pairs
+      next
     }
   }
 
-  print  # lines that don’t match or are outside target streamTypes
+  print
 }
 ' "$input_file"
