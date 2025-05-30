@@ -7,20 +7,20 @@ input_file="$1"
 shift
 stream_types=("$@")
 
-# Convert stream types to an awk-readable list
+# Convert stream types to a comma-separated list
 stream_list=$(IFS=, ; echo "${stream_types[*]}")
 
 awk -v streams="$stream_list" '
 BEGIN {
-  # Load list of streamTypes to deduplicate
-  n = split(streams, sArr, /,/)
+  # Parse the input list of stream types into an associative array
+  n = split(streams, sArr, ",")
   for (i = 1; i <= n; i++) {
     target_streams[sArr[i]] = 1
   }
 }
 
-/"streamType"/ && /"uid"/ {
-  # Extract streamType
+{
+  # Match the streamType and uid from each line
   match($0, /"streamType"[[:space:]]*:[[:space:]]*"[^"]+"/, st)
   match($0, /"uid"[[:space:]]*:[[:space:]]*[0-9]+/, uidmatch)
 
@@ -34,17 +34,16 @@ BEGIN {
 
     key = stream "_" uid
 
-    # If it's a target streamType, deduplicate
     if (stream in target_streams) {
       if (!(key in seen)) {
         seen[key] = 1
         print
       }
-      next  # Skip duplicates for streamTypes we’re filtering
+      next  # Skip duplicate for targeted streamTypes
     }
   }
 
-  # For all other streamTypes (non-target), always print
+  # Print all lines that do not match targeted streamTypes
   print
 }
 ' "$input_file"
