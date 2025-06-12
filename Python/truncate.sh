@@ -7,4 +7,4 @@ asadm -e "show statistics like defrag_q" | awk -v ns="test" '
 
 
 
-asadm -e "show statistics like defrag_q" | awk -v ns="test" '$0 ~ "Namespace[[:space:]]"ns"[[:space:]]Statistics" { f=1; next } f && /defrag_q/ { print $NF; f=0 }'
+asadm -e "show statistics like defrag_q" | awk -F'|' 'NR>1 { for (i=2; i<=NF; i++) { gsub(/[ \t]+/, "", $i); if ($i ~ /^[0-9]+$/) print $i } }'
