@@ -4,15 +4,22 @@
 NAMESPACE="your_namespace"
 SET="your_set"
 LOGFILE="/var/log/aerospike/truncate_log.log"
+LAST_RUN_FILE="/var/log/aerospike/truncate_last_day.txt"
 MAX_RUNTIME_SEC=$((60 * 60))
 SUB_CHUNKS_PER_DAY=4
 SLICE_SECONDS=$((86400 / SUB_CHUNKS_PER_DAY))
-START_DAY=30
 END_DAY=7
 DRY_RUN=true
 CHECK_INTERVAL=60  # Adjustable sleep window for counter delta capture
 
 SCRIPT_START=$(date +%s)
+
+# Load last successful START_DAY from file or default to 30
+if [ -f "$LAST_RUN_FILE" ]; then
+  START_DAY=$(cat "$LAST_RUN_FILE")
+else
+  START_DAY=30
+fi
 
 log_plain() {
   local timestamp action reason metrics
@@ -126,6 +133,7 @@ for (( d=START_DAY; d>=END_DAY; d-- )); do
     else
       echo "$(date) Executing: $CMD" | tee -a "$LOGFILE"
       asadm -e "$CMD" >> "$LOGFILE" 2>&1
+      echo "$d" > "$LAST_RUN_FILE"
     fi
 
     sleep 10
