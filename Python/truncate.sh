@@ -3,7 +3,7 @@
 # === CONFIG ===
 NAMESPACE="your_namespace"
 SET="your_set"
-LOGFILE="/var/log/aerospike/truncate_log.jsonl"
+LOGFILE="/var/log/aerospike/truncate_log.log"
 MAX_RUNTIME_SEC=$((60 * 60))
 SUB_CHUNKS_PER_DAY=4
 SLICE_SECONDS=$((86400 / SUB_CHUNKS_PER_DAY))
@@ -14,19 +14,13 @@ CHECK_INTERVAL=60  # Adjustable sleep window for counter delta capture
 
 SCRIPT_START=$(date +%s)
 
-log_json() {
-  local timestamp action reason metrics_json
+log_plain() {
+  local timestamp action reason metrics
   timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   action="$1"
   reason="$2"
-  metrics_json="$3"
-  jq -n --arg ts "$timestamp" \
-        --arg ns "$NAMESPACE" \
-        --argjson metrics "$metrics_json" \
-        --arg action "$action" \
-        --arg reason "$reason" \
-        '{timestamp: $ts, namespace: $ns, metrics: $metrics, action: $action, reason: $reason}' \
-    >> "$LOGFILE"
+  metrics="$3"
+  echo "[$timestamp] [$action] Reason: $reason | Metrics: $metrics" >> "$LOGFILE"
 }
 
 check_client_counters() {
@@ -46,22 +40,21 @@ check_client_counters() {
     delta[$m]=$(( ${final[$m]:-0} - ${initial[$m]:-0} ))
   done
 
-  local json_metrics="{"
+  local metrics_text=""
   for m in "${metrics[@]}"; do
-    json_metrics+=\"\"$m\"_delta\": ${delta[$m]}, "
+    metrics_text+="$m_delta=${delta[$m]} "
     if (( ${delta[$m]} > ${threshold[$m]} )); then
       breach="true"
       reason="$m exceeded threshold"
     fi
   done
-  json_metrics="${json_metrics%, }"; json_metrics+="}"
 
   if [ "$breach" = "true" ]; then
-    log_json "skipped" "$reason" "$json_metrics"
+    log_plain "skipped" "$reason" "$metrics_text"
     return 1
   fi
 
-  log_json "proceeding" "all counters within limits" "$json_metrics"
+  log_plain "proceeding" "all counters within limits" "$metrics_text"
   return 0
 }
 
@@ -71,10 +64,10 @@ check_cluster_gauges() {
   local write_q=($(asadm -e "show statistics like write_q" | awk -F '|' 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /,"",$i); print $i }}'))
   local shadow_q=($(asadm -e "show statistics like shadow_write_q" | awk -F '|' 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /,"",$i); print $i }}'))
 
-  local json_metrics="{"
+  local metrics_text=""
 
   for val in "${defrag_q[@]}"; do
-    json_metrics+=\"defrag_q\":$val, 
+    metrics_text+="defrag_q=$val "
     if (( val > 1000 )); then
       breach="true"
       reason="defrag_q above threshold"
@@ -82,7 +75,7 @@ check_cluster_gauges() {
   done
 
   for val in "${write_q[@]}"; do
-    json_metrics+=\"write_q\":$val, 
+    metrics_text+="write_q=$val "
     if (( val > 200 )); then
       breach="true"
       reason="write_q above threshold"
@@ -90,21 +83,19 @@ check_cluster_gauges() {
   done
 
   for val in "${shadow_q[@]}"; do
-    json_metrics+=\"shadow_write_q\":$val, 
+    metrics_text+="shadow_write_q=$val "
     if (( val > 200 )); then
       breach="true"
       reason="shadow_write_q above threshold"
     fi
   done
 
-  json_metrics="${json_metrics%, }"; json_metrics+="}"
-
   if [ "$breach" = "true" ]; then
-    log_json "skipped" "$reason" "$json_metrics"
+    log_plain "skipped" "$reason" "$metrics_text"
     return 1
   fi
 
-  log_json "proceeding" "all gauges within limits" "$json_metrics"
+  log_plain "proceeding" "all gauges within limits" "$metrics_text"
   return 0
 }
 
@@ -122,11 +113,11 @@ for (( d=START_DAY; d>=END_DAY; d-- )); do
     LUT=$(date -u -d "@$((NOW - OFFSET_SEC))" +%s%N)
     CMD="asinfo -v 'truncate:namespace=$NAMESPACE;set=$SET;lut=$LUT'"
 
-    echo "$(date) === Slice: ${d}.${s} ==="
-    echo "$(date) LUT: $LUT"
+    echo "$(date) === Slice: ${d}.${s} ===" | tee -a "$LOGFILE"
+    echo "$(date) LUT: $LUT" | tee -a "$LOGFILE"
 
     if ! check_cluster_gauges || ! check_client_counters; then
-      echo "$(date) Skipping due to system pressure"
+      echo "$(date) Skipping due to system pressure" | tee -a "$LOGFILE"
       continue
     fi
 
@@ -139,5 +130,4 @@ for (( d=START_DAY; d>=END_DAY; d-- )); do
 
     sleep 10
   done
-
 done
