@@ -1,81 +1,135 @@
 #!/bin/bash
 
-# === CONFIGURABLE ===
+# === CONFIG ===
 NAMESPACE="your_namespace"
 SET="your_set"
-LOGFILE="/var/log/aerospike/aerospike_truncate.log"
-MAX_RUNTIME_SEC=$((60 * 60))           # 1 hour max
-SUB_CHUNKS_PER_DAY=4                   # 1-day split into 6hr chunks
+LOGFILE="/var/log/aerospike/truncate_log.jsonl"
+MAX_RUNTIME_SEC=$((60 * 60))
+SUB_CHUNKS_PER_DAY=4
 SLICE_SECONDS=$((86400 / SUB_CHUNKS_PER_DAY))
-START_DAY=30                           # Begin at 30 days old
-END_DAY=7                              # Stop at 7 days old
-DRY_RUN=true                           # Set false to execute truncation
+START_DAY=30
+END_DAY=7
+DRY_RUN=true
+CHECK_INTERVAL=60  # Adjustable sleep window for counter delta capture
 
-# === LOG START ===
-echo -e "\n\n$(date) Starting Aerospike Truncation Script" | tee -a "$LOGFILE"
 SCRIPT_START=$(date +%s)
 
-# === Function: Check defrag_q cluster-wide ===
-check_defrag_q_threshold() {
-  local threshold=1000
-  local defrag_values=()
-  local total=0
+log_json() {
+  local timestamp action reason metrics_json
+  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  action="$1"
+  reason="$2"
+  metrics_json="$3"
+  jq -n --arg ts "$timestamp" \
+        --arg ns "$NAMESPACE" \
+        --argjson metrics "$metrics_json" \
+        --arg action "$action" \
+        --arg reason "$reason" \
+        '{timestamp: $ts, namespace: $ns, metrics: $metrics, action: $action, reason: $reason}' \
+    >> "$LOGFILE"
+}
 
-  while read -r line; do
-    IFS='|' read -ra fields <<< "$line"
-    for ((i=1; i<${#fields[@]}; i++)); do
-      val=$(echo "${fields[$i]}" | xargs)  # trim
-      if [[ "$val" =~ ^[0-9]+$ ]]; then
-        defrag_values+=("$val")
-        total=$((total + val))
-      fi
-    done
-  done < <(asadm -e "show statistics like defrag_q" | grep defrag_q)
+check_client_counters() {
+  local -A initial final delta
+  local metrics=("client_tsvc_timeout" "client_write_timeout" "client_write_error" "client_proxy_timeout")
+  declare -A threshold=( [client_tsvc_timeout]=50 [client_write_timeout]=50 [client_write_error]=20 [client_proxy_timeout]=20 )
+  local breach="false"
 
-  local count=${#defrag_values[@]}
-  local threshold_sum=$((threshold * count))
-
-  for v in "${defrag_values[@]}"; do
-    if (( v > threshold )); then
-      echo "$(date) High defrag_q detected: $v > $threshold" | tee -a "$LOGFILE"
-      return 1
-    fi
+  for m in "${metrics[@]}"; do
+    initial[$m]=$(asadm -e "show statistics like $m" | awk -v k="$m" '$0 ~ k { for (i = 2; i <= NF; i++) { gsub(/ /, "", $i); if ($i ~ /^[0-9]+$/) sum += $i }; print sum; exit }')
   done
 
-  if (( total > threshold_sum )); then
-    echo "$(date) Cluster-wide defrag_q too high: $total > $threshold_sum" | tee -a "$LOGFILE"
+  sleep "$CHECK_INTERVAL"
+
+  for m in "${metrics[@]}"; do
+    final[$m]=$(asadm -e "show statistics like $m" | awk -v k="$m" '$0 ~ k { for (i = 2; i <= NF; i++) { gsub(/ /, "", $i); if ($i ~ /^[0-9]+$/) sum += $i }; print sum; exit }')
+    delta[$m]=$(( ${final[$m]:-0} - ${initial[$m]:-0} ))
+  done
+
+  local json_metrics="{"
+  for m in "${metrics[@]}"; do
+    json_metrics+=\"\"$m\"_delta\": ${delta[$m]}, "
+    if (( ${delta[$m]} > ${threshold[$m]} )); then
+      breach="true"
+      reason="$m exceeded threshold"
+    fi
+  done
+  json_metrics="${json_metrics%, }"; json_metrics+="}"
+
+  if [ "$breach" = "true" ]; then
+    log_json "skipped" "$reason" "$json_metrics"
     return 1
   fi
 
-  echo "$(date) Defrag_q status OK: total=$total, count=$count" | tee -a "$LOGFILE"
+  log_json "proceeding" "all counters within limits" "$json_metrics"
   return 0
 }
 
-# === Truncation Loop ===
+check_cluster_gauges() {
+  local breach="false"
+  local defrag_q=($(asadm -e "show statistics like defrag_q" | awk -F '|' 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /,"",$i); print $i }}'))
+  local write_q=($(asadm -e "show statistics like write_q" | awk -F '|' 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /,"",$i); print $i }}'))
+  local shadow_q=($(asadm -e "show statistics like shadow_write_q" | awk -F '|' 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /,"",$i); print $i }}'))
+
+  local json_metrics="{"
+
+  for val in "${defrag_q[@]}"; do
+    json_metrics+=\"defrag_q\":$val, 
+    if (( val > 1000 )); then
+      breach="true"
+      reason="defrag_q above threshold"
+    fi
+  done
+
+  for val in "${write_q[@]}"; do
+    json_metrics+=\"write_q\":$val, 
+    if (( val > 200 )); then
+      breach="true"
+      reason="write_q above threshold"
+    fi
+  done
+
+  for val in "${shadow_q[@]}"; do
+    json_metrics+=\"shadow_write_q\":$val, 
+    if (( val > 200 )); then
+      breach="true"
+      reason="shadow_write_q above threshold"
+    fi
+  done
+
+  json_metrics="${json_metrics%, }"; json_metrics+="}"
+
+  if [ "$breach" = "true" ]; then
+    log_json "skipped" "$reason" "$json_metrics"
+    return 1
+  fi
+
+  log_json "proceeding" "all gauges within limits" "$json_metrics"
+  return 0
+}
+
+# === MAIN ===
 for (( d=START_DAY; d>=END_DAY; d-- )); do
   for (( s=0; s<SUB_CHUNKS_PER_DAY; s++ )); do
-    # Stop if runtime exceeded
     NOW=$(date +%s)
     RUNTIME=$((NOW - SCRIPT_START))
     if (( RUNTIME > MAX_RUNTIME_SEC )); then
-      echo "$(date) Max runtime (1 hour) reached. Exiting." | tee -a "$LOGFILE"
+      echo "$(date) Max runtime exceeded." | tee -a "$LOGFILE"
       exit 0
     fi
 
-    # Compute target LUT (Last Update Time)
     OFFSET_SEC=$(( (d * 86400) - (s * SLICE_SECONDS) ))
     LUT=$(date -u -d "@$((NOW - OFFSET_SEC))" +%s%N)
-    echo "$(date) Target LUT: $LUT for age ${d}.${s} days" | tee -a "$LOGFILE"
+    CMD="asinfo -v 'truncate:namespace=$NAMESPACE;set=$SET;lut=$LUT'"
 
-    # Check defrag_q thresholds
-    if ! check_defrag_q_threshold; then
-      echo "$(date) Skipping this slice due to high defrag pressure" | tee -a "$LOGFILE"
-      sleep 60
+    echo "$(date) === Slice: ${d}.${s} ==="
+    echo "$(date) LUT: $LUT"
+
+    if ! check_cluster_gauges || ! check_client_counters; then
+      echo "$(date) Skipping due to system pressure"
       continue
     fi
 
-    # Run truncate (dry-run first)
-    CMD="asinfo -v 'truncate:namespace=$NAMESPACE;set=$SET;lut=$LUT'"
     if [ "$DRY_RUN" = true ]; then
       echo "$(date) Dry Run: $CMD" | tee -a "$LOGFILE"
     else
@@ -85,6 +139,5 @@ for (( d=START_DAY; d>=END_DAY; d-- )); do
 
     sleep 10
   done
-done
 
-echo "$(date) Truncation script completed in $(( $(date +%s) - SCRIPT_START )) seconds." | tee -a "$LOGFILE"
+done
