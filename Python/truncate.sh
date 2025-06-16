@@ -10,11 +10,10 @@ SUB_CHUNKS_PER_DAY=4
 SLICE_SECONDS=$((86400 / SUB_CHUNKS_PER_DAY))
 END_DAY=7
 DRY_RUN=true
-CHECK_INTERVAL=60  # Adjustable sleep window for counter delta capture
+CHECK_INTERVAL=60
 SCRIPT_START=$(date +%s)
-CMD_TIMEOUT=300  # seconds
+CMD_TIMEOUT=300
 
-# Load last successful START_DAY from file or default to 30
 if [ -f "$LAST_RUN_FILE" ]; then
   START_DAY=$(cat "$LAST_RUN_FILE")
 else
@@ -70,35 +69,55 @@ check_client_counters() {
 check_cluster_gauges() {
   timeout $CMD_TIMEOUT bash -c '
     local breach="false"
-    local defrag_q=($(asadm -e "show statistics like defrag_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /,\"\",\$i); print \$i }}"))
-    local write_q=($(asadm -e "show statistics like write_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /,\"\",\$i); print \$i }}"))
-    local shadow_q=($(asadm -e "show statistics like shadow_write_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /,\"\",\$i); print \$i }}"))
-
     local metrics_text=""
+    local threshold_per_disk=1000
+    local threshold_total_multiplier=1000
 
+    local defrag_q=($(asadm -e "show statistics like defrag_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, \"\", \$i); print \$i }}"))
+    local write_q=($(asadm -e "show statistics like write_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, \"\", \$i); print \$i }}"))
+    local shadow_q=($(asadm -e "show statistics like shadow_write_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, \"\", \$i); print \$i }}"))
+
+    total=0
     for val in "${defrag_q[@]}"; do
       metrics_text+="defrag_q=$val "
-      if (( val > 1000 )); then
+      ((total+=val))
+      if (( val > threshold_per_disk )); then
         breach="true"
         reason="defrag_q above threshold"
       fi
     done
+    if (( total > threshold_total_multiplier * ${#defrag_q[@]} )); then
+      breach="true"
+      reason="total defrag_q across cluster too high"
+    fi
 
+    total=0
     for val in "${write_q[@]}"; do
       metrics_text+="write_q=$val "
+      ((total+=val))
       if (( val > 200 )); then
         breach="true"
         reason="write_q above threshold"
       fi
     done
+    if (( total > 200 * ${#write_q[@]} )); then
+      breach="true"
+      reason="total write_q across cluster too high"
+    fi
 
+    total=0
     for val in "${shadow_q[@]}"; do
       metrics_text+="shadow_write_q=$val "
+      ((total+=val))
       if (( val > 200 )); then
         breach="true"
         reason="shadow_write_q above threshold"
       fi
     done
+    if (( total > 200 * ${#shadow_q[@]} )); then
+      breach="true"
+      reason="total shadow_write_q across cluster too high"
+    fi
 
     if [ "$breach" = "true" ]; then
       log_plain "skipped" "$reason" "$metrics_text"
