@@ -30,103 +30,99 @@ log_plain() {
 }
 
 check_client_counters() {
-  timeout $((CHECK_INTERVAL + 10)) bash -c '
-    local -A initial final delta
-    local metrics=("client_tsvc_timeout" "client_write_timeout" "client_write_error" "client_proxy_timeout")
-    declare -A threshold=( [client_tsvc_timeout]=50 [client_write_timeout]=50 [client_write_error]=20 [client_proxy_timeout]=20 )
-    local breach="false"
+  local -A initial final delta
+  local metrics=("client_tsvc_timeout" "client_write_timeout" "client_write_error" "client_proxy_timeout")
+  declare -A threshold=( [client_tsvc_timeout]=50 [client_write_timeout]=50 [client_write_error]=20 [client_proxy_timeout]=20 )
+  local breach="false"
 
-    for m in "${metrics[@]}"; do
-      initial[$m]=$(asadm -e "show statistics like $m" | awk -v k="$m" '$0 ~ k { for (i = 2; i <= NF; i++) { gsub(/ /, "", $i); if ($i ~ /^[0-9]+$/) sum += $i }; print sum; exit }')
-    done
+  for m in "${metrics[@]}"; do
+    initial[$m]=$(asadm -e "show statistics like $m" | awk -v k="$m" '$0 ~ k { for (i = 2; i <= NF; i++) { gsub(/ /, "", $i); if ($i ~ /^[0-9]+$/) sum += $i }; print sum; exit }')
+  done
 
-    sleep "$CHECK_INTERVAL"
+  sleep "$CHECK_INTERVAL"
 
-    for m in "${metrics[@]}"; do
-      final[$m]=$(asadm -e "show statistics like $m" | awk -v k="$m" '$0 ~ k { for (i = 2; i <= NF; i++) { gsub(/ /, "", $i); if ($i ~ /^[0-9]+$/) sum += $i }; print sum; exit }')
-      delta[$m]=$(( ${final[$m]:-0} - ${initial[$m]:-0} ))
-    done
+  for m in "${metrics[@]}"; do
+    final[$m]=$(asadm -e "show statistics like $m" | awk -v k="$m" '$0 ~ k { for (i = 2; i <= NF; i++) { gsub(/ /, "", $i); if ($i ~ /^[0-9]+$/) sum += $i }; print sum; exit }')
+    delta[$m]=$(( ${final[$m]:-0} - ${initial[$m]:-0} ))
+  done
 
-    local metrics_text=""
-    for m in "${metrics[@]}"; do
-      metrics_text+="$m_delta=${delta[$m]} "
-      if (( ${delta[$m]} > ${threshold[$m]} )); then
-        breach="true"
-        reason="$m exceeded threshold"
-      fi
-    done
-
-    if [ "$breach" = "true" ]; then
-      log_plain "skipped" "$reason" "$metrics_text"
-      exit 1
+  local metrics_text=""
+  for m in "${metrics[@]}"; do
+    metrics_text+="$m_delta=${delta[$m]} "
+    if (( ${delta[$m]} > ${threshold[$m]} )); then
+      breach="true"
+      reason="$m exceeded threshold"
     fi
+  done
 
-    log_plain "proceeding" "all counters within limits" "$metrics_text"
-    exit 0
-  '
+  if [ "$breach" = "true" ]; then
+    log_plain "skipped" "$reason" "$metrics_text"
+    return 1
+  fi
+
+  log_plain "proceeding" "all counters within limits" "$metrics_text"
+  return 0
 }
 
 check_cluster_gauges() {
-  timeout $CMD_TIMEOUT bash -c '
-    local breach="false"
-    local metrics_text=""
-    local threshold_per_disk=1000
-    local threshold_total_multiplier=1000
+  local breach="false"
+  local metrics_text=""
+  local threshold_per_disk=1000
+  local threshold_total_multiplier=1000
 
-    local defrag_q=($(asadm -e "show statistics like defrag_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, \"\", \$i); print \$i }}"))
-    local write_q=($(asadm -e "show statistics like write_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, \"\", \$i); print \$i }}"))
-    local shadow_q=($(asadm -e "show statistics like shadow_write_q" | awk -F "|" "NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, \"\", \$i); print \$i }}"))
+  local defrag_q=($(asadm -e "show statistics like defrag_q" | awk -F "|" 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, "", $i); print $i }}'))
+  local write_q=($(asadm -e "show statistics like write_q" | awk -F "|" 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, "", $i); print $i }}'))
+  local shadow_q=($(asadm -e "show statistics like shadow_write_q" | awk -F "|" 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, "", $i); print $i }}'))
 
-    total=0
-    for val in "${defrag_q[@]}"; do
-      metrics_text+="defrag_q=$val "
-      ((total+=val))
-      if (( val > threshold_per_disk )); then
-        breach="true"
-        reason="defrag_q above threshold"
-      fi
-    done
-    if (( total > threshold_total_multiplier * ${#defrag_q[@]} )); then
+  total=0
+  for val in "${defrag_q[@]}"; do
+    metrics_text+="defrag_q=$val "
+    ((total+=val))
+    if (( val > threshold_per_disk )); then
       breach="true"
-      reason="total defrag_q across cluster too high"
+      reason="defrag_q above threshold"
     fi
+  done
+  if (( total > threshold_total_multiplier * ${#defrag_q[@]} )); then
+    breach="true"
+    reason="total defrag_q across cluster too high"
+  fi
 
-    total=0
-    for val in "${write_q[@]}"; do
-      metrics_text+="write_q=$val "
-      ((total+=val))
-      if (( val > 200 )); then
-        breach="true"
-        reason="write_q above threshold"
-      fi
-    done
-    if (( total > 200 * ${#write_q[@]} )); then
+  total=0
+  for val in "${write_q[@]}"; do
+    metrics_text+="write_q=$val "
+    ((total+=val))
+    if (( val > 200 )); then
       breach="true"
-      reason="total write_q across cluster too high"
+      reason="write_q above threshold"
     fi
+  done
+  if (( total > 200 * ${#write_q[@]} )); then
+    breach="true"
+    reason="total write_q across cluster too high"
+  fi
 
-    total=0
-    for val in "${shadow_q[@]}"; do
-      metrics_text+="shadow_write_q=$val "
-      ((total+=val))
-      if (( val > 200 )); then
-        breach="true"
-        reason="shadow_write_q above threshold"
-      fi
-    done
-    if (( total > 200 * ${#shadow_q[@]} )); then
+  total=0
+  for val in "${shadow_q[@]}"; do
+    metrics_text+="shadow_write_q=$val "
+    ((total+=val))
+    if (( val > 200 )); then
       breach="true"
-      reason="total shadow_write_q across cluster too high"
+      reason="shadow_write_q above threshold"
     fi
+  done
+  if (( total > 200 * ${#shadow_q[@]} )); then
+    breach="true"
+    reason="total shadow_write_q across cluster too high"
+  fi
 
-    if [ "$breach" = "true" ]; then
-      log_plain "skipped" "$reason" "$metrics_text"
-      exit 1
-    fi
+  if [ "$breach" = "true" ]; then
+    log_plain "skipped" "$reason" "$metrics_text"
+    return 1
+  fi
 
-    log_plain "proceeding" "all gauges within limits" "$metrics_text"
-    exit 0
-  '
+  log_plain "proceeding" "all gauges within limits" "$metrics_text"
+  return 0
 }
 
 # === MAIN ===
