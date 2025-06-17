@@ -1,187 +1,150 @@
-#!/bin/bash
+Aerospike Truncation Script - Detailed Explanation
 
-# === CONFIG ===
-NAMESPACE="your_namespace"
-declare -A SETS=( [set1]="set_one" [set2]="set_two" )
-LOGFILE="/var/log/aerospike/truncate_log.log"
-LAST_RUN_FILE="/var/log/aerospike/truncate_last_day.txt"
-MAX_RUNTIME_SEC=$((60 * 60))
-SUB_CHUNKS_PER_DAY=4
-SLICE_SECONDS=$((86400 / SUB_CHUNKS_PER_DAY))
-END_DAY=7
-DRY_RUN=true
-CHECK_INTERVAL=60
-SCRIPT_START=$(date +%s)
-CMD_TIMEOUT=300
+This document explains the structure and logic of the Aerospike truncation script used to safely delete records older than a certain age, while minimizing impact on cluster performance.
 
-if [ -f "$LAST_RUN_FILE" ]; then
-  START_DAY=$(cat "$LAST_RUN_FILE")
-else
-  START_DAY=30
-fi
+1. Purpose of the Script
 
-log_plain() {
-  local timestamp action reason metrics
-  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  action="$1"
-  reason="$2"
-  metrics="$3"
-  echo "[$timestamp] [$action] Reason: $reason | Metrics: $metrics" >> "$LOGFILE"
-}
+To perform time-based truncation on multiple sets in Aerospike by:
 
-check_client_counters() {
-  local -A initial final delta
-  local metrics=("client_tsvc_timeout" "client_write_timeout" "client_write_error" "client_proxy_timeout")
-  declare -A threshold=( [client_tsvc_timeout]=50 [client_write_timeout]=50 [client_write_error]=20 [client_proxy_timeout]=20 )
-  local breach="false"
+Truncating records older than a rolling window (default: 30 to 7 days).
 
-  for m in "${metrics[@]}"; do
-    initial[$m]=$(asadm -e "show statistics like $m" | awk -v k="$m" '$0 ~ k { for (i = 2; i <= NF; i++) { gsub(/ /, "", $i); if ($i ~ /^[0-9]+$/) sum += $i }; print sum; exit }')
-  done
+Spreading truncation across multiple time slices per day.
 
-  sleep "$CHECK_INTERVAL"
+Running truncations per set in parallel.
 
-  for m in "${metrics[@]}"; do
-    final[$m]=$(asadm -e "show statistics like $m" | awk -v k="$m" '$0 ~ k { for (i = 2; i <= NF; i++) { gsub(/ /, "", $i); if ($i ~ /^[0-9]+$/) sum += $i }; print sum; exit }')
-    delta[$m]=$(( ${final[$m]:-0} - ${initial[$m]:-0} ))
-  done
+Pre-checking cluster health (gauges and counters) to avoid impacting read/write operations.
 
-  local metrics_text=""
-  for m in "${metrics[@]}"; do
-    metrics_text+="$m_delta=${delta[$m]} "
-    if (( ${delta[$m]} > ${threshold[$m]} )); then
-      breach="true"
-      reason="$m exceeded threshold"
-    fi
-  done
+Logging events and resuming from the last successful day.
 
-  if [ "$breach" = "true" ]; then
-    log_plain "skipped" "$reason" "$metrics_text"
-    return 1
-  fi
+2. Configuration Parameters
 
-  log_plain "proceeding" "all counters within limits" "$metrics_text"
-  return 0
-}
+Variable
 
-check_cluster_gauges() {
-  local breach="false"
-  local metrics_text=""
-  local threshold_per_disk=1000
-  local threshold_total_multiplier=1000
+Description
 
-  local defrag_q=($(asadm -e "show statistics like defrag_q" | awk -F "|" 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, "", $i); print $i }}'))
-  local write_q=($(asadm -e "show statistics like write_q" | awk -F "|" 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, "", $i); print $i }}'))
-  local shadow_q=($(asadm -e "show statistics like shadow_write_q" | awk -F "|" 'NR>1 {for (i=2; i<=NF; i++) { gsub(/ /, "", $i); print $i }}'))
+NAMESPACE
 
-  total=0
-  for val in "${defrag_q[@]}"; do
-    metrics_text+="defrag_q=$val "
-    ((total+=val))
-    if (( val > threshold_per_disk )); then
-      breach="true"
-      reason="defrag_q above threshold"
-    fi
-  done
-  if (( total > threshold_total_multiplier * ${#defrag_q[@]} )); then
-    breach="true"
-    reason="total defrag_q across cluster too high"
-  fi
+Aerospike namespace where truncation occurs.
 
-  total=0
-  for val in "${write_q[@]}"; do
-    metrics_text+="write_q=$val "
-    ((total+=val))
-    if (( val > 200 )); then
-      breach="true"
-      reason="write_q above threshold"
-    fi
-  done
-  if (( total > 200 * ${#write_q[@]} )); then
-    breach="true"
-    reason="total write_q across cluster too high"
-  fi
+SETS
 
-  total=0
-  for val in "${shadow_q[@]}"; do
-    metrics_text+="shadow_write_q=$val "
-    ((total+=val))
-    if (( val > 200 )); then
-      breach="true"
-      reason="shadow_write_q above threshold"
-    fi
-  done
-  if (( total > 200 * ${#shadow_q[@]} )); then
-    breach="true"
-    reason="total shadow_write_q across cluster too high"
-  fi
+Associative array holding set names to be truncated.
 
-  if [ "$breach" = "true" ]; then
-    log_plain "skipped" "$reason" "$metrics_text"
-    return 1
-  fi
+LOGFILE
 
-  log_plain "proceeding" "all gauges within limits" "$metrics_text"
-  return 0
-}
+Path for writing operation logs.
 
-# === MAIN ===
-for (( d=START_DAY; d>=END_DAY; d-- )); do
-  for (( s=0; s<SUB_CHUNKS_PER_DAY; s++ )); do
-    NOW=$(date +%s)
-    RUNTIME=$((NOW - SCRIPT_START))
-    if (( RUNTIME > MAX_RUNTIME_SEC )); then
-      echo "$(date) Max runtime exceeded." | tee -a "$LOGFILE"
-      exit 0
-    fi
+LAST_RUN_FILE
 
-    OFFSET_SEC=$(( (d * 86400) - (s * SLICE_SECONDS) ))
-    LUT=$(date -u -d "@$((NOW - OFFSET_SEC))" +%s%N)
-    echo "$(date) === Slice: ${d}.${s} ===" | tee -a "$LOGFILE"
-    echo "$(date) LUT: $LUT" | tee -a "$LOGFILE"
+File for storing the last successfully truncated day.
 
-    if ! check_cluster_gauges || ! check_client_counters; then
-      echo "$(date) Skipping due to system pressure" | tee -a "$LOGFILE"
-      continue
-    fi
+MAX_RUNTIME_SEC
 
-    declare -A PID_TO_SET
-    PIDS=()
+Upper bound on script run time. Defaults to 1 hour.
 
-    for set_key in "${!SETS[@]}"; do
-      SET_NAME=${SETS[$set_key]}
-      CMD="asinfo -v 'truncate:namespace=$NAMESPACE;set=$SET_NAME;lut=$LUT'"
+SUB_CHUNKS_PER_DAY
 
-      if [ "$DRY_RUN" = true ]; then
-        echo "$(date) Dry Run: $CMD" | tee -a "$LOGFILE"
-      else
-        echo "$(date) Executing: $CMD (in background)" | tee -a "$LOGFILE"
-        timeout $CMD_TIMEOUT asadm -e "$CMD" >> "$LOGFILE" 2>&1 &
-        pid=$!
-        PIDS+=("$pid")
-        PID_TO_SET[$pid]="$SET_NAME"
-      fi
-    done
+Number of slices per day (default: 4 means 6hr slices).
 
-    for pid in "${PIDS[@]}"; do
-      if wait "$pid"; then
-        echo "$(date) PID $pid (${PID_TO_SET[$pid]}) completed successfully" | tee -a "$LOGFILE"
-      else
-        echo "$(date) PID $pid (${PID_TO_SET[$pid]}) failed or timed out. Retrying..." | tee -a "$LOGFILE"
-        SET_NAME=${PID_TO_SET[$pid]}
-        CMD="asinfo -v 'truncate:namespace=$NAMESPACE;set=$SET_NAME;lut=$LUT'"
-        timeout $CMD_TIMEOUT asadm -e "$CMD" >> "$LOGFILE" 2>&1 &
-        retry_pid=$!
-        if wait "$retry_pid"; then
-          echo "$(date) Retry for $SET_NAME succeeded." | tee -a "$LOGFILE"
-        else
-          echo "$(date) Retry for $SET_NAME failed again." | tee -a "$LOGFILE"
-        fi
-      fi
-    done
+SLICE_SECONDS
 
-    echo $((d - 1)) > "$LAST_RUN_FILE"
-    sleep 10
-  done
+Duration of each chunk in seconds (calculated).
 
-done
+END_DAY
+
+Truncation stops once this day is reached.
+
+DRY_RUN
+
+Enables safe logging without executing truncation.
+
+CHECK_INTERVAL
+
+Interval between metric collection for delta counters.
+
+CMD_TIMEOUT
+
+Timeout per truncate command (e.g. 300s).
+
+3. Function: log_plain()
+
+Logs actions with timestamp in plain text:
+
+log_plain "skipped" "defrag_q above threshold" "defrag_q=1234"
+
+4. Function: check_client_counters()
+
+Captures client-side error deltas for key metrics over $CHECK_INTERVAL seconds.
+
+Metrics Monitored:
+
+client_tsvc_timeout
+
+client_write_timeout
+
+client_write_error
+
+client_proxy_timeout
+
+If delta exceeds predefined threshold, the slice is skipped.
+
+5. Function: check_cluster_gauges()
+
+Monitors cluster pressure by checking gauge metrics:
+
+defrag_q
+
+write_q
+
+shadow_write_q
+
+Dual Threshold Logic:
+
+Per-disk value check: skips if any individual disk exceeds limit (e.g. >1000).
+
+Cluster-wide sum check: skips if total exceeds threshold * number of disks.
+
+6. Main Truncation Loop
+
+Structure:
+
+for day in START_DAY ... END_DAY
+  for chunk in SUB_CHUNKS_PER_DAY
+    check metrics
+    build LUT for time window
+    truncate each set in parallel
+    track PIDs and retry failed ones
+    update LAST_RUN_FILE with d-1
+
+Parallel Truncation:
+
+Each set is truncated via background process using timeout for control. If any PID fails, it is retried once. Both success and failure are logged.
+
+Command Correction:
+
+To avoid extra escaping issues in dry run vs live execution, the correct usage should be:
+
+CMD="truncate:namespace=$NAMESPACE;set=$SET_NAME;lut=$LUT"
+asadm -e "$CMD"
+
+Rather than embedding too many layers of quotes and backslashes.
+
+7. Log Format
+
+[2025-06-12T12:34:56Z] [skipped] Reason: defrag_q above threshold | Metrics: defrag_q=1234 write_q=12 shadow_write_q=10
+
+8. Recovery and Continuation
+
+Each successful day reduces the START_DAY and saves progress in LAST_RUN_FILE.
+
+Next script run resumes from the last completed START_DAY.
+
+9. Future Enhancements (optional)
+
+Add alerting if N consecutive days are skipped.
+
+Integrate EBS/CloudWatch latency metrics.
+
+Time-of-day throttling (e.g. skip daytime truncations).
+
+Enhanced retry backoff logic.
