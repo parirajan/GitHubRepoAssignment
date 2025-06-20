@@ -1,6 +1,7 @@
 import os
 import uuid
 import random
+import json
 import requests
 import pandas as pd
 from faker import Faker
@@ -8,11 +9,12 @@ from datetime import datetime, timedelta
 
 API_URL = "http://localhost:8080/"
 ACCOUNT_CSV_PATH = "200_accounts.csv"
+LOG_PATH = "mtid1_transactions.jsonl"
 NUM_TRANSACTIONS = 100
 CURRENCY = "USD"
 fake = Faker()
 
-# Load or generate 200 sample accounts
+# Load or create 200 accounts
 def generate_iban():
     return f"DE{random.randint(10, 99)}{random.randint(10000000, 99999999)}{random.randint(1000000000, 9999999999)}"
 
@@ -20,21 +22,20 @@ def generate_accounts_csv(filename=ACCOUNT_CSV_PATH, count=200):
     if os.path.exists(filename):
         return pd.read_csv(filename)
     
-    data = []
+    records = []
     for _ in range(count):
-        data.append({
+        records.append({
             "AccountID": str(uuid.uuid4()),
             "Name": fake.name(),
             "IBAN": generate_iban(),
             "BankID": random.randint(10000, 99999)
         })
-    
-    df = pd.DataFrame(data)
+
+    df = pd.DataFrame(records)
     df.to_csv(filename, index=False)
     print(f"Created {filename} with {count} accounts.")
     return df
 
-# Generate realistic address block
 def fake_address(prefix):
     return {
         f"{prefix}_PstlAdr_BldgNm": "Building A",
@@ -52,7 +53,6 @@ def fake_address(prefix):
         f"{prefix}_PstlAdr_CtrySubDvsn": "CA"
     }
 
-# Generate full historical settlement payload
 def generate_full_historical_payload(creditor, debtor, date):
     amount = round(random.uniform(100.0, 100000.0), 2)
     return {
@@ -84,11 +84,21 @@ def generate_full_historical_payload(creditor, debtor, date):
         "UpldDtTm": date.strftime("%Y-%m-%d %H:%M:%S"),
         "RgltryRptg_Dt": date.strftime("%Y-%m-%d"),
         "SP_FraudFlag": 0,
-        "SP_MessageTypeID": 1,
         "TxPrcDtTm": date.strftime("%Y-%m-%d %H:%M:%S")
     }
 
-# Submit transactions to the API
+def append_to_transaction_log(payload, log_path=LOG_PATH):
+    def convert(obj):
+        if isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert(i) for i in obj]
+        elif hasattr(obj, "item"):
+            return obj.item()
+        return obj
+    with open(log_path, "a") as f:
+        f.write(json.dumps(convert(payload)) + "\n")
+
 def post_historical_transactions(df, count=NUM_TRANSACTIONS):
     today = datetime.today()
     for i in range(count):
@@ -98,13 +108,27 @@ def post_historical_transactions(df, count=NUM_TRANSACTIONS):
             debtor = df.sample().iloc[0]
         date = today - timedelta(days=random.randint(1, 90))
         payload = generate_full_historical_payload(creditor, debtor, date)
+
+        headers = {
+            "Content-Type": "application/json",
+            "SP_MessageTypeID": "1"
+        }
+
         try:
-            response = requests.post(API_URL, json=payload)
-            print(f"[{i+1}/{count}] {response.status_code} | {payload['IntrBkSttlmDt']} | ${payload['IntrBkSttlmAmt']:.2f}")
+            response = requests.post(API_URL, json=payload, headers=headers)
+            append_to_transaction_log(payload)
+            print(f"\n[{i+1}/{count}] Response Status: {response.status_code}")
+            print("Payload Sent:")
+            print(json.dumps(payload, indent=2))
+            print("Response Body:")
+            try:
+                print(json.dumps(response.json(), indent=2))
+            except ValueError:
+                print(response.text)
+            print("-" * 80)
         except Exception as e:
             print(f"[{i+1}/{count}] Error: {e}")
 
-# Main
 if __name__ == "__main__":
-    accounts_df = generate_accounts_csv()
-    post_historical_transactions(accounts_df)
+    df = generate_accounts_csv()
+    post_historical_transactions(df)
