@@ -18,7 +18,7 @@ HEADERS = {
 
 
 # Get all accessible projects
-def get_all_projects():def get_all_projects():
+def get_all_projects():
     projects = []
     page = 1
     while True:
