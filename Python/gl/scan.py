@@ -18,22 +18,33 @@ HEADERS = {
 
 
 # Get all accessible projects
-def get_all_projects():
+def get_all_projects():def get_all_projects():
     projects = []
     page = 1
     while True:
         url = f"{GITLAB_API}/projects"
-        params = {"membership": True, "per_page": 100, "page": page}
+        params = {
+            "per_page": 100,
+            "page": page,
+            "simple": True,
+            "order_by": "id",
+            "sort": "asc",
+            "membership": True  # or remove to get all visible
+            "visibility": "private"  # or public/all if token has enough rights
+        }
         response = requests.get(url, headers=HEADERS, params=params)
         if response.status_code != 200:
             print(f"Error fetching projects: {response.text}")
             break
-        page_data = response.json()
-        if not page_data:
+        page_projects = response.json()
+        projects.extend(page_projects)
+
+        next_page = response.headers.get("X-Next-Page")
+        if not next_page:
             break
-        projects.extend(page_data)
-        page += 1
+        page = int(next_page)
     return projects
+
 
 
 # Search the project tree and download envoy.json
