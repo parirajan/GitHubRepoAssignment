@@ -27,7 +27,7 @@ def read_project_list(file_path):
     with open(file_path, 'r') as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
-# Get project info from full path like "group/subgroup/project"
+# Search project by full path (e.g., group/subgroup/project)
 def get_project_by_path(path):
     encoded_path = quote(path, safe='')
     r = requests.get(f"{GITLAB_API}/projects/{encoded_path}", headers=HEADERS, timeout=10)
@@ -73,14 +73,47 @@ def process_project_path(project_path):
     result = find_and_download_envoy_json(project_id, project_name)
     return project_name, result
 
+# Search projects via API (e.g., search by keyword as in UI)
+def search_projects_by_keyword(keyword):
+    projects = []
+    page = 1
+    while True:
+        response = requests.get(
+            f"{GITLAB_API}/projects",
+            headers=HEADERS,
+            params={"search": keyword, "per_page": 100, "page": page},
+            timeout=10
+        )
+        if response.status_code != 200:
+            print(f"Error searching projects: {response.text}", file=sys.__stdout__)
+            break
+        results = response.json()
+        projects.extend(results)
+        next_page = response.headers.get("X-Next-Page")
+        if not next_page:
+            break
+        page = int(next_page)
+    return projects
+
 # Main entry point
 if __name__ == "__main__":
-    project_list_file = "project_list.txt"  # Must be committed or mounted into CI job
-    if not os.path.exists(project_list_file):
-        print("project_list.txt not found", file=sys.__stdout__)
-        sys.exit(1)
+    project_list_file = "project_list.txt"
+    use_search = os.environ.get("USE_PROJECT_SEARCH", "false").lower() == "true"
 
-    project_paths = read_project_list(project_list_file)
+    if use_search:
+        search_term = os.environ.get("PROJECT_SEARCH_TERM", "")
+        if not search_term:
+            print("PROJECT_SEARCH_TERM must be set when USE_PROJECT_SEARCH=true", file=sys.__stdout__)
+            sys.exit(1)
+        print(f"Searching projects by keyword: {search_term}", file=sys.__stdout__)
+        search_results = search_projects_by_keyword(search_term)
+        project_paths = [p['path_with_namespace'] for p in search_results]
+    else:
+        if not os.path.exists(project_list_file):
+            print("project_list.txt not found", file=sys.__stdout__)
+            sys.exit(1)
+        project_paths = read_project_list(project_list_file)
+
     print(f"Total projects to scan: {len(project_paths)}", file=sys.__stdout__)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
