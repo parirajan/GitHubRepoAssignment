@@ -1,140 +1,100 @@
 import os
+import sys
 import requests
 from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
+import shutil
 
-# --- Configuration ---
-GITLAB_API = "https://gitlab.com/api/v4"
-TOKEN = "YOUR_PERSONAL_ACCESS_TOKEN"  # Replace with your PAT
+# Redirect stdout and stderr to a log file to prevent CI log overflow
+sys.stdout = open("scan_output.log", "w")
+sys.stderr = sys.stdout
+
+print("Starting scan for specified project list...", file=sys.__stdout__)
+
+# Configuration
+GITLAB_API = os.environ.get("CI_API_V4_URL", "https://gitlab.com/api/v4")
+TOKEN = os.environ.get("GITLAB_API_TOKEN")  # Set this in GitLab CI/CD variables
 HEADERS = {"Private-Token": TOKEN}
 OUTPUT_DIR = "./downloads"
 TARGET_FILENAME = "envoy.json"
 SUBDIR = "application"
 BRANCHES_TO_TRY = ["main", "master", "develop"]
-MAX_WORKERS = 10
+MAX_WORKERS = 4  # Safe default for CI runners
 
-# --- Group & Project Discovery ---
-def get_all_groups():
-    groups = []
-    page = 1
-    while True:
-        r = requests.get(
-            f"{GITLAB_API}/groups",
-            headers=HEADERS,
-            params={"per_page": 100, "page": page, "min_access_level": 10}
-        )
-        if r.status_code != 200:
-            print(f"Error fetching groups: {r.text}")
-            break
-        page_groups = r.json()
-        groups.extend(page_groups)
-        next_page = r.headers.get("X-Next-Page")
-        if not next_page:
-            break
-        page = int(next_page)
-    return groups
+# Read project paths from input file (one per line)
+def read_project_list(file_path):
+    with open(file_path, 'r') as f:
+        return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
-def get_all_subgroups(group_id):
-    subgroups = []
-    page = 1
-    while True:
-        r = requests.get(
-            f"{GITLAB_API}/groups/{group_id}/subgroups",
-            headers=HEADERS,
-            params={"per_page": 100, "page": page}
-        )
-        if r.status_code != 200:
-            break
-        page_subgroups = r.json()
-        subgroups.extend(page_subgroups)
-        next_page = r.headers.get("X-Next-Page")
-        if not next_page:
-            break
-        page = int(next_page)
-    for sg in subgroups[:]:
-        subgroups.extend(get_all_subgroups(sg["id"]))
-    return subgroups
+# Get project info from full path like "group/subgroup/project"
+def get_project_by_path(path):
+    encoded_path = quote(path, safe='')
+    r = requests.get(f"{GITLAB_API}/projects/{encoded_path}", headers=HEADERS, timeout=10)
+    if r.status_code == 200:
+        return r.json()
+    else:
+        print(f"[WARN] Could not access project: {path} ({r.status_code})", file=sys.__stdout__)
+        return None
 
-def get_projects_from_group(group_id):
-    projects = []
-    page = 1
-    while True:
-        r = requests.get(
-            f"{GITLAB_API}/groups/{group_id}/projects",
-            headers=HEADERS,
-            params={"per_page": 100, "page": page}
-        )
-        if r.status_code != 200:
-            break
-        page_projects = r.json()
-        projects.extend(page_projects)
-        next_page = r.headers.get("X-Next-Page")
-        if not next_page:
-            break
-        page = int(next_page)
-    return projects
-
-def get_all_projects_from_all_groups():
-    all_projects = []
-    top_groups = get_all_groups()
-    for group in top_groups:
-        print(f"Scanning group: {group['full_path']}")
-        all_projects.extend(get_projects_from_group(group['id']))
-        subgroups = get_all_subgroups(group['id'])
-        for sg in subgroups:
-            print(f"  Scanning subgroup: {sg['full_path']}")
-            all_projects.extend(get_projects_from_group(sg['id']))
-    return all_projects
-
-# --- File Search & Download ---
-def find_and_download_from_application_dir(project_id, project_name):
+# Search for envoy.json inside the 'application' folder and download it
+def find_and_download_envoy_json(project_id, project_name):
     for branch in BRANCHES_TO_TRY:
-        tree_url = f"{GITLAB_API}/projects/{project_id}/repository/tree"
-        params = {
-            "ref": branch,
-            "path": SUBDIR,
-            "recursive": True,
-            "per_page": 100
-        }
-        r = requests.get(tree_url, headers=HEADERS, params=params)
+        params = {"ref": branch, "path": SUBDIR, "recursive": True, "per_page": 100}
+        r = requests.get(f"{GITLAB_API}/projects/{project_id}/repository/tree", headers=HEADERS, params=params, timeout=10)
         if r.status_code != 200:
             continue
+
         tree = r.json()
         for item in tree:
             if item["type"] == "blob" and item["path"].endswith(f"{SUBDIR}/{TARGET_FILENAME}"):
                 file_path = item["path"]
-                encoded_path = quote(file_path, safe='')
-                file_url = f"{GITLAB_API}/projects/{project_id}/repository/files/{encoded_path}/raw"
-                file_resp = requests.get(file_url, headers=HEADERS, params={"ref": branch})
-                if file_resp.status_code == 200:
+                encoded_file_path = quote(file_path, safe='')
+                file_url = f"{GITLAB_API}/projects/{project_id}/repository/files/{encoded_file_path}/raw"
+                resp = requests.get(file_url, headers=HEADERS, params={"ref": branch}, timeout=10)
+
+                if resp.status_code == 200:
                     local_path = os.path.join(OUTPUT_DIR, project_name)
                     os.makedirs(local_path, exist_ok=True)
                     with open(os.path.join(local_path, TARGET_FILENAME), 'w') as f:
-                        f.write(file_resp.text)
-                    return f"Downloaded {file_path} from branch {branch}"
+                        f.write(resp.text)
+                    return f"Downloaded from {branch}: {file_path}"
                 else:
-                    return f"Failed to download: HTTP {file_resp.status_code}"
-    return f"{SUBDIR}/{TARGET_FILENAME} not found in any branch"
+                    return f"Failed to download from {branch}: HTTP {resp.status_code}"
+    return f"{TARGET_FILENAME} not found in {SUBDIR} for any branch"
 
-# --- Parallel Processing ---
-def process_project(project):
+# Process one project
+def process_project_path(project_path):
+    project = get_project_by_path(project_path)
+    if not project:
+        return project_path.replace('/', '_'), "Not accessible or not found"
     project_id = project['id']
-    project_name = project['path_with_namespace'].replace("/", "_")
-    try:
-        result = find_and_download_from_application_dir(project_id, project_name)
-        return project_name, result
-    except Exception as e:
-        return project_name, f"Error: {str(e)}"
+    project_name = project['path_with_namespace'].replace('/', '_')
+    result = find_and_download_envoy_json(project_id, project_name)
+    return project_name, result
 
-# --- Main ---
+# Main entry point
 if __name__ == "__main__":
-    print("Discovering projects from all groups and subgroups...")
-    all_projects = get_all_projects_from_all_groups()
-    print(f"Total projects discovered: {len(all_projects)}")
+    project_list_file = "project_list.txt"  # Must be committed or mounted into CI job
+    if not os.path.exists(project_list_file):
+        print("project_list.txt not found", file=sys.__stdout__)
+        sys.exit(1)
+
+    project_paths = read_project_list(project_list_file)
+    print(f"Total projects to scan: {len(project_paths)}", file=sys.__stdout__)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(process_project, p) for p in all_projects]
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading envoy.json"):
+        futures = [executor.submit(process_project_path, p) for p in project_paths]
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Scanning projects"):
             project_name, result = future.result()
             print(f"[{project_name}] -> {result}")
+
+    print("Zipping output...", file=sys.__stdout__)
+    if os.path.exists("downloads") and os.listdir("downloads"):
+        shutil.make_archive("envoy_json_output", "zip", "downloads")
+        print("Zipped output to envoy_json_output.zip", file=sys.__stdout__)
+    else:
+        print("No files downloaded. Skipping ZIP creation.", file=sys.__stdout__)
+
+    print("All downloads completed.", file=sys.__stdout__)
+    sys.stdout.close()
