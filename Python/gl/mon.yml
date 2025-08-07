@@ -1,0 +1,51 @@
+---
+- name: Install auditd via DNF
+  package:
+    name: audit
+    state: present
+
+- name: Enable and start auditd
+  service:
+    name: auditd
+    state: started
+    enabled: yes
+
+- name: Gather all audit rule lines from /etc/audit/rules.d
+  shell: |
+    grep -hvE '^#|^$' /etc/audit/rules.d/*.rules | sort | uniq -d
+  register: duplicate_audit_rules
+  changed_when: false
+
+- name: Comment out RHEL 9-specific 'exclude' rules
+  replace:
+    path: "{{ item }}"
+    regexp: '^(-a\s+exclude.*?)$'
+    replace: '# \1'
+    backup: yes
+  loop: "{{ lookup('ansible.builtin.fileglob', '/etc/audit/rules.d/*.rules', wantlist=True) }}"
+  notify: Reload audit rules
+
+- name: Comment out duplicate audit rules across all .rules files
+  lineinfile:
+    path: "{{ item.0 }}"
+    regexp: '^{{ item.1 | regex_escape() }}$'
+    line: "# {{ item.1 }}"
+    backup: yes
+    state: present
+  loop: >-
+    {{
+      lookup('ansible.builtin.fileglob', '/etc/audit/rules.d/*.rules', wantlist=True)
+      | product(duplicate_audit_rules.stdout_lines)
+      | list
+    }}
+  when: duplicate_audit_rules.stdout_lines | length > 0
+  notify: Reload audit rules
+
+- name: Deploy custom rule file
+  copy:
+    src: 99-custom.rules
+    dest: /etc/audit/rules.d/99-custom.rules
+    owner: root
+    group: root
+    mode: '0640'
+  notify: Reload audit rules
