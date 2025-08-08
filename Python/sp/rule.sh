@@ -1,48 +1,70 @@
 #!/bin/bash
+set -euo pipefail
 
 RULES_DIR="/etc/audit/rules.d"
-TMPDIR=$(mktemp -d)
-SEEN_FILE="$TMPDIR/seen.txt"
 
-# First pass: collect all unique rules (ignoring comments and blanks)
-grep -hvE '^\s*#|^\s*$' "$RULES_DIR"/*.rules | \
-  awk '!seen[$0]++ { print $0 }' > "$SEEN_FILE"
+# Safety: ensure there are .rules files to process
+shopt -s nullglob
+files=( "$RULES_DIR"/*.rules )
+if [ ${#files[@]} -eq 0 ]; then
+  echo "No .rules files found in $RULES_DIR"
+  exit 0
+fi
 
-# Second pass: process each file and comment out duplicates
-for file in "$RULES_DIR"/*.rules; do
-  echo "Processing $file..."
-  tmpfile=$(mktemp)
+# Process all .rules in one AWK pass and write per-file .tmp outputs
+awk '
+  BEGIN {
+    # nothing
+  }
+  FNR==1 {
+    cur = FILENAME
+    out = cur ".tmp"
+  }
 
-  awk -v seen_file="$SEEN_FILE" '
-    BEGIN {
-      while ((getline line < seen_file) > 0) {
-        seen[line] = 1
-      }
-      close(seen_file)
+  # Pass through blank or already-commented lines unchanged
+  /^\s*$/ || /^\s*#/ {
+    print $0 > out
+    next
+  }
+
+  {
+    line = $0
+
+    # Record the first file (by input order) that ever saw this exact line
+    if (!(line in first_file)) {
+      first_file[line] = cur
     }
-    /^\s*$/ || /^\s*#/ { print; next }
-    {
-      if (seen[$0]) {
-        print $0
-        seen[$0] = 0  # Keep only first instance
-      } else {
-        print "# " $0
-      }
-    }
-  ' "$file" > "$tmpfile"
 
-  cp "$file" "$file.bak"
-  mv "$tmpfile" "$file"
+    # Count occurrences of this exact line within this current file
+    key = cur SUBSEP line
+    occ[key]++
+
+    # Keep rule only if:
+    #  - this file is the first file that introduced the line, and
+    #  - this is the first occurrence in this file
+    if (first_file[line] == cur && occ[key] == 1) {
+      print line > out
+    } else {
+      print "# " line > out
+    }
+  }
+' "${files[@]}"
+
+# Backup originals, replace with .tmp
+for f in "${files[@]}"; do
+  cp -f -- "$f" "$f.bak"
+  mv -f -- "$f.tmp" "$f"
 done
 
-# Comment out invalid RHEL 9 'exclude' rules
-for file in "$RULES_DIR"/*.rules; do
-  sed -i 's/^-\(a[[:space:]]\+exclude.*\)$/# -\1/' "$file"
+# Optional: comment out invalid RHEL9-style exclude rules (safe to keep here)
+for f in "${files[@]}"; do
+  sed -i 's/^-\(a[[:space:]]\+exclude.*\)$/# -\1/' "$f"
 done
 
-# Reload audit rules
-echo "Reloading audit rules..."
-/usr/sbin/augenrules --load && echo "audit.rules updated."
+# Reload compiled audit rules
+if command -v augenrules >/dev/null 2>&1; then
+  echo "Reloading audit rules..."
+  /usr/sbin/augenrules --load
+fi
 
-# Cleanup
-rm -rf "$TMPDIR"
+echo "Cross-file deduplication complete."
