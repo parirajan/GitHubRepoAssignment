@@ -6,74 +6,102 @@ if [[ $# -lt 1 || ! -f "$1" ]]; then
   exit 1
 fi
 
-REPORT="$1"
+REPORT_FILE="$1"
 OUT="/tmp/system_inventory_versions_$(date +%Y%m%d%H%M%S).txt"
 : > "$OUT"
 
-# --- 0) OS version (from /etc/redhat-release contents in report) ---
-# e.g. "Red Hat Enterprise Linux release 9.3 (Plow)"
-os_line="$(grep -m1 -E 'release[[:space:]]+[0-9]' "$REPORT" || true)"
-if [[ -n "$os_line" ]]; then
-  os_name="$(echo "$os_line" | sed -E 's/[[:space:]]*release[[:space:]].*//' | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')"
-  os_ver="$(echo "$os_line" | grep -Eo '[0-9]+([.][0-9]+)*' | head -n1)"
-  [[ -n "$os_name" && -n "$os_ver" ]] && echo "$os_name $os_ver" >> "$OUT"
-fi
+# -------- 1) RPM (already "name version-release") --------
+grep -E '^[A-Za-z0-9._+-]+ [0-9]' "$REPORT_FILE" >> "$OUT" || true
 
-# --- 1) RPM packages (already "name version-release") ---
-grep -E '^[A-Za-z0-9._+-]+ [0-9]' "$REPORT" >> "$OUT" || true
+# -------- 2) pip3 list (table) --------
+awk '/^===== Python \(pip3\) =====/{f=1;next} /^$/{f=0} f' "$REPORT_FILE" \
+ | awk 'NR>2 && NF>=2 {print $1, $2}' >> "$OUT" || true
 
-# --- 2) pip (pip3 list table) ---
-awk '/^===== Python \(pip3\) =====/{flag=1;next} /^$/{if(flag){exit}} flag' "$REPORT" \
-  | awk 'NR>2 && NF>=2 {print $1, $2}' >> "$OUT" || true
+# -------- 3) npm globals --------
+awk '/^===== Node \(npm\) =====/{f=1;next} /^$/{f=0} f' "$REPORT_FILE" \
+ | sed -n 's/.*── //p' | sed 's/@/ /' >> "$OUT" || true
 
-# --- 3) npm global packages (npm list -g --depth=0) ---
-awk '/^===== Node \(npm\) =====/{flag=1;next} /^$/{if(flag){exit}} flag' "$REPORT" \
-  | sed -n 's/.*── //p' | sed 's/@/ /' >> "$OUT" || true
+# -------- 4) Docker images (repo tag) --------
+awk '/^===== Docker Images =====/{f=1;next} /^$/{f=0} f' "$REPORT_FILE" \
+ | awk '/^[^ ]+ +[^ ]+$/ {print $1, $2}' >> "$OUT" || true
 
-# --- 4) Docker images (repo tag) ---
-awk '/^===== Docker Images =====/{flag=1;next} /^$/{if(flag){exit}} flag' "$REPORT" \
-  | awk '/^[^ ]+ +[^ ]+$/ {print $1, $2}' >> "$OUT" || true
-
-# --- 5) Envoy / Nginx / Java (match anywhere) ---
-# envoy line looks like: envoy  version: <sha>/1.29.11/...
-grep -E 'envoy[[:space:]]+version:' "$REPORT" \
+# -------- 5) Envoy / Nginx / Java --------
+grep -E '^envoy[[:space:]]+version:' "$REPORT_FILE" \
  | sed -E 's#.* /([0-9.]+)/.*#envoy \1#' >> "$OUT" || true
-
-# nginx: "nginx version: nginx/1.26.3"
-grep -E '^nginx version:' "$REPORT" \
+grep -E '^nginx version:' "$REPORT_FILE" \
  | sed -E 's#^nginx version: nginx/([0-9.]+).*#nginx \1#' >> "$OUT" || true
-
-# java: 'openjdk version "21.0.8"' or 'java version "17.0.9"'
-grep -E '^(openjdk|java) version "' "$REPORT" \
+grep -E '^(openjdk|java) version "' "$REPORT_FILE" \
  | sed -E 's/.* version "([0-9.]+)".*/java \1/' >> "$OUT" || true
 
-# --- 6) Non-RPM binaries (from raw --version outputs) ---
-# Capture shapes:
-#   foo/1.2.3      -> "foo 1.2.3"
-#   foo v1.2.3     -> "foo v1.2.3"
-#   foo 1.2.3      -> "foo 1.2.3"
-grep -Eo '[A-Za-z0-9._-]+/[0-9]+([._-][0-9A-Za-z]+)*' "$REPORT" \
-  | sed 's#/# #' >> "$OUT" || true
+# -------- 6) Non-RPM binaries (simple shapes) --------
+awk '/^===== Non-RPM Binaries/{f=1;next} /^$/{f=0} f' "$REPORT_FILE" \
+ | grep -Eo '^[A-Za-z0-9._-]+ v[0-9]+([._-][0-9A-Za-z]+)*|^[A-Za-z0-9._-]+ [0-9]+([._-][0-9A-Za-z]+)*' \
+ >> "$OUT" || true
+awk '/^===== Non-RPM Binaries/{f=1;next} /^$/{f=0} f' "$REPORT_FILE" \
+ | grep -Eo '[A-Za-z0-9._-]+/[0-9]+([._-][0-9A-Za-z]+)*' \
+ | sed 's#/# #' >> "$OUT" || true
 
-grep -Eo '^[A-Za-z0-9._-]+ v[0-9]+([._-][0-9A-Za-z]+)*' "$REPORT" \
-  >> "$OUT" || true
-
-grep -Eo '^[A-Za-z0-9._-]+ [0-9]+([._-][0-9A-Za-z]+)*' "$REPORT" \
-  >> "$OUT" || true
-
-# --- 7) JAR manifests: Implementation-Title + Implementation-Version ---
+# -------- 7) JARs with vendor/app prefix from path --------
+# We read each JAR block that looks like:
+# -- /opt/<vendor>/.../something.jar --
+#   Implementation-Title: X
+#   Implementation-Version: Y
+#   BOOT-INF/lib/xxx-1.2.3.jar
+#
+# Output:
+#   <vendor> X Y
+#   <vendor> xxx 1.2.3
 awk '
-  /^-- .*\.jar --$/ {have=1; title=""; ver=""; next}
-  have && /^Implementation-Title:/   {sub(/^Implementation-Title:[ ]*/, "", $0); title=$0; next}
-  have && /^Implementation-Version:/ {sub(/^Implementation-Version:[ ]*/, "", $0); ver=$0;
-                                      if (title != "" && ver != "") print title " " ver; next}
-' "$REPORT" >> "$OUT" || true
+  function flush_block(   vname,vers,ver_clean) {
+    if (prefix != "") {
+      if (impl_title != "" && impl_version != "") {
+        ver_clean = impl_version
+        sub(/[[:space:]].*$/, "", ver_clean)                # keep first token (e.g., "5.8.0" from "5.8.0 (b0)")
+        print prefix, impl_title, ver_clean
+      } else if (bundle_name != "" && bundle_version != "") {
+        ver_clean = bundle_version
+        sub(/[[:space:]].*$/, "", ver_clean)
+        print prefix, bundle_name, ver_clean
+      }
+    }
+    impl_title=""; impl_version=""; bundle_name=""; bundle_version=""
+  }
+  # Header line starts a new jar block:
+  /^-- .*\.jar --$/ {
+    # flush previous
+    flush_block()
+    prefix=""
 
-# --- 8) Spring Boot BOOT-INF libs: artifact-version.jar -> "artifact version" ---
-grep -E 'BOOT-INF/lib/.*\.jar' "$REPORT" \
- | sed -nE 's#.*/([A-Za-z0-9_.+-]+)-([0-9][0-9A-Za-z.+:-]*)\.jar#\1 \2#p' >> "$OUT" || true
+    # extract jar path
+    jar=$0
+    sub(/^--[ ]*/, "", jar)
+    sub(/[ ]*--$/, "", jar)
 
-# --- 9) Finalize: drop empties, dedupe, sort ---
+    # vendor/app prefix: if path is under /opt/<vendor>/..., use that <vendor>
+    if (match(jar, "^/opt/([^/]+)", m)) prefix=m[1]
+    next
+  }
+
+  /^Implementation-Title:/   { sub(/^Implementation-Title:[ ]*/, "", $0); impl_title=$0; next }
+  /^Implementation-Version:/ { sub(/^Implementation-Version:[ ]*/, "", $0); impl_version=$0; next }
+
+  /^Bundle-Name:/            { sub(/^Bundle-Name:[ ]*/, "", $0); bundle_name=$0; next }
+  /^Bundle-Version:/         { sub(/^Bundle-Version:[ ]*/, "", $0); bundle_version=$0; next }
+
+  # Spring Boot nested libs
+  /BOOT-INF\/lib\/.*\.jar/ {
+    if (prefix != "" && match($0, /BOOT-INF\/lib\/([A-Za-z0-9_.+-]+)-([0-9][0-9A-Za-z.+:-]*)\.jar/, m)) {
+      print prefix, m[1], m[2]
+    }
+    next
+  }
+
+  END { flush_block() }
+' "$REPORT_FILE" >> "$OUT" || true
+
+# -------- 8) Finalize --------
+# trim empties & dedupe
+sed -i 's/[[:space:]]\+$//' "$OUT"
 sed -i '/^[[:space:]]*$/d' "$OUT"
 sort -u "$OUT" -o "$OUT"
 
