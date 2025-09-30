@@ -90,6 +90,7 @@ else
 fi
 echo
 
+
 echo "===== Non-RPM Binaries (/usr/local/bin, /opt/*/bin) ====="
 shopt -s nullglob
 for bin in /usr/local/bin/* /opt/*/bin/*; do
@@ -97,14 +98,22 @@ for bin in /usr/local/bin/* /opt/*/bin/*; do
   if command -v rpm >/dev/null 2>&1 && rpm -qf "$bin" &>/dev/null; then
     continue  # owned by an rpm; already listed above
   fi
+
   out="$(timeout 5s "$bin" --version 2>/dev/null || \
          timeout 5s "$bin" -version 2>/dev/null || \
          timeout 5s "$bin" version 2>/dev/null || \
          timeout 5s "$bin" -v 2>/dev/null || true)"
-  print_name_version "$(basename "$bin")" "$out"
+
+  tool="$(basename "$bin")"
+  if [[ "$out" =~ ^([A-Za-z0-9._-]+)[[:space:]]+v?[0-9] ]]; then
+    tool="${BASH_REMATCH[1]}"
+  fi
+
+  print_name_version "$tool" "$out"
 done
 shopt -u nullglob
 echo
+
 
 
 echo "===== Python (pip3) ====="
