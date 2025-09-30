@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ===== Config =====
 REPORT_FILE="/tmp/system_inventory_$(date +%Y%m%d%H%M%S).txt"
+JAR_SEARCH_BASE="${JAR_SEARCH_BASE:-/opt/something}"   # change or export to override
 
 exec > >(tee -a "$REPORT_FILE") 2>&1
 
@@ -57,14 +59,18 @@ else
 fi
 echo
 
-echo "===== JAR Metadata ====="
-for jar in /opt/*.jar /srv/*.jar /usr/local/*.jar; do
-  [[ -f "$jar" ]] || continue
-  echo "-- $jar --"
-  unzip -p "$jar" META-INF/MANIFEST.MF 2>/dev/null | grep -E '^(Implementation|Bundle)-' || echo "No manifest info"
-  unzip -l "$jar" "BOOT-INF/lib/*" 2>/dev/null | awk '{print $4}' | grep '\.jar$' || echo "No BOOT-INF/lib jars"
-  echo
-done
+echo "===== JAR Metadata (under $JAR_SEARCH_BASE) ====="
+if [ -d "$JAR_SEARCH_BASE" ]; then
+  # Use -print0 to safely handle spaces; search recursively under /opt/something/*
+  while IFS= read -r -d '' jar; do
+    echo "-- $jar --"
+    unzip -p "$jar" META-INF/MANIFEST.MF 2>/dev/null | grep -E '^(Implementation|Bundle)-' || echo "No manifest info"
+    unzip -l "$jar" "BOOT-INF/lib/*" 2>/dev/null | awk '{print $4}' | grep '\.jar$' || echo "No BOOT-INF/lib jars"
+    echo
+  done < <(find "$JAR_SEARCH_BASE" -type f -name '*.jar' -print0 2>/dev/null)
+else
+  echo "Base path not found: $JAR_SEARCH_BASE"
+fi
 echo
 
 echo "===== Envoy ====="
