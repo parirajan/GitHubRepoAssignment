@@ -1,0 +1,7 @@
+- hosts: all
+  become: true
+  roles:
+    - role: system_inventory
+      vars:
+        jar_search_base: /opt           # could be a list: [/opt, /usr/local, /srv]
+        version_timeout: 5
