@@ -1,0 +1,26 @@
+# Where to search for JARs (one path or a list). Scanned recursively.
+jar_search_base:
+  - /opt
+  - /usr/local
+  - /srv
+
+# Directories to prune while scanning JARs (avoid hangs / noise)
+jar_exclude_paths:
+  - /proc
+  - /sys
+  - /dev
+  - /run
+  - /var/lib/docker
+  - /tmp
+
+# Extra places to look for non-RPM executables (non-recursive)
+nonrpm_bin_globs:
+  - /usr/local/bin/*
+  - /opt/*/bin/*
+
+# Output files (on the remote host)
+inventory_report_path: "/tmp/system_inventory_{{ ansible_date_time.epoch }}.txt"
+inventory_versions_path: "/tmp/system_inventory_versions_{{ ansible_date_time.epoch }}.txt"
+
+# How long to wait for "<bin> --version" (seconds)
+version_timeout: 5
