@@ -8,7 +8,7 @@ VERSIONS_FILE="/tmp/system_inventory_versions_${TS}.txt"
 # Where to search for JARs (recursive)
 JAR_SEARCH_BASE="${JAR_SEARCH_BASE:-/opt/something}"
 
-# Regex to pull a single version token
+# Regex for version tokens
 VERSION_RX='[0-9]+([._-][0-9A-Za-z]+)+'
 
 # start fresh
@@ -21,10 +21,25 @@ exec > >(tee -a "$REPORT_FILE") 2>&1
 print_name_version() {
   local name="$1" ver="$2"
   [[ -n "$name" && -n "$ver" ]] || return 0
-  # normalize to single line token
-  ver="$(echo "$ver" | tr -d '\r' | head -n1 | grep -Eo "$VERSION_RX" || true)"
-  [[ -n "$ver" ]] || return 0
-  echo "$name $ver" | tee -a "$VERSIONS_FILE"
+
+  # Try to capture "foo/1.2.3"
+  local match
+  match="$(echo "$ver" | grep -Eo '[A-Za-z0-9._-]+/[0-9]+([._-][0-9A-Za-z]+)*' | head -n1 || true)"
+  if [[ -n "$match" ]]; then
+    echo "$match" | sed 's#/# #' | tee -a "$VERSIONS_FILE"
+    return
+  fi
+
+  # Try to capture "foo v1.2.3"
+  match="$(echo "$ver" | grep -Eo '[A-Za-z0-9._-]+ v?[0-9]+([._-][0-9A-Za-z]+)*' | head -n1 || true)"
+  if [[ -n "$match" ]]; then
+    echo "$match" | tee -a "$VERSIONS_FILE"
+    return
+  fi
+
+  # fallback: just version number
+  match="$(echo "$ver" | grep -Eo "$VERSION_RX" | head -n1 || true)"
+  [[ -n "$match" ]] && echo "$name $match" | tee -a "$VERSIONS_FILE"
 }
 
 jar_manifest_version() { # $1=jar -> echo "name version"
@@ -113,8 +128,8 @@ echo
 
 echo "===== JAR Metadata (recursive under $JAR_SEARCH_BASE) ====="
 if [[ -d "$JAR_SEARCH_BASE" ]]; then
-  find "$JAR_SEARCH_BASE" \
-    -type d \( -path /proc -o -path /sys -o -path /dev -o -path /run -o -path /var/lib/docker \) -prune -o \
+  find "$JAR_SEARCH_BASE" -xdev \
+    \( -path /proc -o -path /sys -o -path /dev -o -path /run -o -path /var/lib/docker -o -path /tmp \) -prune -o \
     -type f -name '*.jar' -print0 2>/dev/null \
   | while IFS= read -r -d '' jar; do
       echo "-- $jar --"
