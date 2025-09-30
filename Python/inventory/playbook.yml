@@ -1,0 +1,10 @@
+- hosts: ec2
+  become: true
+  roles:
+    - role: system_inventory
+      vars:
+        jar_search_base:
+          - /opt
+          - /usr/local
+          - /srv
+        version_timeout: 5
