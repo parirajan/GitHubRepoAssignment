@@ -91,15 +91,21 @@ fi
 echo
 
 echo "===== Non-RPM Binaries (/usr/local/bin, /opt/*/bin) ====="
+shopt -s nullglob
 for bin in /usr/local/bin/* /opt/*/bin/*; do
   [[ -x "$bin" && ! -d "$bin" ]] || continue
   if command -v rpm >/dev/null 2>&1 && rpm -qf "$bin" &>/dev/null; then
     continue  # owned by an rpm; already listed above
   fi
-  out="$("$bin" --version 2>/dev/null || "$bin" -version 2>/dev/null || "$bin" version 2>/dev/null || "$bin" -v 2>/dev/null || true)"
+  out="$(timeout 5s "$bin" --version 2>/dev/null || \
+         timeout 5s "$bin" -version 2>/dev/null || \
+         timeout 5s "$bin" version 2>/dev/null || \
+         timeout 5s "$bin" -v 2>/dev/null || true)"
   print_name_version "$(basename "$bin")" "$out"
 done
+shopt -u nullglob
 echo
+
 
 echo "===== Python (pip3) ====="
 if command -v pip3 >/dev/null 2>&1; then
