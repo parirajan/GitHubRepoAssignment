@@ -84,14 +84,28 @@ if [[ -d "$JAR_SEARCH_BASE" ]]; then
     -type f -name '*.jar' -print0 2>/dev/null \
   | while IFS= read -r -d '' jar; do
       echo "-- $jar --"
-      unzip -p "$jar" META-INF/MANIFEST.MF 2>/dev/null | grep -E '^(Implementation|Bundle)-' || echo "No manifest info"
-      unzip -l "$jar" "BOOT-INF/lib/*" 2>/dev/null | awk '{print $4}' | grep '\.jar$' || echo "No BOOT-INF/lib jars"
+
+      # verify it’s a valid zip/JAR
+      if ! unzip -tq "$jar" >/dev/null 2>&1; then
+        echo "   (invalid/corrupt JAR, skipped)"
+        continue
+      fi
+
+      echo "   Manifest:"
+      unzip -p "$jar" META-INF/MANIFEST.MF 2>/dev/null | \
+        grep -E '^(Implementation|Bundle)-' || echo "      (none)"
+
+      echo "   BOOT-INF/lib jars:"
+      unzip -l "$jar" "BOOT-INF/lib/*.jar" 2>/dev/null | \
+        awk '{print $4}' | grep '\.jar$' | sed 's#^#      #' || echo "      (none)"
+
       echo
     done
 else
   echo "Base path not found: $JAR_SEARCH_BASE"
 fi
 echo
+
 
 echo "===== Envoy ====="
 if command -v envoy >/dev/null 2>&1; then
