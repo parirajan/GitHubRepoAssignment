@@ -1,0 +1,300 @@
+---
+- name: Ensure unzip exists (for manifest/BOOT-INF reads)
+  become: true
+  ansible.builtin.package:
+    name: unzip
+    state: present
+
+- name: Initialize report files
+  ansible.builtin.copy:
+    dest: "{{ inventory_report_path }}"
+    mode: "0644"
+    content: |-
+      ===== System Inventory Report =====
+      Generated: {{ ansible_date_time.iso8601 }}
+      Report:    {{ inventory_report_path }}
+      Versions:  {{ inventory_versions_path }}
+
+      ===== OS Release =====
+      {{ (lookup('file', '/etc/redhat-release', errors='ignore') | default('/etc/redhat-release not found')) }}
+      <!-- Sections appended below by tasks -->
+  register: _report_init
+
+- name: Initialize versions file (empty)
+  ansible.builtin.copy:
+    dest: "{{ inventory_versions_path }}"
+    mode: "0644"
+    content: ""
+
+# ---------------- RPM ----------------
+- name: Append RPM packages to report
+  ansible.builtin.shell: |
+    {
+      echo;
+      echo "===== RPM Packages =====";
+      if command -v rpm >/dev/null 2>&1; then
+        rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' | sort
+      else
+        echo "rpm not available on this system"
+      fi
+    } >> "{{ inventory_report_path }}"
+  args:
+    executable: /bin/bash
+
+- name: Append RPMs to versions file (flat)
+  ansible.builtin.shell: |
+    if command -v rpm >/dev/null 2>&1; then
+      rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' | sort >> "{{ inventory_versions_path }}"
+    fi
+  args:
+    executable: /bin/bash
+
+# ---------------- Non-RPM binaries ----------------
+- name: Resolve non-RPM binary paths
+  ansible.builtin.shell: |
+    shopt -s nullglob
+    for g in {{ nonrpm_bin_globs | join(' ') }}; do
+      for f in $g; do
+        [[ -x "$f" && ! -d "$f" ]] && echo "$f"
+      done
+    done
+  args:
+    executable: /bin/bash
+  register: nonrpm_bins
+  changed_when: false
+
+- name: Filter non-RPM binaries (not owned by any RPM)
+  ansible.builtin.shell: |
+    while IFS= read -r p; do
+      if rpm -qf "$p" >/dev/null 2>&1; then
+        : # owned by rpm
+      else
+        echo "$p"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  register: nonrpm_unowned
+  changed_when: false
+  when: nonrpm_bins.stdout != ""
+  vars:
+    ansible_command_timeout: 60
+  with_items: "{{ nonrpm_bins.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  # We want a single merged list; use set_fact below.
+  ignore_errors: true
+
+- name: Merge non-RPM unowned binaries
+  ansible.builtin.set_fact:
+    nonrpm_unowned_list: "{{ (nonrpm_unowned_list | default([])) + [item.item] if (item.stdout is defined and item.stdout|length > 0) else (nonrpm_unowned_list | default([])) }}"
+  loop: "{{ nonrpm_unowned.results | default([]) }}"
+  when: nonrpm_bins.stdout != ""
+
+- name: Append Non-RPM Binaries to report (with timeouts)
+  ansible.builtin.shell: |
+    {
+      echo;
+      echo "===== Non-RPM Binaries =====";
+      {% for p in nonrpm_unowned_list | default([]) | unique %}
+      echo "---- {{ p }} ----";
+      timeout {{ version_timeout }} "{{ p }}" --version 2>&1 || true
+      timeout {{ version_timeout }} "{{ p }}" -version 2>&1 || true
+      timeout {{ version_timeout }} "{{ p }}" version 2>&1  || true
+      timeout {{ version_timeout }} "{{ p }}" -v 2>&1       || true
+      echo
+      {% endfor %}
+    } >> "{{ inventory_report_path }}"
+  args:
+    executable: /bin/bash
+
+# For versions file we keep it simple: capture the common shapes from what we just appended.
+- name: Append Non-RPM versions to flat list
+  ansible.builtin.shell: |
+    awk '/^===== Non-RPM Binaries/{f=1;next} /^=====/{f=0} f' "{{ inventory_report_path }}" \
+      | grep -Eo '^[A-Za-z0-9._-]+ v[0-9]+([._-][0-9A-Za-z]+)*|^[A-Za-z0-9._-]+ [0-9]+([._-][0-9A-Za-z]+)*' \
+      >> "{{ inventory_versions_path }}" || true
+    awk '/^===== Non-RPM Binaries/{f=1;next} /^=====/{f=0} f' "{{ inventory_report_path }}" \
+      | grep -Eo '[A-Za-z0-9._-]+/[0-9]+([._-][0-9A-Za-z]+)*' \
+      | sed 's#/# #' >> "{{ inventory_versions_path }}" || true
+  args:
+    executable: /bin/bash
+
+# ---------------- Python / pip3 ----------------
+- name: Append pip3 list to report and versions
+  ansible.builtin.shell: |
+    {
+      echo;
+      echo "===== Python (pip3) =====";
+      if command -v pip3 >/dev/null 2>&1; then
+        pip3 list
+      else
+        echo "pip3 not found"
+      fi
+      echo
+    } >> "{{ inventory_report_path }}"
+
+    if command -v pip3 >/dev/null 2>&1; then
+      pip3 list | awk 'NR>2{print $1, $2}' >> "{{ inventory_versions_path }}"
+    fi
+  args:
+    executable: /bin/bash
+
+# ---------------- Node / npm ----------------
+- name: Append npm list to report and versions
+  ansible.builtin.shell: |
+    {
+      echo;
+      echo "===== Node (npm) =====";
+      if command -v npm >/dev/null 2>&1; then
+        npm list -g --depth=0 || true
+      else
+        echo "npm not found"
+      fi
+      echo
+    } >> "{{ inventory_report_path }}"
+
+    if command -v npm >/dev/null 2>&1; then
+      npm list -g --depth=0 2>/dev/null \
+        | sed -n 's/.*── //p' | sed 's/@/ /' >> "{{ inventory_versions_path }}" || true
+    fi
+  args:
+    executable: /bin/bash
+
+# ---------------- Docker images ----------------
+- name: Append docker images to report and versions
+  ansible.builtin.shell: |
+    {
+      echo;
+      echo "===== Docker Images =====";
+      if command -v docker >/dev/null 2>&1; then
+        docker images
+      else
+        echo "docker not found"
+      fi
+      echo
+    } >> "{{ inventory_report_path }}"
+
+    if command -v docker >/dev/null 2>&1; then
+      docker images --format '{{"{{"}}.Repository{{"}}"}} {{"{{"}}.Tag{{"}}"}}' >> "{{ inventory_versions_path }}"
+    fi
+  args:
+    executable: /bin/bash
+
+# ---------------- JARs ----------------
+- name: Build list of jar bases
+  ansible.builtin.set_fact:
+    _jar_bases: "{{ jar_search_base if jar_search_base is iterable and (jar_search_base is not string) else [jar_search_base] }}"
+
+- name: Find JAR files recursively (prunes bad/system paths)
+  ansible.builtin.shell: |
+    set -e
+    {% for base in _jar_bases %}
+    if [ -d "{{ base }}" ]; then
+      find "{{ base }}" -xdev \
+        \( {% for p in jar_exclude_paths %}-path {{ p }} -o {% endfor %} -false \) -prune -o \
+        -type f -name '*.jar' -print
+    fi
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  register: jar_paths
+  changed_when: false
+
+- name: Append JAR manifest + BOOT-INF libs to report
+  ansible.builtin.shell: |
+    {
+      echo;
+      echo "===== JAR Metadata (recursive) =====";
+      {% for j in jar_paths.stdout_lines | default([]) %}
+      echo "-- {{ j }} --"
+      if unzip -tq '{{ j }}' >/dev/null 2>&1; then
+        echo "   Manifest:"
+        unzip -p '{{ j }}' META-INF/MANIFEST.MF 2>/dev/null | egrep '^(Implementation|Bundle)-' || echo "      (none)"
+        echo "   BOOT-INF/lib jars:"
+        unzip -l '{{ j }}' 'BOOT-INF/lib/*.jar' 2>/dev/null | awk '{print $4}' | grep '\.jar$' | sed 's#^#      #' || echo "      (none)"
+      else
+        echo "   (invalid/corrupt JAR, skipped)"
+      fi
+      echo
+      {% endfor %}
+    } >> "{{ inventory_report_path }}"
+  args:
+    executable: /bin/bash
+
+# Prefix vendor (e.g., /opt/<vendor>/...) and emit flat versions for JARs
+- name: Append JAR-derived versions to flat list (vendor title/version + BOOT-INF libs)
+  ansible.builtin.shell: |
+    awk '
+      function flush_block(   ver_clean) {
+        if (prefix != "") {
+          if (impl_title != "" && impl_version != "") {
+            ver_clean = impl_version; sub(/[[:space:]].*$/, "", ver_clean);
+            print prefix, impl_title, ver_clean
+          } else if (bundle_name != "" && bundle_version != "") {
+            ver_clean = bundle_version; sub(/[[:space:]].*$/, "", ver_clean);
+            print prefix, bundle_name, ver_clean
+          }
+        }
+        impl_title=""; impl_version=""; bundle_name=""; bundle_version=""
+      }
+      /^-- .*\.jar --$/ {
+        # flush previous
+        flush_block()
+        prefix=""
+        jar=$0; sub(/^--[ ]*/, "", jar); sub(/[ ]*--$/, "", jar)
+        if (match(jar, "^/opt/([^/]+)", m)) prefix=m[1]
+        next
+      }
+      /^Implementation-Title:/   { sub(/^Implementation-Title:[ ]*/, "", $0); impl_title=$0; next }
+      /^Implementation-Version:/ { sub(/^Implementation-Version:[ ]*/, "", $0); impl_version=$0; next }
+      /^Bundle-Name:/            { sub(/^Bundle-Name:[ ]*/, "", $0); bundle_name=$0; next }
+      /^Bundle-Version:/         { sub(/^Bundle-Version:[ ]*/, "", $0); bundle_version=$0; next }
+      /BOOT-INF\/lib\/.*\.jar/ {
+        if (prefix != "" && match($0, /BOOT-INF\/lib\/([A-Za-z0-9_.+-]+)-([0-9][0-9A-Za-z.+:-]*)\.jar/, m)) {
+          print prefix, m[1], m[2]
+        }
+        next
+      }
+      END { flush_block() }
+    ' "{{ inventory_report_path }}" >> "{{ inventory_versions_path }}" || true
+  args:
+    executable: /bin/bash
+
+# ---------------- Envoy / Nginx / Java ----------------
+- name: Append Envoy/Nginx/Java to report and versions
+  ansible.builtin.shell: |
+    {
+      echo;
+      echo "===== Envoy =====";
+      if command -v envoy >/dev/null 2>&1; then envoy --version 2>&1; else echo "envoy not found"; fi
+      echo;
+      echo "===== Nginx =====";
+      if command -v nginx >/dev/null 2>&1; then nginx -v 2>&1; else echo "nginx not found"; fi
+      echo;
+      echo "===== Java =====";
+      if command -v java  >/dev/null 2>&1; then java -version 2>&1; else echo "java not found"; fi
+      echo;
+    } >> "{{ inventory_report_path }}"
+
+    # Versions-only lines:
+    grep -E '^envoy[[:space:]]+version:' "{{ inventory_report_path }}" | sed -E 's#.* /([0-9.]+)/.*#envoy \1#' >> "{{ inventory_versions_path }}" || true
+    grep -E '^nginx version:' "{{ inventory_report_path }}" | sed -E 's#^nginx version: nginx/([0-9.]+).*#nginx \1#' >> "{{ inventory_versions_path }}" || true
+    grep -E '^(openjdk|java) version "' "{{ inventory_report_path }}" | sed -E 's/.* version "([0-9.]+)".*/java \1/' >> "{{ inventory_versions_path }}" || true
+  args:
+    executable: /bin/bash
+
+# ---------------- Finalize versions file ----------------
+- name: Dedupe & sort versions file
+  ansible.builtin.shell: |
+    sed -i 's/[[:space:]]\+$//' "{{ inventory_versions_path }}"
+    sed -i '/^[[:space:]]*$/d'  "{{ inventory_versions_path }}"
+    sort -u "{{ inventory_versions_path }}" -o "{{ inventory_versions_path }}"
+  args:
+    executable: /bin/bash
+
+- name: Show where files are
+  ansible.builtin.debug:
+    msg:
+      - "Detailed report: {{ inventory_report_path }}"
+      - "Versions-only : {{ inventory_versions_path }}"
