@@ -5,6 +5,4 @@ jq -r '
   | .[]
   | @tsv
 ' bom.json \
-| column -t -s$'\t' \
-| sed '1s/^/| /; 1s/$/ |/; 2,$s/^/| /; 2,$s/$/ |/' \
-| sed '2i|---|---|'
+| awk 'BEGIN{FS="\t"; OFS=" | "} NR==1{print "| " $1 " | " $2 " |"; print "|---|---|"} NR>1{print "| " $1 " | " $2 " |"}'
