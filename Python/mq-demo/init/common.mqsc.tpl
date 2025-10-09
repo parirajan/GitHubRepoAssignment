@@ -1,35 +1,29 @@
-* =========================================================
-* Common MQSC template for FNUNI cluster (2 FR, 1 PR)
-* =========================================================
-
-* ----- Listener -----
+* Listener
 DEFINE LISTENER(L1414) TRPTYPE(TCP) PORT(1414) CONTROL(QMGR) REPLACE
 START LISTENER(L1414)
 
-* ----- Application channel -----
+* App channel
 DEFINE CHANNEL('DEV.APP.SVRCONN') CHLTYPE(SVRCONN) TRPTYPE(TCP) MCAUSER('app') REPLACE
 ALTER QMGR CHLAUTH(DISABLED)
 
-* ----- Cluster receiver for THIS queue manager -----
-DEFINE CHANNEL('TO.FNUNI') CHLTYPE(CLUSRCVR) TRPTYPE(TCP) +
+* ---- Cluster receiver for THIS QM (name must be unique and match senders on peers)
+DEFINE CHANNEL('FNUNI.TO.{{SELF_QM}}') CHLTYPE(CLUSRCVR) TRPTYPE(TCP) +
   CONNAME('{{SELF_HOST}}(1414)') CLUSTER('FNUNI') REPLACE
 
-* ----- Cluster senders to seed QMs -----
-DEFINE CHANNEL('FNUNI.TO.SEED1') CHLTYPE(CLUSSDR) TRPTYPE(TCP) +
-  CONNAME('{{SEED1_HOST}}(1414)') CLUSTER('FNUNI') REPLACE
-DEFINE CHANNEL('FNUNI.TO.SEED2') CHLTYPE(CLUSSDR) TRPTYPE(TCP) +
-  CONNAME('{{SEED2_HOST}}(1414)') CLUSTER('FNUNI') REPLACE
+* ---- Cluster senders to the two peers — names must match the CLUSRCVR on the peer
+DEFINE CHANNEL('FNUNI.TO.{{PEER1_QM}}') CHLTYPE(CLUSSDR) TRPTYPE(TCP) +
+  CONNAME('{{PEER1_HOST}}(1414)') CLUSTER('FNUNI') REPLACE
+DEFINE CHANNEL('FNUNI.TO.{{PEER2_QM}}') CHLTYPE(CLUSSDR) TRPTYPE(TCP) +
+  CONNAME('{{PEER2_HOST}}(1414)') CLUSTER('FNUNI') REPLACE
 
-* ----- Clustered queues -----
+* Clustered queues
 DEFINE QLOCAL('PAYMENT.REQUEST')  CLUSTER('FNUNI') DEFBIND(NOTFIXED) CLWLUSEQ(ANY) REPLACE
 DEFINE QLOCAL('PAYMENT.RESPONSE') CLUSTER('FNUNI') DEFBIND(NOTFIXED) CLWLUSEQ(ANY) REPLACE
 
-* ----- Dead letter queue -----
+* DLQ
 DEFINE QLOCAL('PAYMENT.DLQ') REPLACE
 ALTER QMGR DEADQ('PAYMENT.DLQ')
 
-* ----- Workload balancing -----
+* Workload
 ALTER QMGR CLWLMRUC(999999999)
 ALTER QMGR CLWLUSEQ(ANY)
-
-* ----- FR/PR role is appended by render-mqsc.sh -----
