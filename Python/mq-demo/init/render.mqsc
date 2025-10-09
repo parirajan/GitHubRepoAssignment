@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SELF_HOST="${SELF_HOST:-$HOSTNAME}"
+SEED1_HOST="${SEED1_HOST:-mq1}"
+SEED2_HOST="${SEED2_HOST:-mq2}"
+ROLE="${ROLE:-PR}"   # mq1 & mq2 will override to FR in compose
+
+TPL="/etc/mqm/common.mqsc.tpl"
+OUT="/etc/mqm/auto.mqsc"
+
+# Replace placeholders
+sed -e "s/{{SELF_HOST}}/${SELF_HOST}/g" \
+    -e "s/{{SEED1_HOST}}/${SEED1_HOST}/g" \
+    -e "s/{{SEED2_HOST}}/${SEED2_HOST}/g" "$TPL" > "$OUT.tmp"
+
+# Remove self-referencing sender lines
+awk -v self="$SELF_HOST" '
+  /CLUSSDR/ && $0 ~ ("CONNAME.\047" self "\\(1414\\)\\047") { next }
+  { print }
+' "$OUT.tmp" > "$OUT"
+
+# Append FR or PR configuration
+if [[ "$ROLE" == "FR" ]]; then
+  echo "ALTER QMGR REPOS('FNUNI')" >> "$OUT"
+else
+  echo "ALTER QMGR REPOS('')" >> "$OUT"
+  echo "ALTER QMGR REPOSNL('')" >> "$OUT"
+fi
+
+echo "Rendered MQSC for $SELF_HOST (ROLE=$ROLE):"
+cat "$OUT"
