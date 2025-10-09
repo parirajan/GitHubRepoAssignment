@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+  mq-producer:
+    build: ./apps/mq-producer
+    container_name: mq-producer
+    environment:
+      IBM_MQ_QUEUE_MANAGER: FNQM1
+      IBM_MQ_CHANNEL: DEV.APP.SVRCONN
+      IBM_MQ_CONN_NAME: mq1(1414)
+      IBM_MQ_USER: app
+      IBM_MQ_PASSWORD: app
+      IBM_MQ_REQUEST_QUEUE: PAYMENT.REQUEST
+      SEND_INTERVAL_MS: 2000
+    networks: [mqnet]
+    ports:
+      - "18080:8080"
+
+  mq-consumer:
+    build: ./apps/mq-consumer
+    container_name: mq-consumer
+    environment:
+      IBM_MQ_QUEUE_MANAGER: FNQM2
+      IBM_MQ_CHANNEL: DEV.APP.SVRCONN
+      IBM_MQ_CONN_NAME: mq2(1414)
+      IBM_MQ_USER: app
+      IBM_MQ_PASSWORD: app
+      IBM_MQ_REQUEST_QUEUE: PAYMENT.REQUEST
+    networks: [mqnet]
+    ports:
+      - "18081:8081"
+
+networks:
+  mqnet:
+    external: true
