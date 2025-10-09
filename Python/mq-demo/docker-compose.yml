@@ -1,0 +1,81 @@
+version: "3.8"
+
+networks:
+  mqnet:
+    driver: bridge
+
+services:
+  mq1:
+    image: icr.io/ibm-messaging/mq:latest
+    container_name: mq1
+    hostname: mq1
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=FNQM1
+      - MQ_ENABLE_METRICS=true
+      - SELF_HOST=mq1
+      - SEED1_HOST=mq1
+      - SEED2_HOST=mq2
+      - ROLE=FR
+    ports:
+      - "1414:1414"
+      - "9443:9443"
+    volumes:
+      - ./mq1-data:/mnt/mqm
+      - ./init/common.mqsc.tpl:/etc/mqm/common.mqsc.tpl:ro
+      - ./init/render-mqsc.sh:/usr/local/bin/render-mqsc.sh:ro
+    entrypoint: ["/bin/bash","-lc"]
+    command: >
+      "/usr/local/bin/render-mqsc.sh && /usr/local/bin/runmqserver"
+    networks: [mqnet]
+    restart: unless-stopped
+
+  mq2:
+    image: icr.io/ibm-messaging/mq:latest
+    container_name: mq2
+    hostname: mq2
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=FNQM2
+      - MQ_ENABLE_METRICS=true
+      - SELF_HOST=mq2
+      - SEED1_HOST=mq1
+      - SEED2_HOST=mq2
+      - ROLE=FR
+    ports:
+      - "1415:1414"
+      - "9444:9443"
+    volumes:
+      - ./mq2-data:/mnt/mqm
+      - ./init/common.mqsc.tpl:/etc/mqm/common.mqsc.tpl:ro
+      - ./init/render-mqsc.sh:/usr/local/bin/render-mqsc.sh:ro
+    entrypoint: ["/bin/bash","-lc"]
+    command: >
+      "/usr/local/bin/render-mqsc.sh && /usr/local/bin/runmqserver"
+    networks: [mqnet]
+    restart: unless-stopped
+
+  mq3:
+    image: icr.io/ibm-messaging/mq:latest
+    container_name: mq3
+    hostname: mq3
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=FNQM3
+      - MQ_ENABLE_METRICS=true
+      - SELF_HOST=mq3
+      - SEED1_HOST=mq1
+      - SEED2_HOST=mq2
+      - ROLE=PR
+    ports:
+      - "1416:1414"
+      - "9445:9443"
+    volumes:
+      - ./mq3-data:/mnt/mqm
+      - ./init/common.mqsc.tpl:/etc/mqm/common.mqsc.tpl:ro
+      - ./init/render-mqsc.sh:/usr/local/bin/render-mqsc.sh:ro
+    entrypoint: ["/bin/bash","-lc"]
+    command: >
+      "/usr/local/bin/render-mqsc.sh && /usr/local/bin/runmqserver"
+    networks: [mqnet]
+    restart: unless-stopped
