@@ -1,0 +1,88 @@
+#Validation - 1
+#Cluster and Channel Health
+# members seen?
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< 'DISPLAY CLUSQMGR(*)'"
+docker exec -it mq2 bash -lc "runmqsc FNQM2 <<< 'DISPLAY CLUSQMGR(*)'"
+docker exec -it mq3 bash -lc "runmqsc FNQM3 <<< 'DISPLAY CLUSQMGR(*)'"
+
+# cluster channels running?
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< \"DISPLAY CHSTATUS('FNUNI.TO.*') ALL\""
+docker exec -it mq2 bash -lc "runmqsc FNQM2 <<< \"DISPLAY CHSTATUS('FNUNI.TO.*') ALL\""
+docker exec -it mq3 bash -lc "runmqsc FNQM3 <<< \"DISPLAY CHSTATUS('FNUNI.TO.*') ALL\""
+
+# listener up?
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< 'DISPLAY LSSTATUS(L1414)'"
+
+#Validation - 2
+#Cluster Queue Visibility
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< \"DISPLAY QLOCAL('PAYMENT.*') CLUSTER\""
+docker exec -it mq2 bash -lc "runmqsc FNQM2 <<< \"DISPLAY QLOCAL('PAYMENT.*') CLUSTER\""
+docker exec -it mq3 bash -lc "runmqsc FNQM3 <<< \"DISPLAY QCLUSTER('PAYMENT.*')\""
+
+#Validation - 3
+#Message PUT and GET Flow
+
+# PUT five messages on FNQM1
+for i in 1 2 3 4 5; do
+  docker exec -it mq1 bash -lc "printf 'msg-$i\n' | amqsput PAYMENT.REQUEST FNQM1" >/dev/null
+done
+
+# Check distribution (uniform cluster splits them)
+for n in 1 2 3; do
+  echo "FNQM$n depth:"; docker exec -it mq$n bash -lc "runmqsc FNQM$n <<< \"DISPLAY QLOCAL('PAYMENT.REQUEST') CURDEPTH\""
+done
+
+# GET from each to prove routing
+for n in 1 2 3; do
+  echo "GET on FNQM$n:"
+  docker exec -it mq$n bash -lc "timeout 3 amqsget PAYMENT.REQUEST FNQM$n || true"
+done
+
+#Validation - 4
+#Response Loop
+# Put a response back (pretend settlement ack)
+docker exec -it mq2 bash -lc "printf 'ACK from FNQM2\n' | amqsput PAYMENT.RESPONSE FNQM2"
+# Client logs should show it consumed from PAYMENT.RESPONSE.
+
+#Failover and Resiliency
+# Stop one QM and make sure PUT still works and distributes to remaining two
+docker stop mq2
+
+# PUT three more messages; they should land on FNQM1/FNQM3
+for i in 6 7 8; do
+  docker exec -it mq1 bash -lc "printf 'msg-$i\n' | amqsput PAYMENT.REQUEST FNQM1" >/dev/null
+done
+
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< \"DISPLAY QLOCAL('PAYMENT.REQUEST') CURDEPTH\""
+docker exec -it mq3 bash -lc "runmqsc FNQM3 <<< \"DISPLAY QLOCAL('PAYMENT.REQUEST') CURDEPTH\""
+
+# Bring FNQM2 back and verify it rejoins the cluster
+docker start mq2
+docker exec -it mq2 bash -lc "runmqsc FNQM2 <<< \"DISPLAY CLUSQMGR(*)\""
+
+#Validation - 5
+#DLQ Path Verify
+# Try to GET from a non-existent queue to create a backout? Easier: disable a target briefly.
+# STOP the REQUEST queue for gets, then put an expired message so it goes to DLQ:
+
+# Set short expiry (in milliseconds): use amqsput with MQMD not trivial here.
+# Simpler: force a DLQ via a bad XMIT route—quick check instead:
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< 'DISPLAY QMGR DEADQ'"
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< 'DISPLAY QLOCAL(PAYMENT.DLQ) CURDEPTH'"
+
+#Validation - 7
+#Repository Role
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< 'DISPLAY QMGR REPOS'"
+docker exec -it mq2 bash -lc "runmqsc FNQM2 <<< 'DISPLAY QMGR REPOS'"
+docker exec -it mq3 bash -lc "runmqsc FNQM3 <<< 'DISPLAY QMGR REPOS'"
+
+#Validation - 8
+#Security and App Channel Validation
+# CHLAUTH disabled (dev only)?
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< 'DISPLAY QMGR CHLAUTH'"
+
+# SVRCONN channel exists?
+docker exec -it mq1 bash -lc "runmqsc FNQM1 <<< \"DISPLAY CHANNEL('DEV.APP.SVRCONN')\""
+
+#Validation - 9
+#Validate via Console for health of Listeners, QM's, Channels
