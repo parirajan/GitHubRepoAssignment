@@ -1,0 +1,22 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.demo</groupId>
+  <artifactId>mq-spring-docker-demo</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+  <modules>
+    <module>apps/mq-producer</module>
+    <module>apps/mq-consumer</module>
+  </modules>
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+          <version>3.3.4</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>
