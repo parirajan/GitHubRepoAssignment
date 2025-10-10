@@ -32,3 +32,45 @@ else
 fi
 
 echo "Rendered MQSC for $SELF_QM ($SELF_HOST) ROLE=$ROLE -> $OUT"
+
+
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+SELF_QM="${SELF_QM:-$QMGR_NAME}"          # or pass via env
+SELF_HOST="${SELF_HOST:-$HOSTNAME}"
+
+PEER1_QM="${PEER1_QM:-FNQM1}"
+PEER1_HOST="${PEER1_HOST:-mq1}"
+PEER2_QM="${PEER2_QM:-FNQM2}"
+PEER2_HOST="${PEER2_HOST:-mq2}"
+
+ROLE="${ROLE:-PR}"                         # 'FR' or 'PR'
+
+# NEW:
+APP_PRINCIPAL="${APP_PRINCIPAL:-app}"
+QUEUE_PREFIX="${QUEUE_PREFIX:-PAYMENT}"
+
+TPL=/opt/common.mqsc.tpl
+OUT=/etc/mqm/auto.mqsc
+
+sed -e "s/{{SELF_QM}}/${SELF_QM}/g" \
+    -e "s/{{SELF_HOST}}/${SELF_HOST}/g" \
+    -e "s/{{PEER1_QM}}/${PEER1_QM}/g" \
+    -e "s/{{PEER1_HOST}}/${PEER1_HOST}/g" \
+    -e "s/{{PEER2_QM}}/${PEER2_QM}/g" \
+    -e "s/{{PEER2_HOST}}/${PEER2_HOST}/g" \
+    -e "s/{{APP_PRINCIPAL}}/${APP_PRINCIPAL}/g" \
+    -e "s/{{QUEUE_PREFIX}}/${QUEUE_PREFIX}/g" \
+    "$TPL" > "$OUT"
+
+# Append FR/PR
+if [[ "$ROLE" == "FR" ]]; then
+  echo "ALTER QMGR REPOS('FNUNI')"  >> "$OUT"
+else
+  echo "ALTER QMGR REPOS('')"       >> "$OUT"
+  echo "ALTER QMGR REPOSNL('')"     >> "$OUT"
+fi
+
+echo "Rendered MQSC for $SELF_QM (ROLE=$ROLE, APP=$APP_PRINCIPAL, QPFX=$QUEUE_PREFIX)"
