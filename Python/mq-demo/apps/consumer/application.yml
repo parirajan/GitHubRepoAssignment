@@ -1,8 +1,0 @@
-ibm:
-  mq:
-    queue-manager: FNQM2
-    channel: DEV.APP.SVRCONN
-    conn-name: mq2(1414)
-    user: app
-    password: app
-    request-queue: PAYMENT.REQUEST
