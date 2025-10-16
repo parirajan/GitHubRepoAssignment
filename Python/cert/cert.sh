@@ -1,3 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CERT_FLAG="${CERT_FLAG:-/etc/mqm/pki/.done}"   # shared volume flag from prepare-certs
+HOSTS="${HOSTS:-mq1 mq2 mq3}"                  # space-separated
+PORT="${PORT:-1414}"
+SLEEP="${SLEEP:-2}"
+MAX_WAIT="${MAX_WAIT:-300}"                    # seconds (0 = infinite)
+
+have_nc()      { command -v nc >/dev/null 2>&1; }
+have_openssl() { command -v openssl >/dev/null 2>&1; }
+
+echo "[wait] waiting for cert flag $CERT_FLAG ..."
+start_ts=$(date +%s)
+while [ ! -f "$CERT_FLAG" ]; do
+  now=$(date +%s); (( MAX_WAIT == 0 || now - start_ts < MAX_WAIT )) || { echo "[wait] timeout waiting for certs"; exit 1; }
+  sleep "$SLEEP"
+done
+echo "[wait] certs ready."
+
+for h in $HOSTS; do
+  echo "[wait] waiting for TCP $h:$PORT ..."
+  start_ts=$(date +%s)
+  while :; do
+    if have_nc && nc -z "$h" "$PORT" 2>/dev/null; then
+      echo "[wait] $h:$PORT open (via nc)."
+      break
+    fi
+
+    # /dev/tcp requires bash — we’re in bash here
+    if exec 3<>"/dev/tcp/$h/$PORT" 2>/dev/null; then
+      exec 3>&- 3<&-
+      echo "[wait] $h:$PORT open (via /dev/tcp)."
+      break
+    fi
+
+    # Optional TLS probe if openssl exists
+    if have_openssl && echo | openssl s_client -connect "$h:$PORT" -servername "$h" -brief >/dev/null 2>&1; then
+      echo "[wait] $h:$PORT TLS OK (via openssl)."
+      break
+    fi
+
+    now=$(date +%s); (( MAX_WAIT == 0 || now - start_ts < MAX_WAIT )) || { echo "[wait] timeout waiting for $h:$PORT"; exit 1; }
+    sleep "$SLEEP"
+  done
+done
+
+echo "[wait] all MQ endpoints are up."
+exec "$@"
+
+
+
+
+
 # Dockerfile.prepare-certs
 FROM registry.access.redhat.com/ubi9/ubi-minimal
 
