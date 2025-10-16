@@ -1,3 +1,84 @@
+# Dockerfile.prepare-certs
+FROM registry.access.redhat.com/ubi9/ubi-minimal
+
+# microdnf is available on ubi-minimal; on full UBI9 use `dnf -y install ...`
+RUN microdnf -y install openssl java-17-openjdk-headless ca-certificates \
+ && microdnf -y clean all
+
+# Make sure the trust bundle exists/enabled (not strictly required for our PKI)
+RUN update-ca-trust force-enable || true
+
+WORKDIR /scripts
+COPY generate-certs.sh /scripts/generate-certs.sh
+RUN chmod +x /scripts/generate-certs.sh
+
+# OUT is where we will write the artifacts (mounted named volume)
+ENV OUT=/out
+ENTRYPOINT ["/scripts/generate-certs.sh"]
+
+
+version: "3.9"
+
+volumes:
+  pki-data: {}
+
+services:
+  prepare-certs:
+    build:
+      context: .
+      dockerfile: Dockerfile.prepare-certs
+    environment:
+      OUT: /out
+      QM_NAMES: "FNQM1 FNQM2 FNQM3"
+      CLIENT_CNS: "app-prod app-batch"
+      CA_KEY_BITS: "8192"
+      QM_KEY_BITS: "4096"
+      CLIENT_KEY_BITS: "4096"
+      P12_PASS: "changeit"
+      TRUST_PASS: "changeit"
+    volumes:
+      - pki-data:/out:Z
+    restart: "no"
+
+  mq1:
+    image: ibmcom/mq:9.3.5.0-r1
+    depends_on: [prepare-certs]
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=FNQM1
+    volumes:
+      - pki-data:/etc/mqm/pki:ro,Z
+
+  mq2:
+    image: ibmcom/mq:9.3.5.0-r1
+    depends_on: [prepare-certs]
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=FNQM2
+    volumes:
+      - pki-data:/etc/mqm/pki:ro,Z
+
+  mq3:
+    image: ibmcom/mq:9.3.5.0-r1
+    depends_on: [prepare-certs]
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=FNQM3
+    volumes:
+      - pki-data:/etc/mqm/pki:ro,Z
+
+  consumer:
+    image: your/mq-consumer:latest
+    depends_on: [prepare-certs]
+    volumes:
+      - pki-data:/etc/mqm/pki:ro,Z
+      - ./application.yml:/config/application.yml:ro,Z
+    environment:
+      - SPRING_CONFIG_LOCATION=file:/config/application.yml
+
+
+
+
 #!/usr/bin/env bash
 set -euo pipefail
 
