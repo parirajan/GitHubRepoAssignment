@@ -1,3 +1,107 @@
+* ========= Common MQSC template for FNUNI cluster (2 FR, 1 PR) =========
+
+* ----- Listener -----
+DEFINE LISTENER(L1414) TRPTYPE(TCP) PORT(1414) CONTROL(QMGR) REPLACE
+START LISTENER(L1414)
+
+* ----- TLS / Keystore (PKCS12) -----
+* Each QM uses /etc/mqm/pki/{{SELF_QM}}/qmgr.p12 with label qmgr-cert-{{SELF_QM}}
+ALTER QMGR SSLKEYR('/etc/mqm/pki/{{SELF_QM}}/qmgr') CERTLABL('qmgr-cert-{{SELF_QM}}')
+
+* ----- Application channel (client) -----
+DEFINE CHANNEL('DEV.APP.SVRCONN') CHLTYPE(SVRCONN) TRPTYPE(TCP) +
+  SSLCIPH('TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384') +
+  SSLCAUTH(REQUIRED) REPLACE
+
+* ----- Enable CHLAUTH and map client CNs to MCAUSER('app') -----
+ALTER QMGR CHLAUTH(ENABLED)
+SET CHLAUTH('DEV.APP.SVRCONN') TYPE(SSLPEERMAP) +
+  SSLPEER('CN=app-*,OU=Apps,O=FNUNI,*') +
+  USERSRC(MAP) MCAUSER('app') ACTION(REPLACE)
+
+* ----- Cluster receiver for THIS queue manager -----
+DEFINE CHANNEL('FNUNI.TO.{{SELF_QM}}') CHLTYPE(CLUSRCVR) TRPTYPE(TCP) +
+  CONNAME('{{SELF_HOST}}(1414)') CLUSTER('FNUNI') REPLACE
+
+* ----- Cluster senders to seed QMs -----
+DEFINE CHANNEL('FNUNI.TO.{{PEER1_QM}}') CHLTYPE(CLUSSDR) TRPTYPE(TCP) +
+  CONNAME('{{PEER1_HOST}}(1414)') CLUSTER('FNUNI') REPLACE
+DEFINE CHANNEL('FNUNI.TO.{{PEER2_QM}}') CHLTYPE(CLUSSDR) TRPTYPE(TCP) +
+  CONNAME('{{PEER2_HOST}}(1414)') CLUSTER('FNUNI') REPLACE
+
+* ----- Clustered queues -----
+DEFINE QLOCAL('PAYMENT.REQUEST')  CLUSTER('FNUNI') DEFBIND(NOTFIXED) CLWLUSEQ(ANY) REPLACE
+DEFINE QLOCAL('PAYMENT.RESPONSE') CLUSTER('FNUNI') DEFBIND(NOTFIXED) CLWLUSEQ(ANY) REPLACE
+
+* ----- Dead letter queue -----
+DEFINE QLOCAL('PAYMENT.DLQ') REPLACE
+ALTER QMGR DEADQ('PAYMENT.DLQ')
+
+* ----- Workload balancing -----
+ALTER QMGR CLWLMRUQ(999999999)
+ALTER QMGR CLWLUSEQ(ANY)
+
+* ----- App authorizations (grant rights to MCAUSER 'app') -----
+SET AUTHREC PROFILE('PAYMENT.REQUEST')  OBJTYPE(QUEUE) PRINCIPAL('app') AUTHADD(PUT,INQ)
+SET AUTHREC PROFILE('PAYMENT.REQUEST')  OBJTYPE(QUEUE) PRINCIPAL('app') AUTHADD(GET,INQ,BROWSE)
+
+SET AUTHREC PROFILE('PAYMENT.RESPONSE') OBJTYPE(QUEUE) PRINCIPAL('app') AUTHADD(PUT,INQ)
+SET AUTHREC PROFILE('PAYMENT.RESPONSE') OBJTYPE(QUEUE) PRINCIPAL('app') AUTHADD(GET,INQ,BROWSE)
+
+* Optionally grant DLQ browse/inq for ops tools
+SET AUTHREC PROFILE('PAYMENT.DLQ') OBJTYPE(QUEUE) PRINCIPAL('app') AUTHADD(BROWSE,INQ)
+
+* ----- Make security changes live -----
+REFRESH SECURITY TYPE(SSL)
+REFRESH SECURITY TYPE(AUTHREC)
+
+* ----- FR/PR role is appended by render-mqsc.sh -----
+
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+CLUSTER_NAME="${CLUSTER_NAME:-FNUNI}"
+SELF_QM="${MQ_QMGR_NAME:-$(echo FNQM1/FNQM2/FNQM3)}"
+SELF_HOST="${SELF_HOST:-$HOSTNAME}"
+
+case "$SELF_QM" in
+  FNQM1) PEER1_QM=FNQM2; PEER1_HOST=mq2; PEER2_QM=FNQM3; PEER2_HOST=mq3 ;;
+  FNQM2) PEER1_QM=FNQM1; PEER1_HOST=mq1; PEER2_QM=FNQM3; PEER2_HOST=mq3 ;;
+  FNQM3) PEER1_QM=FNQM1; PEER1_HOST=mq1; PEER2_QM=FNQM2; PEER2_HOST=mq2 ;;
+  *) echo "Unknown SELF_QM='$SELF_QM'"; exit 1 ;;
+esac
+
+ROLE="${ROLE:-PR}" # set FR on two nodes in compose via env
+
+TPL="/opt/common.mqsc.tpl"
+OUT="/etc/mqm/auto.mqsc"
+
+# Render placeholders
+sed -e "s/{{SELF_QM}}/${SELF_QM}/g" \
+    -e "s/{{SELF_HOST}}/${SELF_HOST}/g" \
+    -e "s/{{PEER1_QM}}/${PEER1_QM}/g" \
+    -e "s/{{PEER1_HOST}}/${PEER1_HOST}/g" \
+    -e "s/{{PEER2_QM}}/${PEER2_QM}/g" \
+    -e "s/{{PEER2_HOST}}/${PEER2_HOST}/g" \
+    "$TPL" > "$OUT"
+
+# Append FR/PR role
+if [ "$ROLE" = "FR" ]; then
+  {
+    echo "ALTER QMGR REPOS('${CLUSTER_NAME}')"
+    echo "ALTER QMGR REPOSNL('${CLUSTER_NAME}')"
+  } >> "$OUT"
+else
+  {
+    echo "ALTER QMGR REPOS('')"
+    echo "ALTER QMGR REPOSNL('')"
+  } >> "$OUT"
+fi
+
+echo "Rendered MQSC for $SELF_QM ($SELF_HOST) ROLE=$ROLE -> $OUT"
+
+
 #!/usr/bin/env bash
 set -euo pipefail
 
