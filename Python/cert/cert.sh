@@ -5,15 +5,15 @@ DEFINE LISTENER(L1414) TRPTYPE(TCP) PORT(1414) CONTROL(QMGR) REPLACE
 START LISTENER(L1414)
 
 * ----- TLS / Keystore (PKCS12) -----
-* Each QM uses /etc/mqm/pki/{{SELF_QM}}/qmgr.p12 with label qmgr-cert-{{SELF_QM}}
+ALTER QMGR KEYSTORETYPE(PKCS12)
 ALTER QMGR SSLKEYR('/etc/mqm/pki/{{SELF_QM}}/qmgr') CERTLABL('qmgr-cert-{{SELF_QM}}')
 
-* ----- Application channel (client) -----
+* ----- Client channel with mTLS -----
 DEFINE CHANNEL('DEV.APP.SVRCONN') CHLTYPE(SVRCONN) TRPTYPE(TCP) +
   SSLCIPH('TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384') +
   SSLCAUTH(REQUIRED) REPLACE
 
-* ----- Enable CHLAUTH and map client CNs to MCAUSERs -----
+* ----- CHLAUTH cert mapping -----
 ALTER QMGR CHLAUTH(ENABLED)
 SET CHLAUTH('DEV.APP.SVRCONN') TYPE(SSLPEERMAP) +
   SSLPEER('CN=app-producer,OU=Apps,O=FNUNI,*') +
@@ -44,22 +44,22 @@ ALTER QMGR DEADQ('PAYMENT.DLQ')
 ALTER QMGR CLWLMRUC(999999999)
 ALTER QMGR CLWLUSEQ(ANY)
 
-* ----- App authorizations (grant rights to MCAUSERs) -----
+* ----- OAM for MCAUSERs -----
 SET AUTHREC PROFILE('PAYMENT.REQUEST')  OBJTYPE(QUEUE) PRINCIPAL('app-prod') AUTHADD(GET,INQ)
 SET AUTHREC PROFILE('PAYMENT.RESPONSE') OBJTYPE(QUEUE) PRINCIPAL('app-prod') AUTHADD(PUT,INQ)
 
 SET AUTHREC PROFILE('PAYMENT.REQUEST')  OBJTYPE(QUEUE) PRINCIPAL('app-cons') AUTHADD(GET,INQ)
 SET AUTHREC PROFILE('PAYMENT.RESPONSE') OBJTYPE(QUEUE) PRINCIPAL('app-cons') AUTHADD(PUT,INQ)
 
-* Optionally grant DLQ browse/inq for ops tools
-SET AUTHREC PROFILE('PAYMENT.DLQ') OBJTYPE(QUEUE) PRINCIPAL('app') AUTHADD(BROWSE,INQ)
-
-* ----- Make security changes live -----
+* ----- Activate changes -----
 REFRESH SECURITY TYPE(SSL)
 REFRESH SECURITY TYPE(CONNAUTH)
 REFRESH SECURITY TYPE(OAM)
 
-* ----- FR/PR role is appended by render-mqsc.sh -----
+* ----- FR/PR role appended by render script -----
+
+
+
 #!/usr/bin/env bash
 set -euo pipefail
 
