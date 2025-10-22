@@ -1,3 +1,89 @@
+package org.frb.fednow.consumer;
+
+import com.ibm.mq.jms.MQConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+import javax.jms.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import jakarta.annotation.PostConstruct;
+
+@Component
+public class MqListener {
+
+    @Value("${ibm.mq.queue-manager}") private String qmgr;
+    @Value("${ibm.mq.channel}") private String channel;
+    @Value("${ibm.mq.conn-name}") private String connName;
+    @Value("${ibm.mq.request-queue}") private String queueName;
+    @Value("${ibm.mq.interval-ms:2000}") private long intervalMs;
+
+    // --- SSL config (read from application.yml)
+    @Value("${ibm.mq.ssl.keyStore}") private String keyStore;
+    @Value("${ibm.mq.ssl.keyStorePassword}") private String keyStorePassword;
+    @Value("${ibm.mq.ssl.trustStore}") private String trustStore;
+    @Value("${ibm.mq.ssl.trustStorePassword}") private String trustStorePassword;
+    @Value("${ibm.mq.sslCipherSuite:TLS_AES_256_GCM_SHA384}") private String sslCipherSuite;
+
+    @PostConstruct
+    public void applySslProps() {
+        System.setProperty("javax.net.ssl.keyStore", keyStore);
+        System.setProperty("javax.net.ssl.keyStorePassword", keyStorePassword);
+        System.setProperty("javax.net.ssl.keyStoreType", "PKCS12");
+        System.setProperty("javax.net.ssl.trustStore", trustStore);
+        System.setProperty("javax.net.ssl.trustStorePassword", trustStorePassword);
+        System.setProperty("javax.net.ssl.trustStoreType", "PKCS12");
+        System.out.println("[MQ SSL] Properties applied from application.yml");
+    }
+
+    public void startAsync() {
+        System.out.println("MqListener starting thread...");
+        Thread t = new Thread(this::runLoop, "mq-consumer-loop");
+        t.setDaemon(false);
+        t.start();
+    }
+
+    private void runLoop() {
+        int attempt = 0;
+        while (true) {
+            MQConnectionFactory f = new MQConnectionFactory();
+            try {
+                f.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+                f.setConnectionNameList(connName);
+                f.setChannel(channel);
+                f.setQueueManager(qmgr);
+
+                // --- TLS / mTLS only ---
+                f.setSSLCipherSuite(sslCipherSuite);
+                f.setBooleanProperty(WMQConstants.USER_AUTHENTICATION_MQCSP, false);
+
+                Connection connection = f.createConnection(); // no user/pwd
+                Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                Queue inq = session.createQueue("queue:///" + queueName);
+                MessageConsumer consumer = session.createConsumer(inq);
+
+                connection.start();
+                System.out.println("[CONSUMER] Connected to MQ; listening on " + queueName + " ...");
+
+                attempt = 0;
+                while (true) {
+                    Message m = consumer.receive(intervalMs);
+                    if (m == null) continue;
+
+                    if (m instanceof TextMessage tm)
+                        System.out.println("[CONSUMER] Received: " + tm.getText());
+                    else
+                        System.out.println("[CONSUMER] Non-text message: " + m.getClass().getSimpleName());
+                }
+
+            } catch (Exception e) {
+                attempt++;
+                long backoffMs = Math.min(30000, 1000L * attempt);
+                System.err.println("[CONSUMER] MQ failure (attempt " + attempt + "): " + e.getMessage());
+                try { Thread.sleep(backoffMs); } catch (InterruptedException ignored) {}
+            }
+        }
+    }
+}
+
 * ========= Common MQSC template for FNUNI cluster (2 FR, 1 PR) =========
 
 * ----- Listener -----
