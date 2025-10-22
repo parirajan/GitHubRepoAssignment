@@ -1,3 +1,90 @@
+package org.frb.fednow.producer;
+
+import com.ibm.mq.jms.MQConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+import javax.jms.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import jakarta.annotation.PostConstruct;
+
+@Component
+public class MqSender {
+
+    @Value("${ibm.mq.queue-manager}") private String qmgr;
+    @Value("${ibm.mq.channel}") private String channel;
+    @Value("${ibm.mq.conn-name}") private String connName;
+    @Value("${ibm.mq.request-queue}") private String queueName;
+    @Value("${ibm.mq.interval-ms:2000}") private long intervalMs;
+    @Value("${ibm.mq.sslCipherSuite:TLS_AES_256_GCM_SHA384}") private String sslCipherSuite;
+
+    // --- SSL config read from application.yml
+    @Value("${ibm.mq.ssl.keyStore}") private String keyStore;
+    @Value("${ibm.mq.ssl.keyStorePassword}") private String keyStorePassword;
+    @Value("${ibm.mq.ssl.trustStore}") private String trustStore;
+    @Value("${ibm.mq.ssl.trustStorePassword}") private String trustStorePassword;
+
+    @PostConstruct
+    public void applySslProps() {
+        System.setProperty("javax.net.ssl.keyStore", keyStore);
+        System.setProperty("javax.net.ssl.keyStorePassword", keyStorePassword);
+        System.setProperty("javax.net.ssl.keyStoreType", "PKCS12");
+        System.setProperty("javax.net.ssl.trustStore", trustStore);
+        System.setProperty("javax.net.ssl.trustStorePassword", trustStorePassword);
+        System.setProperty("javax.net.ssl.trustStoreType", "PKCS12");
+        System.out.println("[MQ SSL] Properties applied from application.yml");
+    }
+
+    public void startAsync() {
+        System.out.println("MqSender starting thread...");
+        Thread t = new Thread(this::runLoop, "mq-producer-loop");
+        t.setDaemon(false);
+        t.start();
+    }
+
+    private void runLoop() {
+        int attempt = 0;
+        while (true) {
+            MQConnectionFactory f = new MQConnectionFactory();
+            try {
+                f.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+                f.setQueueManager(qmgr);
+                f.setConnectionNameList(connName);
+                f.setChannel(channel);
+
+                // --- mTLS-only setup ---
+                f.setSSLCipherSuite(sslCipherSuite);
+                f.setBooleanProperty(WMQConstants.USER_AUTHENTICATION_MQCSP, false);
+
+                Connection c = f.createConnection();  // no user/pwd
+                Session s = c.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                Queue q = s.createQueue("queue:///" + queueName);
+                MessageProducer p = s.createProducer(q);
+
+                c.start();
+                System.out.println("[PRODUCER] Connected to MQ. Sending messages...");
+
+                int i = 0;
+                attempt = 0;
+                while (true) {
+                    TextMessage m = s.createTextMessage("PAYMENT-" + (++i));
+                    p.send(m);
+                    System.out.println("[PRODUCER] Sent: " + m.getText());
+                    Thread.sleep(Math.max(200, intervalMs));
+                }
+
+            } catch (Exception e) {
+                attempt++;
+                long backoff = Math.min(30000, 1000L * attempt);
+                System.err.println("[PRODUCER] MQ failure (attempt " + attempt + "): " + e.getMessage());
+                try { Thread.sleep(backoff); } catch (InterruptedException ignored) {}
+            }
+        }
+    }
+}
+
+
+
+
 package org.frb.fednow.consumer;
 
 import com.ibm.mq.jms.MQConnectionFactory;
