@@ -1,72 +1,58 @@
-import json
-from pathlib import Path
+* ----- Listener -----
+* Docker containers start a listener on 1414 by default; no need to define (uncomment ONLY if running non-Docker native queue manager)
+* DEFINE LISTENER(L1414)  TRPTYPE(TCP)  PORT(1414)  IPADDR(0.0.0.0)  CONTROL(QMGR) REPLACE
+* START LISTENER(L1414)
 
-from exclude_specific_entries import ExcludeSpecificEntries
+* ----- TLS / Keystore (PKCS12) -----
+ALTER QMGR SSLKEYR('/etc/certs/pki/qmgr/{{SELF_QM}}/qmgr.p12') +
+  CERTLABL('qmgr-cert-{{SELF_QM}}')
+ALTER QMGR KEYPWD('changeit')
 
+* ----- Client (SVRCONN) channel with mTLS -----
+DEFINE CHANNEL('DEV.APP.SVRCONN')  CHLTYPE(SVRCONN)  TRPTYPE(TCP) +
+  SSLCIPH('TLS_AES_256_GCM_SHA384') +
+  SSLCAUTH(REQUIRED)  REPLACE
 
-# ---- stub, replace with your real lookup -----------------
-def getElementByUidFromTargetEnv(uid, *args, **kwargs):
-    """
-    Dummy implementation just to satisfy the interface.
-    In real life this would query the target environment.
-    Raise an exception to simulate 'not found'.
-    """
-    existing_ids = set()  # or {'123', '456'} if you want to test
-    if str(uid) in existing_ids:
-        return {"uid": uid}   # found
-    else:
-        raise KeyError("ITEM_NOT_FOUND")
-# -----------------------------------------------------------
+* ----- CHLAUTH cert mapping -----
+ALTER QMGR CHLAUTH(ENABLED)
+SET CHLAUTH('DEV.APP.SVRCONN')  TYPE(SSLPEERMAP) +
+  SSLPEER('CN=MQ-PRODUCER,OU=FN,O=FB,C=US') +
+  USERSRC(MAP)  MCAUSER('MQ-PRODUCER')  ACTION(REPLACE)
+SET CHLAUTH('DEV.APP.SVRCONN')  TYPE(SSLPEERMAP) +
+  SSLPEER('CN=MQ-CONSUMER,OU=FN,O=FB,C=US') +
+  USERSRC(MAP)  MCAUSER('MQ-CONSUMER')  ACTION(REPLACE)
 
+* ----- Cluster receiver for THIS queue manager -----
+DEFINE CHANNEL('FNUNI.TO.{{SELF_QM}}')  CHLTYPE(CLUSRCVR)  TRPTYPE(TCP) +
+  CONNAME('{{SELF_HOST}}(1414)')  CLUSTER('FNUNI') +
+  SSLCIPH('TLS_AES_256_GCM_SHA384') SSLCAUTH(REQUIRED) REPLACE
 
-def iter_journal_entries(fp):
-    """
-    Generator that yields one JSON object at a time.
+* ----- Cluster senders to seed QMs -----
+DEFINE CHANNEL('FNUNI.TO.{{PEER1_QM}}')  CHLTYPE(CLUSSDR)  TRPTYPE(TCP) +
+  CONNAME('{{PEER1_HOST}}(1414)')  CLUSTER('FNUNI') +
+  SSLCIPH('TLS_AES_256_GCM_SHA384') SSLCAUTH(REQUIRED) REPLACE
+DEFINE CHANNEL('FNUNI.TO.{{PEER2_QM}}')  CHLTYPE(CLUSSDR)  TRPTYPE(TCP) +
+  CONNAME('{{PEER2_HOST}}(1414)')  CLUSTER('FNUNI') +
+  SSLCIPH('TLS_AES_256_GCM_SHA384') SSLCAUTH(REQUIRED) REPLACE
 
-    If your file is truly NDJSON (one JSON object per line), this version works:
+* ----- Clustered queues -----
+DEFINE QLOCAL('PAYMENT.REQUEST')   CLUSTER('FNUNI')  REPLACE
+DEFINE QLOCAL('PAYMENT.RESPONSE')  CLUSTER('FNUNI')  REPLACE
 
-        for line in fp:
-            line = line.strip()
-            if not line:
-                continue
-            yield json.loads(line)
+* ----- Dead letter queue -----
+DEFINE QLOCAL('PAYMENT.DLQ')  REPLACE
+ALTER QMGR DEADQ('PAYMENT.DLQ')
 
-    BUT if your entries are pretty-printed over multiple lines, use a small
-    buffer that accumulates until a full JSON object parses.
-    """
-    buffer = ""
-    for line in fp:
-        if not line.strip():
-            continue
-        buffer += line
-        try:
-            obj = json.loads(buffer)
-            yield obj
-            buffer = ""  # reset buffer after successful parse
-        except json.JSONDecodeError:
-            # not a complete object yet, keep appending lines
-            continue
+* ----- OAM for MCAUSERs -----
+SET AUTHREC PROFILE('PAYMENT.REQUEST')   OBJTYPE(QUEUE)  PRINCIPAL('MQ-PRODUCER')  AUTHADD(GET,INQ)
+SET AUTHREC PROFILE('PAYMENT.RESPONSE')  OBJTYPE(QUEUE)  PRINCIPAL('MQ-PRODUCER')  AUTHADD(PUT,INQ)
 
-    if buffer.strip():
-        # last partial object (if any)
-        yield json.loads(buffer)
+SET AUTHREC PROFILE('PAYMENT.REQUEST')   OBJTYPE(QUEUE)  PRINCIPAL('MQ-CONSUMER')  AUTHADD(GET,INQ)
+SET AUTHREC PROFILE('PAYMENT.RESPONSE')  OBJTYPE(QUEUE)  PRINCIPAL('MQ-CONSUMER')  AUTHADD(PUT,INQ)
 
+* ----- Activate changes -----
+REFRESH SECURITY TYPE(SSL)
+REFRESH SECURITY TYPE(CONNAUTH)
+REFRESH SECURITY TYPE(AUTHSERV)
 
-def main(in_file: Path, out_file: Path):
-    excluder = ExcludeSpecificEntries()
-
-    with in_file.open() as f_in, out_file.open("w") as f_out:
-        for entry in iter_journal_entries(f_in):
-            # IMPORTANT: map to your real journal structure
-            should_exclude = excluder.apply(entry, getElementByUidFromTargetEnv)
-
-            if not should_exclude:
-                # write as NDJSON: one JSON object per line
-                f_out.write(json.dumps(entry))
-                f_out.write("\n")
-
-
-if __name__ == "__main__":
-    in_path = Path("journal.json")          # your input file
-    out_path = Path("journal_filtered.json")
-    main(in_path, out_path)
+* ----- FR/PR role appended by render script -----
